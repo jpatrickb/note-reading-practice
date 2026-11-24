@@ -1,6 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:4173';
+// E2E_PORT lets parallel worktrees each serve their own build (strictPort: never test someone else's).
+const port = Number(process.env.E2E_PORT ?? 4173);
+const baseURL = process.env.E2E_BASE_URL ?? `http://localhost:${port}`;
 
 export default defineConfig({
   testDir: 'e2e',
@@ -19,5 +21,9 @@ export default defineConfig({
   ],
   webServer: process.env.E2E_BASE_URL
     ? undefined
-    : { command: 'npm run build && npm run preview', url: baseURL, reuseExistingServer: !process.env.CI },
+    : {
+        command: `npm run build && npx vite preview --port ${port} --strictPort`,
+        url: baseURL,
+        reuseExistingServer: !process.env.CI,
+      },
 });
