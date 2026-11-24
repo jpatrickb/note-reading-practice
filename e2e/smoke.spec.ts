@@ -19,8 +19,13 @@ test('@smoke save screen renders a QR progress code', async ({ page }) => {
   await expect(page.locator('.qr svg')).toBeVisible();
 });
 
-test('@smoke security headers are served', async ({ request }) => {
+test('@smoke our security headers are served', async ({ request }) => {
   test.skip(!process.env.E2E_BASE_URL, 'headers come from Cloudflare Pages, not the local preview');
-  const res = await request.get('/');
-  expect(res.headers()['x-content-type-options']).toBe('nosniff');
+  const headers = (await request.get('/')).headers();
+  // Pages sends nosniff and referrer-policy by default, so check headers only public/_headers sets.
+  expect(headers['x-frame-options']).toBe('DENY');
+  expect(headers['permissions-policy']).toContain('camera=()');
+  if (new URL(process.env.E2E_BASE_URL!).hostname.includes('staging')) {
+    expect(headers['x-robots-tag']).toBe('noindex');
+  }
 });
