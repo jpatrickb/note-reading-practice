@@ -72,7 +72,7 @@ The user experience is the product, so we test both the logic and the experience
 ```bash
 npm test            # unit tests
 npm run test:cov    # unit tests + coverage report
-npm run test:e2e    # end-to-end (builds and serves the app)
+npm run test:e2e    # end-to-end (builds and serves the app; E2E_PORT=4174 to run several at once)
 npm run check       # typecheck + lint
 ```
 
