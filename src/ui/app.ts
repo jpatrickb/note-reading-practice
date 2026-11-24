@@ -194,7 +194,7 @@ export class App {
       'main',
       { class: 'screen home' },
       h('header', { class: 'topbar' }, h('h1', { class: 'title' }, '🎵 Note Reader'), this.muteButton()),
-      homeBanners({ hasProgress: Object.values(this.state.items).some((i) => i.n > 0), onLoadCode: () => this.go('save') }),
+      homeBanners({ hasProgress: [this.state, this.letters].some((s) => Object.values(s.items).some((i) => i.n > 0)), onLoadCode: () => this.go('save') }),
       this.weeklyGoal(),
       h(
         'section',
