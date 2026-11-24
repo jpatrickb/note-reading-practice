@@ -1,0 +1,94 @@
+# Deploys after a merge. develop → staging, main → production (then tags the release).
+# The full test suite already ran on the PR, so this only applies infra, deploys, and smoke-tests.
+name: Deploy
+
+on:
+  push:
+    branches: [develop, main]
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+      - "LICENSE"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: deploy-${{ github.ref_name }}
+      cancel-in-progress: false
+    permissions:
+      contents: write # create the release tag on main
+    environment:
+      name: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+      url: ${{ steps.tf.outputs.url }}
+    env:
+      ENVIRONMENT: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_ENDPOINT_URL_S3: https://${{ vars.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      TF_VAR_account_id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      TF_IN_AUTOMATION: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+
+      # Apply every deploy: a no-op when nothing changed, and it guarantees the project exists and
+      # catches drift.
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_wrapper: false
+      - name: Terraform apply
+        id: tf
+        working-directory: infra
+        run: |
+          terraform init -input=false -backend-config=backend.hcl -backend-config="key=${ENVIRONMENT}.tfstate"
+          terraform apply -input=false -auto-approve -var "environment=${ENVIRONMENT}"
+          echo "project=$(terraform output -raw project_name)" >> "$GITHUB_OUTPUT"
+          echo "url=$(terraform output -raw url)" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: npm run build
+      - name: Keep staging out of search engines
+        if: env.ENVIRONMENT == 'staging'
+        run: |
+          printf '/*\n  X-Robots-Tag: noindex\n' >> dist/_headers
+      - name: Deploy to Cloudflare Pages
+        env:
+          PROJECT: ${{ steps.tf.outputs.project }}
+        run: npx wrangler pages deploy dist --project-name "$PROJECT" --branch main --commit-hash "$GITHUB_SHA" --commit-dirty=true
+
+      - name: Wait for the site (first deploys wait on the TLS certificate)
+        env:
+          URL: ${{ steps.tf.outputs.url }}
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS -o /dev/null "$URL"; then echo "up after ${i} tries"; exit 0; fi
+            sleep 10
+          done
+          echo "Site did not come up at $URL" && exit 1
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Smoke tests against the live site
+        env:
+          E2E_BASE_URL: ${{ steps.tf.outputs.url }}
+        run: npx playwright test --grep @smoke --project=desktop-chromium
+
+      - name: Tag the release
+        if: env.ENVIRONMENT == 'production'
+        run: |
+          tag="v$(node -p "require('./package.json').version")"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            echo "$tag already exists; bump package.json version on the release branch to tag a new release."
+          else
+            git tag "$tag" "$GITHUB_SHA" && git push origin "$tag"
+          fi

@@ -36,7 +36,16 @@ never loses a fix.
 
 Versions follow semver (`vX.Y.Z`) and are tagged on `main`.
 
-> **Prototype phase exception:** until CI/CD exists, we commit directly to `develop`.
+**Branch protection** (`develop` and `main`, admins included): changes land only through PRs, and the
+`ci-ok` check must pass with the branch up to date. No approvals are required while the team is one
+person. No force pushes or deletions.
+
+### Releasing
+
+1. `git checkout -b release/x.y.z develop`, then bump `version` in `package.json` to `x.y.z`.
+2. PR `release/x.y.z` → `main`. CI runs; merge when green.
+3. The deploy workflow ships to production and tags `vx.y.z`.
+4. PR `main` → `develop` to bring the version bump (and any release fixes) back.
 
 ## Commits
 
@@ -71,16 +80,22 @@ npm run check       # typecheck + lint
 
 Principle: **thorough, but never wasteful or redundant.**
 
+Workflows: [`ci.yml`](.github/workflows/ci.yml) (PRs) and [`deploy.yml`](.github/workflows/deploy.yml)
+(merges). Setup of the Cloudflare credentials they use: [infra/README.md](infra/README.md).
+
 | Trigger | What runs |
 |---|---|
 | PR → `develop` or `main` | One pipeline: install (cached) → typecheck/lint → unit + coverage → build → e2e (Chromium + WebKit). Terraform `fmt`/`validate`/`plan` **only if `infra/**` changed**. |
-| Merge → `develop` | Build → `terraform apply` (staging, if infra changed) → deploy to **staging** → a short smoke e2e against the deployed URL. The full suite already ran on the PR, so it isn't repeated. |
-| Merge → `main` | Build → apply (prod, if infra changed) → deploy to **production** → smoke e2e → tag release. |
+| Merge → `develop` | `terraform apply` (staging; a no-op if nothing changed) → build → deploy to **staging** → `@smoke` e2e against the live URL. The full suite already ran on the PR, so it isn't repeated. |
+| Merge → `main` | Same, for **production**, then tag `v<package.json version>`. |
 
 Rules that keep it lean:
 
 - `concurrency` with `cancel-in-progress` on PR workflows, so a new push cancels the stale run.
-- Path filters: docs-only changes skip build and tests. Infra jobs run only when `infra/**` changes.
+- Path filters: docs-only changes skip build and tests. Infra jobs run only when `infra/**` (or a
+  workflow) changes. Skipped jobs still report through the always-running `ci-ok` job, so required
+  checks never hang.
+- Dependabot opens weekly *grouped* update PRs (actions, npm, Terraform provider) into `develop`.
 - Cache npm and Playwright browsers.
 - Pin third-party actions to commit SHAs (supply-chain safety in a public repo).
 - Fork PRs use `pull_request` (never `pull_request_target`), so secrets are never exposed to forks.

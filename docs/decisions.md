@@ -177,3 +177,31 @@ wrong, and the "?" button makes not knowing cost little.
 (staging).** "musicnotes" was avoided because Musicnotes is an established sheet-music brand.
 
 **D38. Terraform state lives in Cloudflare R2** (S3-compatible backend, free tier).
+
+### 2026-11-24: CI/CD and infrastructure
+
+**D39. Branch protection on `develop` and `main`, enforced for admins:** PRs only, required check
+`ci-ok`, the branch must be up to date, 0 required approvals (solo team), no force pushes or deletions.
+
+**D40. One required check, `ci-ok`**, which always runs and fails only if a needed job failed or was
+cancelled. Jobs skip by path (docs-only → no tests; infra plan only when `infra/` or workflows change).
+*Why:* required checks combined with workflow-level path filters would leave docs-only PRs blocked
+forever.
+
+**D41. A separate Pages project per environment** (`notepractice`, `notepractice-staging`), direct
+upload via wrangler from Actions (no Cloudflare Git integration). One state file per environment in
+R2, with native S3 lock files.
+*Why:* each environment has its own custom domain and production deployment, with no reliance on
+Pages branch-alias routing. CI stays the only path to deploy.
+
+**D42. Deploys run `terraform apply` every time,** then build → deploy → `@smoke` tests against the
+live URL. Production also tags `v<package.json version>`.
+*Why:* apply is a cheap no-op when nothing changed, guarantees the project exists, and surfaces drift.
+Smoke tests (not the full suite) avoid repeating what the PR already proved.
+
+**D43. Supply chain:** actions are pinned to commit SHAs; Dependabot sends weekly grouped updates to
+`develop`; the provider lock file has hashes for Linux, macOS, and Windows; Node is pinned in
+`.node-version`.
+
+**D44. Security headers via `public/_headers`** (nosniff, frame deny, referrer policy, permissions
+policy denying camera/mic/geolocation). Staging adds `X-Robots-Tag: noindex`.
