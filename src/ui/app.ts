@@ -28,8 +28,9 @@ import {
 import { masteryCounts, renderMasteryKeyboard } from '../render/keyboard';
 import { renderStaff } from '../render/staff';
 import { clear, h } from './dom';
+import { renderThemePicker } from './themePicker';
 
-type Screen = 'home' | 'play' | 'summary' | 'map' | 'save' | 'import' | 'debug';
+type Screen = 'home' | 'play' | 'summary' | 'map' | 'save' | 'import' | 'debug' | 'theme';
 type ClefChoice = 'treble' | 'bass' | 'both';
 
 const OFFSET_KEY = 'nrp:debug:clockOffset';
@@ -100,6 +101,7 @@ export class App {
       save: () => this.renderSave(),
       import: () => this.renderImport(),
       debug: () => this.renderDebug(),
+      theme: () => renderThemePicker({ settings: this.settings, save: () => saveSettings(localStorage, this.settings), onDone: () => this.go('home') }),
     }[screen];
     this.root.append(render());
     (this.root.querySelector('[data-autofocus]') as HTMLElement | null)?.focus();
@@ -187,7 +189,7 @@ export class App {
     return h(
       'main',
       { class: 'screen home' },
-      h('header', { class: 'topbar' }, h('h1', { class: 'title' }, '🎵 Note Reader'), this.muteButton()),
+      h('header', { class: 'topbar' }, h('h1', { class: 'title title--brand' }, 'Note Reader'), this.muteButton()),
       showTip &&
         h(
           'div',
@@ -223,6 +225,7 @@ export class App {
           h('span', { class: 'pill' }, `🥇 ${counts.gold} · 🥈 ${counts.silver}`),
         ),
         h('button', { class: 'secondary', onClick: () => this.go('save') }, '💾 Save / load progress'),
+        h('button', { class: 'secondary', onClick: () => this.go('theme') }, '🎨 Theme'),
         this.debug && h('button', { class: 'secondary', onClick: () => this.go('debug') }, '🛠 Debug'),
       ),
     );
@@ -458,7 +461,7 @@ export class App {
         { class: 'legend' },
         h('span', {}, h('i', { class: 'sw sw--gold' }), `Gold ${counts.gold}: you still knew it on another day`),
         h('span', {}, h('i', { class: 'sw sw--silver' }), `Silver ${counts.silver}: you know it fast`),
-        h('span', {}, h('i', { class: 'sw sw--learning' }), `Learning ${counts.learning}: the blue bar grows as you learn`),
+        h('span', {}, h('i', { class: 'sw sw--learning' }), `Learning ${counts.learning}: the bar grows as you learn`),
         h('span', {}, h('i', { class: 'sw sw--locked' }), `Coming soon ${counts.locked}`),
         dusty > 0 && h('span', {}, `✨ ${dusty} key${dusty > 1 ? 's' : ''} could use a polish. Practice to make ${dusty > 1 ? 'them' : 'it'} shine again!`),
       ),
