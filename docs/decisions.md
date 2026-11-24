@@ -211,3 +211,69 @@ checks headers only our file sets (X-Frame-Options, Permissions-Policy).
 *Why:* the first deploy appended a second `/*` block, which silently replaced the first, so our
 security headers were dropped. The original smoke test checked `nosniff`, which Pages sends by default,
 so it passed without proving anything.
+
+---
+
+### 2026-11-24: Parallel feature work (PRs #4 PWA, #5 Themes, #6 Letter Math)
+
+Built by three engineers in separate git worktrees; decisions are recorded here by the lead at merge.
+
+**Offline & install (PR #4)**
+
+**D46. Hand-written service worker plus a tiny Vite plugin, not vite-plugin-pwa/Workbox.**
+*Why:* the app shell is a few files on one route. About 80 readable, unit-tested lines give exact
+control of updates with no runtime dependency shipped to iPads.
+
+**D47. New versions never take over mid-session.** There's no automatic `skipWaiting`. An update found
+at launch (before any interaction) applies immediately; otherwise a "tap to refresh" banner shows on
+the home screen only.
+*Why:* a reload mid-question loses the kid's session and feels broken.
+
+**D48. The service worker serves the page cache-first, from the same version as its assets.**
+Freshness comes from a content-hashed `sw.js` (`no-cache`, `updateViaCache: 'none'`) and an hourly
+update check when an installed iPad app resumes. The page is precached as `./` because Pages redirects
+`/index.html`.
+
+**D49. Stay on localStorage; IndexedDB is deferred.**
+*Why:* Safari's 7-day eviction and `persist()` treat both the same, so there's no durability gain. The
+state is tiny, and the synchronous API keeps boot simple. Revisit for sync/workers.
+
+**D50. The install tip's "Not now" snoozes for 30 days** (never shown once installed). The Save screen
+shows how safe the kid's progress is on this device (`persisted()`, iOS, standalone).
+*Why:* installing is the main defense against iPad data loss, so a gentle monthly reminder is
+justified.
+
+**Themes (PR #5)**
+
+**D51. Theme tokens live in `src/core/themes.ts`.** Every theme must pass the `CONTRAST_CHECKS` unit
+gate: AA text 4.5:1, UI parts 3:1, and a ΔE distance between mastery levels.
+*Why:* a single source of truth, so a new theme can't ship unreadable.
+
+**D52. Six launch themes, named by mood and never by gender:** Sunny (default), Ocean, Forest, Candy,
+Space (dark), Studio (minimal). Only system fonts and CSS-only decoration (no web fonts, images or
+dependencies).
+
+**D53. Mastery levels don't rely on color alone:** locked keys are dashed with no letter, and learning
+letters get a halo.
+
+**D54. The theme is applied before the first render, and `theme-color` is set at runtime.**
+`Settings.theme` is optional; unknown ids fall back to Sunny.
+
+**Letter Math & engine (PR #6)**
+
+**D55. All modes share one engine** (`ItemSet` + `createEngine`). Each mode keeps its own learner model
+and speed baseline. Name It's behavior is unchanged.
+*Why:* every future mode gets need-based selection, anti-gaming scoring, and the reward tiers for free.
+Letter counting is slower than reading a note, so baselines must not mix.
+
+**D56. Letter Math ladder:** next up → next down → skips (C E G B D F A) → intervals, up then down, in
+the order 2nds, 3rds, 8ths, 5ths, 4ths, 6ths, 7ths. Interval start letters follow the circle of
+fifths. The first open items have varied answers; G→A (the wrap-around) is the 4th item.
+
+**D57. Interval hints count the starting letter as 1 and show the walk.** After each answer, the start
+note then the answer note plays (relative pitch, D3/D4).
+
+**D58. Progress code v2 adds a Letter Math section.** v1 is still written until Letter Math has been
+played, and v1 codes always decode.
+
+**D59. The weekly goal counts practice in any mode.**

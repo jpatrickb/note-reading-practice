@@ -11,3 +11,6 @@ playwright-report/
 *.tfstate
 *.tfstate.*
 *.tfplan
+
+# Claude Code agent worktrees
+.claude/worktrees/

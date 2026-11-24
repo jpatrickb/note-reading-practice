@@ -22,6 +22,22 @@
 - **Audio on iPhone:** the ring/silent switch mutes Web Audio. Is the HTML-audio unlock trick needed?
   (iPads mostly lack the switch.)
 
+- **Letter Math pacing (important):** with the strict unlock rule, simulations show about 1 new item per
+  session. The 126-item ladder would take months, and kids who already know the alphabet would grind.
+  Likely fix: a placement round or a per-rung "test out" fast track. Needs a teacher decision.
+- **Letter Math 2nds/3rds:** these repeat next-letter/skip answers under interval names (28 items). Keep
+  them to teach the names, or drop them?
+- **Space theme:** the selected segment on home (mode/clef) is only subtly different from unselected.
+  Add a contrast rule for selected vs. unselected controls.
+- **Faster first paint:** a small inline script in `index.html` could apply the theme before the bundle
+  loads (follow-up from the themes PR).
+- **Zone Browser Cache TTL:** the jpatrickbeal.com zone rewrites `/sw.js`'s `no-cache` to 4h.
+  Harmless (`updateViaCache: 'none'`), but a hostname-scoped Cache Rule would make headers honest. That
+  needs extra token scope, and it's the owner's zone, so it's the owner's call.
+- **iPad hand-checks pending:** Add to Home Screen icon/name; offline play in airplane mode; the update
+  banner never appears mid-session; whether Safari progress carries over to the installed app
+  (believed separate); Share button location wording; Save screen ✅/⚠️.
+
 ## Parked
 
 - **Real piano via microphone.** Checking an expected note is easier than identifying an unknown one,

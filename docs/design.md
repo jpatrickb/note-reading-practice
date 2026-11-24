@@ -93,6 +93,10 @@ Every link is practiced **in both directions**, with naming at the center.
 
 ## 4. Adaptive engine (runs in the browser)
 
+One generic engine (`createEngine(itemSet)`) serves every mode. A mode supplies its items, unlock
+lanes in teaching order, and the correct answer for each item. Each mode keeps its own learner model
+(D55).
+
 - **Item** = (note, clef, task type), giving a few hundred items in total.
 - **Per-item state:** a mastery estimate (Elo or Bayesian Knowledge Tracing), response time relative to
   the student's own baseline, when it was last seen, and a spacing interval.
@@ -177,7 +181,7 @@ Do as much as possible **in the browser**. Target **$0 hosting**. **No accounts.
 - **Privacy:** collect no personal information. Children's privacy law (COPPA) is much simpler when
   nothing identifying is stored.
 
-### iPad/Safari data loss: must mitigate
+### iPad/Safari data loss: mitigated (D46–D50)
 
 Safari (which means **every browser on iPad**) deletes a site's stored data after **7 days without a
 visit**, unless the site is added to the Home Screen. iPads are expected to be common. Mitigations:
@@ -205,4 +209,4 @@ visit**, unless the site is added to the Home Screen. iPads are expected to be c
 
 Ages span early elementary to high school, so **kids choose from several visual themes** that use the
 same engine underneath: playful and young, clean and minimal for older kids, and a range of styles so
-every kid finds something they like. Themes are their own lane of work.
+every kid finds something they like. Six themes ship (D52), with contrast enforced by a unit test (D51).

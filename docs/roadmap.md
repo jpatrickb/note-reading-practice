@@ -17,14 +17,18 @@ iPad (served over a tunnel during early work).
 
 **Next step:** play-test with real kids, then tune the parameters in `PARAMS` (`src/core/engine.ts`).
 
-## Phase 1: Core game
+## Phase 1: Core game (in progress)
 
-- Place It, Note Catcher, Find All, Letter Math, Word Decoder
+Done 2026-11-24: Letter Math; generic multi-mode engine; 6 themes; installable offline PWA; CI/CD +
+Terraform (staging live).
+
+Remaining:
+
+- Place It, Note Catcher, Find All, Word Decoder
 - Placement round
 - Ledger lines, then accidentals and enharmonics
-- PWA: offline support, Add to Home Screen prompt, `storage.persist()`
-- First themes
-- ~~Real hosting on Cloudflare Pages with IaC and CI/CD~~ (built; live once the Cloudflare credentials are set, see `infra/README.md`)
+- **Placement / fast track** (needed: Letter Math pacing, see open questions)
+- First production release (`release/0.1.0`)
 
 ## Phase 2: Sync & teacher page
 
