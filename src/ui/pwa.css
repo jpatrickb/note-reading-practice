@@ -1,0 +1,42 @@
+/* Install / update banners and the storage-durability card (src/ui/pwa.ts). Theme tokens only. */
+.pwa-banners {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pwa-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  background: color-mix(in srgb, var(--reveal) 12%, var(--card));
+  border-radius: 14px;
+  padding: 8px 8px 8px 14px;
+}
+.pwa-banner__text {
+  margin: 0;
+  flex: 1 1 260px;
+  line-height: 1.4;
+}
+.pwa-banner__actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.share-icon {
+  width: 1em;
+  height: 1.2em;
+  vertical-align: -0.2em;
+}
+.nowrap {
+  white-space: nowrap;
+}
+.durability__text {
+  margin: 0;
+  font-weight: 600;
+}
+.durability[data-level='risk'] {
+  box-shadow: inset 0 0 0 3px var(--gold-2), var(--shadow);
+}
