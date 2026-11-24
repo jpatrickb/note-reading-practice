@@ -3,6 +3,7 @@
 
 import { type Engine, type StudentState, nameEngine } from './engine';
 import type { Clef } from './music';
+import { type ThemeId, isThemeId } from './themes';
 
 const STATE_KEY = 'nrp:v1:state';
 const SETTINGS_KEY = 'nrp:v1:settings';
@@ -14,6 +15,8 @@ export interface Settings {
   muted: boolean;
   /** Game mode chosen on the home screen; absent = Name It. */
   mode?: ModeId;
+  /** Visual theme; missing = the default theme. */
+  theme?: ThemeId;
 }
 
 export const DEFAULT_SETTINGS: Settings = { clefs: ['treble'], muted: false };
@@ -56,7 +59,9 @@ export function clearState(store: KeyValueStore, engine: Engine = nameEngine): v
 }
 
 export function loadSettings(store: KeyValueStore): Settings {
-  return { ...DEFAULT_SETTINGS, ...readJson<Partial<Settings>>(store, SETTINGS_KEY) };
+  const settings: Settings = { ...DEFAULT_SETTINGS, ...readJson<Partial<Settings>>(store, SETTINGS_KEY) };
+  if (!isThemeId(settings.theme)) delete settings.theme; // e.g. a theme that was removed
+  return settings;
 }
 
 export function saveSettings(store: KeyValueStore, settings: Settings): void {
