@@ -34,10 +34,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for branching, testing, and CI convention
 | [docs/open-questions.md](docs/open-questions.md) | Unresolved questions, parked ideas, and risks |
 | [docs/roadmap.md](docs/roadmap.md) | Phases and what's in each |
 
+**Rule:** if a decision only lives in a chat session or someone's head, it doesn't exist. Record it in
+`docs/decisions.md`.
+
 ## Credits
 
 Music glyphs come from the [Bravura](https://github.com/steinbergmedia/bravura) font by Steinberg
 Media Technologies, licensed under the SIL Open Font License 1.1 (`licenses/Bravura-OFL.txt`).
-
-**Rule:** if a decision only lives in a chat session or someone's head, it doesn't exist. Record it in
-`docs/decisions.md`.
