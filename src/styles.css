@@ -1,35 +1,53 @@
-/* Theme tokens. More themes = more [data-theme] blocks overriding these (decision D17). */
+/* Theme tokens (decision D17). These defaults are the Sunny theme; src/core/themes.ts is the source of
+   truth for every theme and applies its tokens on <html> at startup (a unit test keeps these in sync). */
 :root {
   --bg: #fff8ec;
   --card: #ffffff;
   --ink: #2b2a33;
-  --muted: #6b6878;
+  --muted: #635f70;
   --line: #2b2a33;
-  --primary: #d9480f;
+  --primary: #c4410c;
   --primary-ink: #ffffff;
   --secondary: #f1ebe0;
-  --right: #2f9e44;
-  --wrong: #e03131;
+  --right: #2b8a3e;
+  --right-ink: #ffffff;
+  --wrong: #d42a2a;
+  --wrong-ink: #ffffff;
   --reveal: #1c7ed6;
-  --meter: #4dabf7;
+  --meter: #3d97e8;
   --gold-1: #ffe066;
   --gold-2: #f59f00;
   --silver-1: #f1f3f5;
   --silver-2: #adb5bd;
-  --locked: #e9e4da;
+  --locked: #e2dccf;
+  --medal-ink: #2b2a33;
+  --key-white: #ffffff;
+  --key-border: #cfc8bb;
+  --key-black: #3b3a42;
+  --key-ink: #2b2a33;
+  --key-dot: #c4410c;
+  --tip: #e7f5ff;
+  --lesson: #fff9db;
+  --rule: #ddd5c6;
+  --pattern: #fff8ec;
+  --font: ui-rounded, 'SF Pro Rounded', 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --radius: 18px;
   --shadow: 0 2px 0 rgb(0 0 0 / 0.06), 0 8px 24px rgb(0 0 0 / 0.06);
-  --font: ui-rounded, 'SF Pro Rounded', 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --backdrop: none;
+  --mascot: "🎵";
   color-scheme: light;
 }
 
 * {
   box-sizing: border-box;
 }
+html {
+  background: var(--backdrop), var(--bg);
+  background-attachment: fixed;
+}
 html,
 body {
   margin: 0;
-  background: var(--bg);
   color: var(--ink);
   font-family: var(--font);
   -webkit-tap-highlight-color: transparent;
@@ -69,6 +87,9 @@ h3 {
   flex: 1;
   margin: 0;
 }
+.title--brand::before {
+  content: var(--mascot) '\a0';
+}
 .card {
   background: var(--card);
   border-radius: var(--radius);
@@ -94,6 +115,7 @@ h3 {
   border: 0;
   font-weight: 700;
   font-size: 1.05rem;
+  border-radius: calc(var(--radius) * 0.75);
 }
 .primary {
   background: var(--primary);
@@ -106,6 +128,7 @@ h3 {
 }
 .secondary {
   background: var(--secondary);
+  color: var(--ink);
 }
 .danger {
   color: var(--wrong);
@@ -177,6 +200,7 @@ h3 {
   gap: 10px;
 }
 .pill {
+  white-space: nowrap;
   background: var(--card);
   border-radius: 99px;
   padding: 2px 10px;
@@ -187,8 +211,8 @@ h3 {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  background: #e7f5ff;
-  border-radius: 14px;
+  background: var(--tip);
+  border-radius: calc(var(--radius) * 0.75);
   padding: 6px 6px 6px 14px;
 }
 
@@ -244,6 +268,7 @@ h3 {
 }
 .badge {
   background: var(--gold-1);
+  color: var(--medal-ink);
   border-radius: 99px;
   padding: 4px 14px;
   font-weight: 700;
@@ -288,9 +313,10 @@ h3 {
 }
 .pad__key {
   min-height: 72px;
-  border-radius: 16px;
+  border-radius: calc(var(--radius) * 0.9);
   border: 0;
   background: var(--card);
+  color: var(--ink);
   box-shadow: 0 4px 0 rgb(0 0 0 / 0.12);
   font-size: 2rem;
   font-weight: 800;
@@ -301,20 +327,23 @@ h3 {
 }
 .pad__key:disabled {
   cursor: default;
-  opacity: 0.55;
+  color: var(--muted);
+  box-shadow: 0 2px 0 rgb(0 0 0 / 0.06);
 }
 .pad__idk {
   background: var(--secondary);
   color: var(--muted);
 }
-.pad__key--right {
+.pad__key--right,
+.pad__key--right:disabled {
   background: var(--right);
-  color: #fff;
+  color: var(--right-ink);
   opacity: 1 !important;
 }
-.pad__key--wrong {
+.pad__key--wrong,
+.pad__key--wrong:disabled {
   background: var(--wrong);
-  color: #fff;
+  color: var(--wrong-ink);
   opacity: 1 !important;
 }
 @media (max-width: 560px) {
@@ -358,7 +387,7 @@ h3 {
 }
 .lesson {
   border-left-color: var(--gold-2);
-  background: #fff9db;
+  background: var(--lesson);
 }
 
 /* Toasts */
@@ -386,9 +415,11 @@ h3 {
 }
 .toast--gold {
   background: linear-gradient(135deg, var(--gold-1), var(--gold-2));
+  color: var(--medal-ink);
 }
 .toast--silver {
   background: linear-gradient(135deg, var(--silver-1), var(--silver-2));
+  color: var(--medal-ink);
 }
 .toast--out {
   opacity: 0;
@@ -423,12 +454,13 @@ h3 {
   margin: 8px auto;
 }
 .key__body {
-  fill: #fff;
-  stroke: #cfc8bb;
+  fill: var(--key-white);
+  stroke: var(--key-border);
   stroke-width: 1.5;
 }
 .key--locked .key__body {
   fill: var(--locked);
+  stroke-dasharray: 5 4;
 }
 .key--silver .key__body {
   fill: var(--silver-2);
@@ -441,18 +473,24 @@ h3 {
 }
 .key__meter {
   fill: var(--meter);
-  opacity: 0.85;
 }
 .key__label {
   text-anchor: middle;
   font: 800 16px var(--font);
-  fill: var(--ink);
+  fill: var(--key-ink);
+}
+/* The letter can sit on the learning bar: a halo in the key color keeps it readable. */
+.key--learning .key__label {
+  stroke: var(--key-white);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  paint-order: stroke;
 }
 .key__black {
-  fill: #3b3a42;
+  fill: var(--key-black);
 }
 .key__middle-c {
-  fill: var(--primary);
+  fill: var(--key-dot);
 }
 .legend {
   display: flex;
@@ -470,7 +508,7 @@ h3 {
   height: 18px;
   border-radius: 4px;
   display: inline-block;
-  border: 1px solid #cfc8bb;
+  border: 1px solid var(--key-border);
 }
 .sw--gold {
   background: var(--gold-2);
@@ -479,10 +517,125 @@ h3 {
   background: var(--silver-2);
 }
 .sw--learning {
-  background: linear-gradient(to top, var(--meter) 50%, #fff 50%);
+  background: linear-gradient(to top, var(--meter) 50%, var(--key-white) 50%);
 }
 .sw--locked {
   background: var(--locked);
+}
+
+/* Theme picker */
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  gap: 14px;
+}
+.theme-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-height: 44px;
+  padding: 10px 10px 14px;
+  border: 3px solid transparent;
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  text-align: left;
+}
+.theme-card[aria-checked='true'] {
+  border-color: var(--reveal);
+}
+.theme-card__name {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 800;
+  font-size: 1.2rem;
+  padding: 6px 4px 0;
+}
+.theme-card__check {
+  visibility: hidden;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--reveal);
+  color: var(--card);
+  font-size: 1rem;
+}
+.theme-card[aria-checked='true'] .theme-card__check {
+  visibility: visible;
+}
+.theme-card__blurb {
+  color: var(--muted);
+  padding: 0 4px;
+}
+/* The preview box carries its own theme's tokens (set inline), so these use its colors. */
+.theme-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: calc(var(--radius) * 0.75);
+  background: var(--backdrop), var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+}
+.theme-preview__card {
+  display: block;
+  background: var(--card);
+  border-radius: calc(var(--radius) * 0.6);
+  box-shadow: var(--shadow);
+  padding: 6px 8px;
+}
+.theme-preview__scene {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.theme-preview__scene .key__body {
+  stroke-width: 1;
+}
+.theme-preview__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.theme-preview__btn {
+  background: var(--primary);
+  color: var(--primary-ink);
+  border-radius: calc(var(--radius) * 0.6);
+  padding: 4px 12px;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.theme-preview__mascot {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+.themes__done {
+  justify-content: center;
+}
+@media (max-width: 560px) {
+  /* Two per row on phones so every theme fits on about one screen. */
+  .theme-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  .theme-card {
+    padding: 6px 6px 10px;
+  }
+  .theme-preview {
+    padding: 6px;
+  }
+  .theme-card__name {
+    font-size: 1.05rem;
+  }
+  .theme-card__blurb {
+    font-size: 0.9rem;
+  }
 }
 
 /* Save */
@@ -500,7 +653,9 @@ h3 {
   width: 100%;
   font: 0.85rem ui-monospace, monospace;
   border-radius: 10px;
-  border: 1px solid #ddd5c6;
+  border: 1px solid var(--rule);
+  background: var(--card);
+  color: var(--ink);
   padding: 8px;
   margin: 8px 0;
   word-break: break-all;
@@ -520,7 +675,7 @@ h3 {
 .model th,
 .model td {
   padding: 4px 6px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--rule);
   text-align: left;
 }
 .model .dim {
