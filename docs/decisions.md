@@ -71,3 +71,31 @@ won't collect audio data from users. MIDI is too niche and unsupported on iPad.
 
 **D18. Documentation lives in the git repo; decisions are recorded here.**
 *Why:* chat sessions are lost and people forget. Undocumented decisions don't exist.
+
+---
+
+### 2026-11-24: Engineering process
+
+**D19. Git flow: `feature/*` → `develop` (staging) → `release/*` → `main` (prod). Hotfixes branch from
+`main`, merge into `main`, then `main` is merged back into `develop`.** During the prototype phase we
+commit directly to `develop`. See CONTRIBUTING.md.
+*Why:* the team's standard flow; staging verification before every release.
+
+**D20. Commits are brief, simple, and clear.** No strict convention.
+
+**D21. Tests: Vitest unit + Playwright e2e (Chromium + WebKit/iPad viewport), with enforced coverage.**
+*Why:* the user experience is crucial; WebKit is our proxy for iPad Safari.
+
+**D22. Infrastructure is Terraform; hosting is Cloudflare (free tier); CI/CD is GitHub Actions.**
+CI must be thorough but not redundant: the full suite runs on PRs, and post-merge runs only deploy +
+smoke tests.
+
+**D23. The repo is public.** No secrets, no student data, licensed third-party assets only.
+
+**D24. Domain: a subdomain of jpatrickbeal.com** (exact names TBD).
+
+**D25. v0 stack: Vite + TypeScript, no UI framework; hand-drawn SVG staff using Bravura glyph outlines
+(SIL OFL).**
+*Why:* a tiny bundle and fast on old iPads. Custom SVG gives exact hit areas for later modes (Place It)
+and easy theming. Bravura is the reference SMuFL font and renders the same everywhere (unlike Unicode
+music symbols). We'll revisit a framework if UI complexity grows.

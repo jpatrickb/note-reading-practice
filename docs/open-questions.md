@@ -17,7 +17,13 @@
   characters and sounds.
 - **Accidental input UI:** letter + ♯/♭ buttons, or a 12-key layout? How to ask enharmonic questions
   fairly.
-- **Engineering process:** git workflow, IaC, CI/CD/CT. The user will outline their preferences.
+- **License:** the repo is public, so it needs a license (MIT is the usual choice for the code).
+  Owner's decision.
+- **Hostnames:** production and staging subdomains of jpatrickbeal.com (for example
+  `notes.jpatrickbeal.com` and `notes-staging.jpatrickbeal.com`).
+- **Terraform state backend** at $0: Cloudflare R2 (S3-compatible) or the HCP Terraform free tier.
+- **Audio on iPhone:** the ring/silent switch mutes Web Audio. Is the HTML-audio unlock trick needed?
+  (iPads mostly lack the switch.)
 
 ## Parked
 
