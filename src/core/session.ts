@@ -1,12 +1,21 @@
 // A practice session: a short run of questions that always ends on easy wins.
+// Works for any mode: the session carries the mode's engine (and optional misconception detector).
 
 import { type LessonId, diagnose } from './diagnose';
-import { type MasteryEvent, type Outcome, type Rng, type StudentState, recordAnswer, selectItem } from './engine';
-import { itemById } from './items';
-import type { Clef, Letter } from './music';
+import { type Engine, type MasteryEvent, type Outcome, type Rng, type StudentState, nameEngine } from './engine';
+import type { Letter } from './music';
 
 export const SESSION_LENGTH = 20;
 const FINISH_EASY = 3;
+
+/** What a session needs from a game mode. */
+export interface SessionMode {
+  engine: Engine;
+  /** Spot a misconception after a wrong answer and suggest a mini-lesson (optional). */
+  diagnose?: (state: StudentState, now: number) => LessonId | null;
+}
+
+export const NAME_IT_MODE: SessionMode = { engine: nameEngine, diagnose };
 
 export interface Question {
   itemId: string;
@@ -14,15 +23,17 @@ export interface Question {
 }
 
 export interface Session {
-  clefs: Clef[];
+  mode: SessionMode;
+  /** Unlock lanes to practice (Name It: the chosen clefs). */
+  groups: string[];
   length: number;
   results: { itemId: string; outcome: Outcome; rtMs: number }[];
   events: MasteryEvent[];
   current: Question | null;
 }
 
-export function startSession(clefs: Clef[], length = SESSION_LENGTH): Session {
-  return { clefs, length, results: [], events: [], current: null };
+export function startSession(groups: string[], length = SESSION_LENGTH, mode: SessionMode = NAME_IT_MODE): Session {
+  return { mode, groups, length, results: [], events: [], current: null };
 }
 
 export function isFinished(session: Session): boolean {
@@ -31,9 +42,9 @@ export function isFinished(session: Session): boolean {
 
 export function nextQuestion(session: Session, state: StudentState, now: number, rng: Rng): Question {
   const remaining = session.length - session.results.length;
-  const mode = remaining <= FINISH_EASY ? 'finish' : 'normal';
+  const pick = remaining <= FINISH_EASY ? 'finish' : 'normal';
   const recent = session.results.map((r) => ({ itemId: r.itemId, correct: r.outcome === 'correct' }));
-  session.current = { itemId: selectItem(state, session.clefs, now, rng, recent, mode), shownAt: now };
+  session.current = { itemId: session.mode.engine.selectItem(state, session.groups, now, rng, recent, pick), shownAt: now };
   return session.current;
 }
 
@@ -47,14 +58,15 @@ export interface SubmitResult {
 export function submit(session: Session, state: StudentState, answer: Letter | null, now: number): SubmitResult {
   const q = session.current;
   if (!q) throw new Error('No current question');
-  const target = itemById(q.itemId).note.letter;
+  const { engine } = session.mode;
+  const target = engine.answerOf(q.itemId);
   const outcome: Outcome = answer === null ? 'idk' : answer === target ? 'correct' : 'wrong';
   const rtMs = now - q.shownAt;
-  const { events } = recordAnswer(state, q.itemId, outcome, answer, rtMs, now);
+  const { events } = engine.recordAnswer(state, q.itemId, outcome, answer, rtMs, now);
   session.results.push({ itemId: q.itemId, outcome, rtMs });
   session.events.push(...events);
   session.current = null;
-  const lesson = outcome === 'wrong' ? diagnose(state, now) : null;
+  const lesson = outcome === 'wrong' && session.mode.diagnose ? session.mode.diagnose(state, now) : null;
   return { outcome, events, lesson };
 }
 

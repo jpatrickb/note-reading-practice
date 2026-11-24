@@ -1,6 +1,6 @@
 import qrcode from 'qrcode-generator';
 import { Synth } from '../audio/synth';
-import { ProgressCodeError, decodeProgress, encodeProgress } from '../core/codec';
+import { type Profile, ProgressCodeError, decodeProfile, encodeProgress } from '../core/codec';
 import { LESSONS, type LessonId } from '../core/diagnose';
 import {
   type MasteryEvent,
@@ -14,9 +14,11 @@ import {
 } from '../core/engine';
 import { hintFor } from '../core/hints';
 import { ITEMS, itemById } from '../core/items';
+import { LETTER_GROUP, LETTER_ITEMS, LETTER_MATH_MODE, isLetterItemId, letterEngine, letterLabel } from '../core/letters';
 import { type Clef, LETTERS, type Letter, frequency, noteId } from '../core/music';
 import { type Session, isFinished, nextQuestion, startSession, submit, summarize } from '../core/session';
 import {
+  type ModeId,
   type Settings,
   clearState,
   loadSettings,
@@ -28,10 +30,11 @@ import {
 import { masteryCounts, renderMasteryKeyboard } from '../render/keyboard';
 import { renderStaff } from '../render/staff';
 import { clear, h } from './dom';
+import { LetterMathPlay, letterCounts, renderLetterMap } from './letterMath';
 import { renderThemePicker } from './themePicker';
 import { durabilityCard, homeBanners } from './pwa';
 
-type Screen = 'home' | 'play' | 'summary' | 'map' | 'save' | 'import' | 'debug' | 'theme';
+type Screen = 'home' | 'play' | 'letters' | 'summary' | 'map' | 'save' | 'import' | 'debug' | 'theme';
 type ClefChoice = 'treble' | 'bass' | 'both';
 
 const OFFSET_KEY = 'nrp:debug:clockOffset';
@@ -39,12 +42,16 @@ const OFFSET_KEY = 'nrp:debug:clockOffset';
 const clefsFor = (c: ClefChoice): Clef[] => (c === 'both' ? ['treble', 'bass'] : [c]);
 const choiceOf = (clefs: Clef[]): ClefChoice => (clefs.length === 2 ? 'both' : clefs[0]!);
 const itemLabel = (id: string) => {
+  if (isLetterItemId(id)) return letterLabel(id);
   const item = itemById(id);
   return `${item.note.letter} (${item.clef} clef)`;
 };
 
 export class App {
   private state: StudentState;
+  /** Letter Math has its own learner model (see src/core/letters.ts). */
+  private letters: StudentState;
+  private letterPlay: LetterMathPlay | null = null;
   private settings: Settings;
   private synth = new Synth();
   private session: Session | null = null;
@@ -58,6 +65,7 @@ export class App {
 
   constructor(private root: HTMLElement) {
     this.state = loadState(localStorage);
+    this.letters = loadState(localStorage, letterEngine);
     this.settings = loadSettings(localStorage);
     this.synth.muted = this.settings.muted;
     this.debug = new URLSearchParams(location.search).has('debug');
@@ -79,16 +87,20 @@ export class App {
 
   private save(): void {
     saveState(localStorage, this.state);
+    saveState(localStorage, this.letters, letterEngine);
   }
 
   private go(screen: Screen): void {
     window.clearTimeout(this.advanceTimer);
+    this.letterPlay?.dispose();
+    this.letterPlay = null;
     this.screen = screen;
     clear(this.root);
     this.root.dataset.screen = screen;
     const render = {
       home: () => this.renderHome(),
       play: () => this.renderPlay(),
+      letters: () => this.renderLetters(),
       summary: () => this.renderSummary(),
       map: () => this.renderMap(),
       save: () => this.renderSave(),
@@ -123,7 +135,7 @@ export class App {
   }
 
   private weeklyGoal(): HTMLElement {
-    const days = daysThisWeek(this.state, this.now());
+    const days = daysThisWeek([this.state, this.letters], this.now());
     const dots = Array.from({ length: WEEKLY_GOAL }, (_, i) =>
       h('span', { class: `dot ${i < days ? 'dot--on' : ''}`, 'aria-hidden': 'true' }),
     );
@@ -148,10 +160,12 @@ export class App {
   private announce(events: MasteryEvent[]): void {
     for (const e of events) {
       const label = itemLabel(e.itemId);
-      if (e.kind === 'silver') this.toast(`🥈 Silver key: ${label}!`, 'silver');
-      if (e.kind === 'gold') this.toast(`🥇 Gold key: ${label}! You remembered it on a new day.`, 'gold');
+      const lm = isLetterItemId(e.itemId);
+      const key = lm ? '' : ' key';
+      if (e.kind === 'silver') this.toast(`🥈 Silver${key}: ${label}!`, 'silver');
+      if (e.kind === 'gold') this.toast(`🥇 Gold${key}: ${label}! You remembered it on a new day.`, 'gold');
       if (e.kind === 'polished') this.toast(`✨ Polished: ${label}`, 'polish');
-      if (e.kind === 'unlocked') this.toast('🔓 A new note is coming up!', 'unlock');
+      if (e.kind === 'unlocked') this.toast(`🔓 A new ${lm ? 'question' : 'note'} is coming up!`, 'unlock');
     }
     if (events.some((e) => e.kind === 'gold')) this.synth.fanfare(true);
     else if (events.some((e) => e.kind === 'silver')) this.synth.fanfare(false);
@@ -182,13 +196,16 @@ export class App {
       'main',
       { class: 'screen home' },
       h('header', { class: 'topbar' }, h('h1', { class: 'title title--brand' }, 'Note Reader'), this.muteButton()),
-      homeBanners({ hasProgress: Object.values(this.state.items).some((i) => i.n > 0), onLoadCode: () => this.go('save') }),
+      homeBanners({ hasProgress: [this.state, this.letters].some((s) => Object.values(s.items).some((i) => i.n > 0)), onLoadCode: () => this.go('save') }),
       this.weeklyGoal(),
       h(
         'section',
         { class: 'card' },
         h('h2', {}, 'What do you want to practice?'),
-        h('div', { class: 'segmented', role: 'group', 'aria-label': 'Clef' }, clefBtn('treble', 'Treble'), clefBtn('bass', 'Bass'), clefBtn('both', 'Both')),
+        this.modePicker(),
+        this.settings.mode === 'letters'
+          ? h('p', { class: 'muted' }, 'Next letter, skips, and intervals. No staff needed!')
+          : h('div', { class: 'segmented', role: 'group', 'aria-label': 'Clef' }, clefBtn('treble', 'Treble'), clefBtn('bass', 'Bass'), clefBtn('both', 'Both')),
         h('button', { class: 'primary big', 'data-autofocus': true, onClick: () => this.startPlay() }, 'Start ▶'),
       ),
       h(
@@ -207,12 +224,51 @@ export class App {
     );
   }
 
+  /** Game mode choice (Name It / Letter Math), remembered in Settings. */
+  private modePicker(): HTMLElement {
+    const mode = this.settings.mode ?? 'name';
+    const btn = (m: ModeId, label: string) =>
+      h(
+        'button',
+        {
+          class: `seg ${mode === m ? 'seg--on' : ''}`,
+          'aria-pressed': String(mode === m),
+          onClick: () => {
+            this.settings.mode = m;
+            saveSettings(localStorage, this.settings);
+            this.go('home');
+          },
+        },
+        label,
+      );
+    return h('div', { class: 'segmented', role: 'group', 'aria-label': 'Game' }, btn('name', '🎼 Name It'), btn('letters', '🔤 Letter Math'));
+  }
+
   // ───────────────────────── play ─────────────────────────
 
   private startPlay(): void {
     this.synth.unlock();
+    if (this.settings.mode === 'letters') {
+      this.session = startSession([LETTER_GROUP], undefined, LETTER_MATH_MODE);
+      return this.go('letters');
+    }
     this.session = startSession(this.settings.clefs);
     this.go('play');
+  }
+
+  private renderLetters(): HTMLElement {
+    this.letterPlay = new LetterMathPlay({
+      session: this.session!,
+      state: this.letters,
+      synth: this.synth,
+      now: () => this.now(),
+      save: () => this.save(),
+      announce: (events) => this.announce(events),
+      muteButton: () => this.muteButton(),
+      quit: () => this.go('home'),
+      finish: () => this.go('summary'),
+    });
+    return this.letterPlay.render();
   }
 
   private renderPlay(): HTMLElement {
@@ -368,6 +424,7 @@ export class App {
   }
 
   private onKey(e: KeyboardEvent): void {
+    if (this.screen === 'letters') return this.letterPlay?.onKey(e);
     if (this.screen !== 'play' || e.metaKey || e.ctrlKey || e.altKey) return;
     const k = e.key.toUpperCase();
     if (this.phase === 'asking') {
@@ -395,6 +452,8 @@ export class App {
       ids.length > 0 &&
       h('div', { class: 'achv' }, h('h3', {}, `${icon} ${title}`), h('p', {}, [...new Set(ids)].map(itemLabel).join(', ')));
     const anything = s.newGold.length + s.newSilver.length + s.polished.length > 0;
+    const lm = this.session!.mode === LETTER_MATH_MODE;
+    const keys = lm ? '' : ' keys';
     return h(
       'main',
       { class: 'screen summary' },
@@ -404,12 +463,22 @@ export class App {
         { class: 'card' },
         h('p', { class: 'big-stat', 'data-testid': 'score' }, `${s.correct} of ${s.total} right`),
         anything
-          ? h('div', {}, list('New gold keys', s.newGold, '🥇'), list('New silver keys', s.newSilver, '🥈'), list('Polished', s.polished, '✨'))
-          : h('p', { class: 'muted' }, 'Every practice makes your notes stronger. Keys turn silver when you know them well, and gold when you still know them on another day!'),
-        s.unlocked.length > 0 && h('p', {}, `🔓 You unlocked ${s.unlocked.length} new note${s.unlocked.length > 1 ? 's' : ''}.`),
+          ? h('div', {}, list(`New gold${keys}`, s.newGold, '🥇'), list(`New silver${keys}`, s.newSilver, '🥈'), list('Polished', s.polished, '✨'))
+          : h(
+              'p',
+              { class: 'muted' },
+              lm
+                ? 'Every practice makes your musical alphabet stronger. Squares turn silver when you know them well, and gold when you still know them on another day!'
+                : 'Every practice makes your notes stronger. Keys turn silver when you know them well, and gold when you still know them on another day!',
+            ),
+        s.unlocked.length > 0 && h('p', {}, `🔓 You unlocked ${s.unlocked.length} new ${lm ? 'question' : 'note'}${s.unlocked.length > 1 ? 's' : ''}.`),
       ),
       this.weeklyGoal(),
-      h('section', { class: 'card' }, ...this.settings.clefs.map((c) => renderMasteryKeyboard(this.state, c, this.now()))),
+      h(
+        'section',
+        { class: 'card' },
+        ...(lm ? [renderLetterMap(this.letters, this.now())] : this.settings.clefs.map((c) => renderMasteryKeyboard(this.state, c, this.now()))),
+      ),
       h(
         'nav',
         { class: 'row' },
@@ -425,6 +494,7 @@ export class App {
     const now = this.now();
     const counts = masteryCounts(this.state);
     const dusty = ITEMS.filter((i) => isDusty(this.state.items[i.id]!, now)).length;
+    const lmCounts = letterCounts(this.letters);
     return h(
       'main',
       { class: 'screen map' },
@@ -441,13 +511,19 @@ export class App {
         h('span', {}, h('i', { class: 'sw sw--locked' }), `Coming soon ${counts.locked}`),
         dusty > 0 && h('span', {}, `✨ ${dusty} key${dusty > 1 ? 's' : ''} could use a polish. Practice to make ${dusty > 1 ? 'them' : 'it'} shine again!`),
       ),
+      h(
+        'section',
+        { class: 'card' },
+        h('h2', {}, '🔤 Letter Math ', h('span', { class: 'pill' }, `🥇 ${lmCounts.gold} · 🥈 ${lmCounts.silver}`)),
+        renderLetterMap(this.letters, now),
+      ),
     );
   }
 
   // ───────────────────────── save / load ─────────────────────────
 
   private renderSave(): HTMLElement {
-    const code = encodeProgress(this.state, this.now());
+    const code = encodeProgress(this.state, this.now(), this.letters);
     const url = `${location.origin}${location.pathname}#import=${code}`;
     const qr = qrcode(0, 'L');
     qr.addData(url);
@@ -508,14 +584,15 @@ export class App {
   }
 
   private renderImport(): HTMLElement {
-    let incoming: StudentState | null = null;
+    let incoming: Profile | null = null;
     let error = '';
     try {
-      incoming = decodeProgress(this.importCode, this.now());
+      incoming = decodeProfile(this.importCode, this.now());
     } catch (e) {
       error = e instanceof ProgressCodeError ? e.message : 'That code didn’t work.';
     }
-    const counts = incoming ? masteryCounts(incoming) : null;
+    const counts = incoming ? masteryCounts(incoming.name) : null;
+    const lmCounts = incoming ? letterCounts(incoming.letters) : null;
     return h(
       'main',
       { class: 'screen import' },
@@ -528,6 +605,8 @@ export class App {
               'div',
               {},
               h('p', {}, `This code has 🥇 ${counts!.gold} gold and 🥈 ${counts!.silver} silver keys.`),
+              lmCounts!.gold + lmCounts!.silver > 0 &&
+                h('p', {}, `Letter Math: 🥇 ${lmCounts!.gold} gold and 🥈 ${lmCounts!.silver} silver.`),
               h('p', { class: 'warn' }, 'Loading it will replace the progress on this device.'),
               h(
                 'div',
@@ -538,7 +617,8 @@ export class App {
                     class: 'primary',
                     'data-testid': 'confirm-import',
                     onClick: () => {
-                      this.state = incoming!;
+                      this.state = incoming!.name;
+                      this.letters = incoming!.letters;
                       this.save();
                       this.toast('Progress loaded!', 'unlock');
                       this.go('home');
@@ -559,12 +639,15 @@ export class App {
   private renderDebug(): HTMLElement {
     const now = this.now();
     const offsetDays = Number(localStorage.getItem(OFFSET_KEY) ?? 0) / 86_400_000;
-    const rows = ITEMS.map((i) => {
-      const it = this.state.items[i.id]!;
+    const entries = [
+      ...ITEMS.map((i) => [`${i.clef[0]!.toUpperCase()} ${noteId(i.note)}`, this.state.items[i.id]!] as const),
+      ...LETTER_ITEMS.map((i) => [`LM ${letterLabel(i.id)}`, this.letters.items[i.id]!] as const),
+    ];
+    const rows = entries.map(([label, it]) => {
       return h(
         'tr',
         { class: it.unlocked ? '' : 'dim' },
-        h('td', {}, `${i.clef[0]!.toUpperCase()} ${noteId(i.note)}`),
+        h('td', {}, label),
         h('td', {}, level(it)),
         h('td', {}, recall(it, now).toFixed(2)),
         h('td', {}, it.m.toFixed(2)),
@@ -592,7 +675,7 @@ export class App {
       h(
         'section',
         { class: 'card' },
-        h('p', {}, `Personal speed baseline: ${Math.round(this.state.rtBaseline)} ms · Clock offset: ${offsetDays} day(s)`),
+        h('p', {}, `Personal speed baseline: Name It ${Math.round(this.state.rtBaseline)} ms, Letter Math ${Math.round(this.letters.rtBaseline)} ms · Clock offset: ${offsetDays} day(s)`),
         h(
           'div',
           { class: 'row' },
@@ -605,7 +688,9 @@ export class App {
               class: 'secondary danger',
               onClick: () => {
                 clearState(localStorage);
+                clearState(localStorage, letterEngine);
                 this.state = newStudent();
+                this.letters = letterEngine.newStudent();
                 this.go('debug');
               },
             },

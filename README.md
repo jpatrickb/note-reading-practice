@@ -12,6 +12,11 @@ through a website.
 **Phase: prototype v0** (as of 2026-11-24). A playable "Name It" drill (staff → note name) with an
 in-browser adaptive engine, a mastery keyboard, and progress codes. See [docs/roadmap.md](docs/roadmap.md).
 
+**Letter Math** (pick it on the home screen) drills the musical alphabet with no staff: next letter
+up and down, skips, then 2nd–8th intervals. It uses the same adaptive engine: each game mode supplies
+an item set (`src/core/itemset.ts`) and gets its own engine from `createEngine` in
+`src/core/engine.ts`. The Letter Math ladder lives in `src/core/letters.ts` for teacher review.
+
 ## Quick start
 
 ```bash

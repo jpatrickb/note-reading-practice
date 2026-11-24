@@ -1,5 +1,6 @@
-// Practice items. An item = (task, clef, note). v0 only has the "name" task (staff → name).
+// Name It practice items. An item = (task, clef, note): staff → name.
 
+import { defineItemSet } from './itemset';
 import { type Clef, type Note, parseNote } from './music';
 
 export type Task = 'name';
@@ -29,20 +30,23 @@ function build(clef: Clef): Item[] {
   return TEACHING_ORDER[clef].map((id) => ({ id: `name:${clef}:${id}`, task: 'name' as const, clef, note: parseNote(id) }));
 }
 
+/** The Name It item set: one unlock lane per clef; the answer is the note's letter. */
+export const NAME_IT = defineItemSet<Item>({
+  id: 'name',
+  groups: { treble: build('treble'), bass: build('bass') },
+  groupOf: (i) => i.clef,
+  answerOf: (i) => i.note.letter,
+});
+
 /** Per clef, in teaching order. */
-export const ITEMS_BY_CLEF: Record<Clef, Item[]> = { treble: build('treble'), bass: build('bass') };
+export const ITEMS_BY_CLEF = NAME_IT.groups as Record<Clef, Item[]>;
 
 /**
- * Canonical item list. The progress-code format depends on this ORDER:
+ * Canonical item list (treble, then bass). The progress-code format depends on this ORDER:
  * only ever APPEND new items, and bump the codec version if that's impossible.
  */
-export const ITEMS: Item[] = [...ITEMS_BY_CLEF.treble, ...ITEMS_BY_CLEF.bass];
-
-const BY_ID = new Map(ITEMS.map((i) => [i.id, i]));
+export const ITEMS = NAME_IT.items as Item[];
 
 export function itemById(id: string): Item {
-  const item = BY_ID.get(id);
-  if (!item) throw new Error(`Unknown item: ${id}`);
-  return item;
+  return NAME_IT.get(id);
 }
-
