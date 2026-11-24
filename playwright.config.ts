@@ -11,7 +11,11 @@ export default defineConfig({
   use: { baseURL, trace: 'retain-on-failure' },
   projects: [
     { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'ipad-webkit', use: { ...devices['iPad (gen 7) landscape'] } },
+    // Real iPad engine. Hosts that can't run Playwright's WebKit (e.g. Arch) can set NO_WEBKIT=1
+    // to emulate the iPad viewport + touch in Chromium instead; CI always runs real WebKit.
+    process.env.NO_WEBKIT
+      ? { name: 'ipad-emulated', use: { ...devices['iPad (gen 7) landscape'], browserName: 'chromium' as const } }
+      : { name: 'ipad-webkit', use: { ...devices['iPad (gen 7) landscape'] } },
   ],
   webServer: process.env.E2E_BASE_URL
     ? undefined

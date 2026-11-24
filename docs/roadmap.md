@@ -1,6 +1,6 @@
 # Roadmap
 
-## Phase 0: Prototype v0 (next)
+## Phase 0: Prototype v0 (built 2026-11-24, awaiting play-testing)
 
 A small slice that tests the riskiest ideas, not a polished product. A single static page tested on an
 iPad (served over a tunnel during early work).
@@ -10,8 +10,12 @@ iPad (served over a tunnel during early work).
 2. **Adaptive engine** in the browser: per-item mastery with spacing, targeting ~85% success, plus a
    confusion matrix.
 3. **Mastery map:** keys turn gold; rewards come only from new mastery.
-4. **Local persistence** (IndexedDB) plus progress-code export/import.
-5. **Debug panel** (adults only) showing the model's estimates.
+4. **Local persistence** (localStorage for now; IndexedDB in Phase 1) plus progress-code export/import
+   with a QR code.
+5. **Debug panel** (adults only, `?debug`) showing the model's estimates, with a time-travel button
+   to test next-day gold.
+
+**Next step:** play-test with real kids, then tune the parameters in `PARAMS` (`src/core/engine.ts`).
 
 ## Phase 1: Core game
 

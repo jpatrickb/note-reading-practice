@@ -99,3 +99,39 @@ smoke tests.
 *Why:* a tiny bundle and fast on old iPads. Custom SVG gives exact hit areas for later modes (Place It)
 and easy theming. Bravura is the reference SMuFL font and renders the same everywhere (unlike Unicode
 music symbols). We'll revisit a framework if UI complexity grows.
+
+---
+
+### 2026-11-24: Prototype v0 build
+
+**D26. v0 learner model:** a per-item Elo-style recall logit that decays with time
+(`logit − log2(1 + hours/stability)`). Stability grows only with *spaced* correct reviews (cramming
+barely helps). Step sizes are asymmetric: correct +1.4·(y−p), wrong −2.0·p, "?" −1.0·p. Speed is
+judged only against the kid's own baseline (fluency factor ≥ 0.6, never a penalty for fast answers).
+Selection targets ~80% predicted success. See `src/core/engine.ts`.
+*Why:* simple, explainable, and runs in the browser. Simulations in the unit tests verify that a
+random masher earns no mastery and settles around 10% estimated recall, while an honest learner earns
+silver in about 4 correct answers per known note.
+
+**D27. Reward tiers:** **silver** = recall estimate ≥ 0.85, ≥ 3 correct, fluent for this kid;
+**gold** = still silver on a *later calendar day*; **polish** = a mastered note that had faded
+(recall < 0.6) is fresh again. Levels never go down. Faded keys look dim ("needs a polish") instead of
+being taken away.
+*Why:* gold measures retention, not cramming. Polish rewards spaced review without punishing the kid.
+
+**D28. New notes unlock one at a time** once ≥ 80% of the clef's unlocked notes have been seen at least
+twice and have recall ≥ 0.75. Order: guide notes first, then outward by distance from the nearest guide
+note.
+
+**D29. Teach before testing:** the first time a note appears, it's introduced ("Meet G!") with its
+name and hints before being quizzed.
+
+**D30. Correct answers auto-advance; wrong answers and "?" wait for "Got it".**
+*Why:* the kid has to actually see the explanation; there's no extra friction when they're right.
+
+**D31. The progress code omits the confusion matrix and recent errors** (short-term diagnostics).
+The item order in `ITEMS` is append-only because the code format depends on it.
+
+**D32. e2e on hosts without Playwright WebKit:** `NO_WEBKIT=1` swaps the iPad project to emulated
+iPad (viewport + touch) on Chromium. CI always runs real WebKit.
+*Why:* the dev machine (Arch) lacks the Ubuntu libraries Playwright's WebKit build needs.

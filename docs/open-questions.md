@@ -5,6 +5,8 @@
 - **Sync design:** how is a sync code created and shared with the teacher? How does the teacher page
   find "her" students without accounts (a class code? the teacher enters each kid's sync code)? What
   happens when two devices edit the same progress (merge rules)?
+- **Play-test findings:** does v0's pacing feel right (unlock speed, silver after ~4 correct, session
+  length 20)? Do kids understand silver/gold/polish?
 - **Scoring constants:** the exact asymmetric weights, the mastery thresholds, and the "?" cost. Tune
   with real kids.
 - **Mastery definition:** what counts as "mastered" (for example correct and fast across ≥3 separate
