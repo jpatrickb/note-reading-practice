@@ -9,9 +9,16 @@
 //
 // Anti-gaming (decision D10): no speed limits or guess detection. A wrong answer moves the
 // estimate more than a right one, so random guessing drives mastery DOWN.
+//
+// The engine is shared by every game mode. A mode supplies an ItemSet (its items, teaching order
+// per unlock lane, and the correct letter for each item) and gets a bound engine from
+// `createEngine(set)`. Each mode keeps its own StudentState, so speed baselines and confusions
+// never mix across modes. The Name It bindings (`newStudent`, `recordAnswer`, …) are exported at
+// the bottom for existing callers.
 
-import { ITEMS, ITEMS_BY_CLEF, itemById } from './items';
-import type { Clef, Letter } from './music';
+import type { ItemSet, PracticeItem } from './itemset';
+import { NAME_IT } from './items';
+import type { Letter } from './music';
 
 export type Outcome = 'correct' | 'wrong' | 'idk';
 export type Level = 'locked' | 'learning' | 'silver' | 'gold';
@@ -99,22 +106,6 @@ function freshItem(): ItemState {
   return { unlocked: false, m: 0, s: PARAMS.initialS, n: 0, c: 0, last: 0, rt: 0, best: 0, silverDay: -1 };
 }
 
-export function newStudent(): StudentState {
-  const items: Record<string, ItemState> = {};
-  for (const item of ITEMS) items[item.id] = freshItem();
-  for (const clef of ['treble', 'bass'] as Clef[]) {
-    for (const item of ITEMS_BY_CLEF[clef].slice(0, PARAMS.initialUnlock)) items[item.id]!.unlocked = true;
-  }
-  return { version: 1, items, rtBaseline: 0, confusions: {}, recentErrors: [], practiceDays: [], lessonsSeen: {} };
-}
-
-/** Fill in any items missing from an older saved state. */
-export function normalize(state: StudentState): StudentState {
-  const fresh = newStudent();
-  for (const item of ITEMS) state.items[item.id] ??= fresh.items[item.id]!;
-  return state;
-}
-
 export function recall(it: ItemState, now: number): number {
   if (it.last === 0) return sigmoid(it.m);
   const elapsedH = Math.max(0, now - it.last) / HOUR;
@@ -156,14 +147,15 @@ export interface AnswerResult {
   events: MasteryEvent[];
 }
 
-export function recordAnswer(
+/** Update one item's learner model for an answer and return any reward events (no unlocking). */
+function applyAnswer(
   state: StudentState,
   itemId: string,
   outcome: Outcome,
   answer: Letter | null,
   rtMs: number,
   now: number,
-): AnswerResult {
+): MasteryEvent[] {
   const it = state.items[itemId];
   if (!it) throw new Error(`Unknown item: ${itemId}`);
   const events: MasteryEvent[] = [];
@@ -212,30 +204,7 @@ export function recordAnswer(
   if (wasDusty && !isDusty(it, now) && !events.some((e) => e.kind === 'gold')) {
     events.push({ kind: 'polished', itemId });
   }
-
-  const unlocked = maybeUnlock(state, itemById(itemId).clef, now);
-  if (unlocked) events.push({ kind: 'unlocked', itemId: unlocked });
-
-  return { correct: outcome === 'correct', events };
-}
-
-/**
- * Unlock the next note in a clef once the notes already open are solid: each seen at least twice
- * with recall >= unlockP. Larger sets may carry 1 weak note per `weakAllowancePer`, so one stubborn
- * note can't block progress forever, but weak notes never pile up (decision D34).
- */
-export function maybeUnlock(state: StudentState, clef: Clef, now: number): string | null {
-  const items = ITEMS_BY_CLEF[clef];
-  const open = items.filter((i) => state.items[i.id]!.unlocked);
-  const next = items.find((i) => !state.items[i.id]!.unlocked);
-  if (!next) return null;
-  const weak = open.filter((i) => {
-    const it = state.items[i.id]!;
-    return it.n < 2 || recall(it, now) < PARAMS.unlockP;
-  });
-  if (weak.length > Math.floor(open.length / PARAMS.weakAllowancePer)) return null;
-  state.items[next.id]!.unlocked = true;
-  return next.id;
+  return events;
 }
 
 export type Rng = () => number;
@@ -245,78 +214,168 @@ export interface RecentAnswer {
   correct: boolean;
 }
 
-/**
- * Choose the next item (decision D34).
- *
- * 'normal': weight each note by how much it NEEDS practice (1 - recall), with a floor so known notes
- * still come back for review, and a bonus for brand-new and faded notes. Weak notes are never
- * abandoned. A controller keeps the kid's actual success near the target: on a rough patch it leans
- * on notes they know; when they're cruising it leans on harder ones. Repeating the previous answer
- * letter is discouraged so one button can't carry a streak. With both clefs, attention is split by
- * clef first (weaker clef gets more), so a clef with fewer unlocked notes isn't crowded out.
- *
- * 'finish': easy wins so the session ends on a success (peak-end rule).
- */
-export function selectItem(
-  state: StudentState,
-  clefs: Clef[],
-  now: number,
-  rng: Rng,
-  recent: RecentAnswer[] = [],
-  mode: 'normal' | 'finish' = 'normal',
-): string {
-  let candidates = ITEMS.filter((i) => clefs.includes(i.clef) && state.items[i.id]!.unlocked);
-  if (candidates.length === 0) throw new Error('No unlocked items for these clefs');
-  const avoid = recent.slice(-2).map((r) => r.itemId);
-  if (candidates.length > avoid.length + 1) candidates = candidates.filter((i) => !avoid.includes(i.id));
-
-  const window = recent.slice(-6);
-  const accuracy = window.length >= 3 ? window.filter((r) => r.correct).length / window.length : PARAMS.targetP;
-  const prevLetter = recent.length ? itemById(recent.at(-1)!.itemId).note.letter : null;
-
-  const scored = candidates.map((i) => {
-    const it = state.items[i.id]!;
-    const p = recall(it, now);
-    let w: number;
-    if (mode === 'finish') {
-      w = p ** 4 + 0.01;
-    } else {
-      w = 0.12 + (1 - p);
-      if (it.n === 0) w += 0.5;
-      if (isDusty(it, now)) w += 0.3;
-      if (accuracy < PARAMS.targetP - 0.15) w *= 0.2 + p;
-      else if (accuracy > PARAMS.targetP + 0.1) w *= 0.2 + (1 - p);
-    }
-    if (i.note.letter === prevLetter) w *= 0.15;
-    return { id: i.id, clef: i.clef, p, w };
-  });
-
-  // With both clefs, split attention by clef first so the clef with more unlocked notes doesn't
-  // crowd out the other; the weaker clef gets the bigger share.
-  if (mode === 'normal' && clefs.length > 1) {
-    for (const clef of clefs) {
-      const mine = scored.filter((x) => x.clef === clef);
-      if (mine.length === 0) continue;
-      const sum = mine.reduce((a, x) => a + x.w, 0);
-      const need = mine.reduce((a, x) => a + (1 - x.p), 0) / mine.length;
-      for (const x of mine) x.w = (x.w / sum) * (0.3 + need);
-    }
-  }
-  const total = scored.reduce((a, b) => a + b.w, 0);
-  let r = rng() * total;
-  for (const s of scored) {
-    r -= s.w;
-    if (r <= 0) return s.id;
-  }
-  return scored.at(-1)!.id;
+/** The adaptive engine bound to one mode's item set. */
+export interface Engine<I extends PracticeItem = PracticeItem> {
+  readonly set: ItemSet<I>;
+  /** A brand-new learner: the first few items of each lane are open. */
+  newStudent(): StudentState;
+  /** Fill in any items missing from an older saved state. */
+  normalize(state: StudentState): StudentState;
+  /** The letter that answers an item. */
+  answerOf(itemId: string): Letter;
+  recordAnswer(
+    state: StudentState,
+    itemId: string,
+    outcome: Outcome,
+    answer: Letter | null,
+    rtMs: number,
+    now: number,
+  ): AnswerResult;
+  maybeUnlock(state: StudentState, group: string, now: number): string | null;
+  selectItem(
+    state: StudentState,
+    groups: readonly string[],
+    now: number,
+    rng: Rng,
+    recent?: RecentAnswer[],
+    mode?: 'normal' | 'finish',
+  ): string;
 }
 
-/** Days practiced in the current Monday-start week. */
-export function daysThisWeek(state: StudentState, now: number): number {
+export function createEngine<I extends PracticeItem>(set: ItemSet<I>): Engine<I> {
+  const initialUnlock = set.initialUnlock ?? PARAMS.initialUnlock;
+  const answerOf = (itemId: string) => set.answerOf(set.get(itemId));
+
+  function newStudent(): StudentState {
+    const items: Record<string, ItemState> = {};
+    for (const item of set.items) items[item.id] = freshItem();
+    for (const lane of Object.values(set.groups)) {
+      for (const item of lane.slice(0, initialUnlock)) items[item.id]!.unlocked = true;
+    }
+    return { version: 1, items, rtBaseline: 0, confusions: {}, recentErrors: [], practiceDays: [], lessonsSeen: {} };
+  }
+
+  function normalize(state: StudentState): StudentState {
+    const fresh = newStudent();
+    for (const item of set.items) state.items[item.id] ??= fresh.items[item.id]!;
+    return state;
+  }
+
+  /**
+   * Unlock the next item in a lane once the items already open are solid: each seen at least twice
+   * with recall >= unlockP. Larger sets may carry 1 weak item per `weakAllowancePer`, so one
+   * stubborn item can't block progress forever, but weak items never pile up (decision D34).
+   */
+  function maybeUnlock(state: StudentState, group: string, now: number): string | null {
+    const items = set.groups[group] ?? [];
+    const open = items.filter((i) => state.items[i.id]!.unlocked);
+    const next = items.find((i) => !state.items[i.id]!.unlocked);
+    if (!next) return null;
+    const weak = open.filter((i) => {
+      const it = state.items[i.id]!;
+      return it.n < 2 || recall(it, now) < PARAMS.unlockP;
+    });
+    if (weak.length > Math.floor(open.length / PARAMS.weakAllowancePer)) return null;
+    state.items[next.id]!.unlocked = true;
+    return next.id;
+  }
+
+  function recordAnswer(
+    state: StudentState,
+    itemId: string,
+    outcome: Outcome,
+    answer: Letter | null,
+    rtMs: number,
+    now: number,
+  ): AnswerResult {
+    const events = applyAnswer(state, itemId, outcome, answer, rtMs, now);
+    const unlocked = maybeUnlock(state, set.groupOf(set.get(itemId)), now);
+    if (unlocked) events.push({ kind: 'unlocked', itemId: unlocked });
+    return { correct: outcome === 'correct', events };
+  }
+
+  /**
+   * Choose the next item (decision D34).
+   *
+   * 'normal': weight each item by how much it NEEDS practice (1 - recall), with a floor so known
+   * items still come back for review, and a bonus for brand-new and faded items. Weak items are
+   * never abandoned. A controller keeps the kid's actual success near the target: on a rough patch
+   * it leans on items they know; when they're cruising it leans on harder ones. Repeating the
+   * previous answer letter is discouraged so one button can't carry a streak. With several lanes
+   * (e.g. both clefs), attention is split by lane first (weaker lane gets more), so a lane with
+   * fewer unlocked items isn't crowded out.
+   *
+   * 'finish': easy wins so the session ends on a success (peak-end rule).
+   */
+  function selectItem(
+    state: StudentState,
+    groups: readonly string[],
+    now: number,
+    rng: Rng,
+    recent: RecentAnswer[] = [],
+    mode: 'normal' | 'finish' = 'normal',
+  ): string {
+    let candidates = set.items.filter((i) => groups.includes(set.groupOf(i)) && state.items[i.id]!.unlocked);
+    if (candidates.length === 0) throw new Error('No unlocked items for these groups');
+    const avoid = recent.slice(-2).map((r) => r.itemId);
+    if (candidates.length > avoid.length + 1) candidates = candidates.filter((i) => !avoid.includes(i.id));
+
+    const window = recent.slice(-6);
+    const accuracy = window.length >= 3 ? window.filter((r) => r.correct).length / window.length : PARAMS.targetP;
+    const prevLetter = recent.length ? answerOf(recent.at(-1)!.itemId) : null;
+
+    const scored = candidates.map((i) => {
+      const it = state.items[i.id]!;
+      const p = recall(it, now);
+      let w: number;
+      if (mode === 'finish') {
+        w = p ** 4 + 0.01;
+      } else {
+        w = 0.12 + (1 - p);
+        if (it.n === 0) w += 0.5;
+        if (isDusty(it, now)) w += 0.3;
+        if (accuracy < PARAMS.targetP - 0.15) w *= 0.2 + p;
+        else if (accuracy > PARAMS.targetP + 0.1) w *= 0.2 + (1 - p);
+      }
+      if (set.answerOf(i) === prevLetter) w *= 0.15;
+      return { id: i.id, group: set.groupOf(i), p, w };
+    });
+
+    // With several lanes, split attention by lane first so the lane with more unlocked items
+    // doesn't crowd out the other; the weaker lane gets the bigger share.
+    if (mode === 'normal' && groups.length > 1) {
+      for (const group of groups) {
+        const mine = scored.filter((x) => x.group === group);
+        if (mine.length === 0) continue;
+        const sum = mine.reduce((a, x) => a + x.w, 0);
+        const need = mine.reduce((a, x) => a + (1 - x.p), 0) / mine.length;
+        for (const x of mine) x.w = (x.w / sum) * (0.3 + need);
+      }
+    }
+    const total = scored.reduce((a, b) => a + b.w, 0);
+    let r = rng() * total;
+    for (const s of scored) {
+      r -= s.w;
+      if (r <= 0) return s.id;
+    }
+    return scored.at(-1)!.id;
+  }
+
+  return { set, newStudent, normalize, answerOf, recordAnswer, maybeUnlock, selectItem };
+}
+
+/** Days practiced in the current Monday-start week, across one or more modes' learner models. */
+export function daysThisWeek(states: StudentState | readonly StudentState[], now: number): number {
   const today = dayIndex(now);
   // Day 0 (1970-01-01) was a Thursday; shift so weeks start on Monday.
   const weekStart = today - ((today + 3) % 7);
-  return state.practiceDays.filter((d) => d >= weekStart && d <= today).length;
+  const days = new Set((Array.isArray(states) ? states : [states]).flatMap((s: StudentState) => s.practiceDays));
+  return [...days].filter((d) => d >= weekStart && d <= today).length;
 }
 
 export const WEEKLY_GOAL = 4;
+
+// ───────────── Name It bindings (the original mode; kept for existing callers) ─────────────
+
+export const nameEngine = createEngine(NAME_IT);
+export const { newStudent, normalize, recordAnswer, maybeUnlock, selectItem } = nameEngine;

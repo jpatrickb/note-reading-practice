@@ -151,15 +151,15 @@ describe('progress code', () => {
     expect(() => decodeProgress('abc', now)).toThrow(/too short/);
     expect(() => decodeProgress('!!!!!!!!!!!!!!!!', now)).toThrow(ProgressCodeError);
     expect(() => decodeProgress(code.slice(0, 30), now)).toThrow(ProgressCodeError);
-    // Version 2 header with a valid checksum.
-    const bytes = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    // Version 3 header with a valid checksum (v2 adds Letter Math; see letters-codec tests).
+    const bytes = [3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     let crc = 0;
     for (const b of bytes) {
       crc ^= b;
       for (let i = 0; i < 8; i++) crc = crc & 0x80 ? ((crc << 1) ^ 0x07) & 0xff : (crc << 1) & 0xff;
     }
-    const v2 = btoa(String.fromCharCode(...bytes, crc)).replace(/=+$/, '');
-    expect(() => decodeProgress(v2, now)).toThrow(/different version/);
+    const v3 = btoa(String.fromCharCode(...bytes, crc)).replace(/=+$/, '');
+    expect(() => decodeProgress(v3, now)).toThrow(/different version/);
   });
 });
 
