@@ -24,7 +24,7 @@ iPad (served over a tunnel during early work).
 - Ledger lines, then accidentals and enharmonics
 - PWA: offline support, Add to Home Screen prompt, `storage.persist()`
 - First themes
-- Real hosting on Cloudflare Pages with IaC and CI/CD
+- ~~Real hosting on Cloudflare Pages with IaC and CI/CD~~ (built; live once the Cloudflare credentials are set, see `infra/README.md`)
 
 ## Phase 2: Sync & teacher page
 
