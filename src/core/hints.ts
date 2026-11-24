@@ -7,7 +7,6 @@ import {
   describePosition,
   diatonic,
   letterWalk,
-  noteId,
   parseNote,
   staffPosition,
 } from './music';
@@ -79,21 +78,4 @@ export function hintFor(note: Note, clef: Clef): Hint {
   }
 
   return { position, mnemonic, landmark: landmarkText };
-}
-
-/** Teaching order for a clef: guide notes first, then outward by distance from the nearest guide note. */
-export function introductionOrder(notes: Note[], clef: Clef): Note[] {
-  const landmarkOrder = LANDMARKS[clef].map((l) => noteId(l.note));
-  return [...notes].sort((a, b) => {
-    const la = landmarkOrder.indexOf(noteId(a));
-    const lb = landmarkOrder.indexOf(noteId(b));
-    if (la !== -1 || lb !== -1) return (la === -1 ? 99 : la) - (lb === -1 ? 99 : lb);
-    const da = Math.abs(nearestLandmark(a, clef).distance);
-    const db = Math.abs(nearestLandmark(b, clef).distance);
-    if (da !== db) return da - db;
-    // Prefer notes inside the staff, then lower notes, for a stable order.
-    const inA = staffPosition(a, clef) >= 0 && staffPosition(a, clef) <= 8 ? 0 : 1;
-    const inB = staffPosition(b, clef) >= 0 && staffPosition(b, clef) <= 8 ? 0 : 1;
-    return inA - inB || diatonic(a) - diatonic(b);
-  });
 }

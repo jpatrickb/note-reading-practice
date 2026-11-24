@@ -90,8 +90,9 @@ Rules that keep it lean:
 - **Terraform** for all infrastructure (`infra/`). Nothing gets clicked together by hand in a dashboard.
 - **Cloudflare** hosting, targeting the **free tier ($0)**: Pages for the static app; later, a Worker
   plus KV/D1 for optional sync.
-- **Domain:** a subdomain of `jpatrickbeal.com` (DNS already on Cloudflare). Production and staging get
-  separate hostnames.
+- **Hostnames:** `notepractice.jpatrickbeal.com` (production) and `notepractice-staging.jpatrickbeal.com`
+  (staging). DNS is on Cloudflare.
+- **Terraform state** lives in a Cloudflare R2 bucket (S3-compatible backend).
 - CI authenticates with a minimally scoped Cloudflare API token stored as a GitHub secret.
 
 ## Local development

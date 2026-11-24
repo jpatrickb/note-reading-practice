@@ -178,6 +178,26 @@ describe('unlocking', () => {
     expect(s.items[ITEMS_BY_CLEF.treble[3]!.id]!.unlocked).toBe(true);
   });
 
+  it('never unlocks on top of a weak note in a small set', () => {
+    const s = newStudent();
+    const [a, b, c] = ITEMS_BY_CLEF.treble;
+    for (let i = 0; i < 3; i++) answerCorrect(s, a!.id, T0 + i);
+    for (let i = 0; i < 3; i++) answerCorrect(s, b!.id, T0 + i);
+    recordAnswer(s, c!.id, 'wrong', 'D', 1000, T0);
+    recordAnswer(s, c!.id, 'wrong', 'D', 1000, T0);
+    expect(maybeUnlock(s, 'treble', T0)).toBeNull();
+  });
+
+  it('lets one stubborn note ride along in a larger set', () => {
+    const s = newStudent();
+    const open = ITEMS_BY_CLEF.treble.slice(0, 8);
+    for (const item of open) Object.assign(s.items[item.id]!, { unlocked: true, m: 3, n: 3, c: 3, last: T0 });
+    Object.assign(s.items[open[7]!.id]!, { m: -2 });
+    expect(maybeUnlock(s, 'treble', T0)).toBe(ITEMS_BY_CLEF.treble[8]!.id);
+    // A second weak note (the one just unlocked, unseen) blocks the next unlock.
+    expect(maybeUnlock(s, 'treble', T0)).toBeNull();
+  });
+
   it('stops when every note is unlocked', () => {
     const s = newStudent();
     for (const i of ITEMS) s.items[i.id]!.unlocked = true;
@@ -201,7 +221,10 @@ describe('item selection', () => {
     const s = newStudent();
     const rng = seededRng(3);
     for (let i = 0; i < 50; i++) {
-      const id = selectItem(s, ['treble', 'bass'], T0, rng, [G4, 'name:bass:F3']);
+      const id = selectItem(s, ['treble', 'bass'], T0, rng, [
+        { itemId: G4, correct: true },
+        { itemId: 'name:bass:F3', correct: true },
+      ]);
       expect([G4, 'name:bass:F3']).not.toContain(id);
     }
   });
@@ -210,10 +233,45 @@ describe('item selection', () => {
     const s = newStudent();
     for (let i = 0; i < 10; i++) answerCorrect(s, G4, T0 + i);
     recordAnswer(s, 'name:treble:C4', 'wrong', 'D', 1000, T0);
-    recordAnswer(s, 'name:treble:C5', 'wrong', 'D', 1000, T0);
+    recordAnswer(s, 'name:treble:A4', 'wrong', 'D', 1000, T0);
     const rng = seededRng(4);
     const picks = Array.from({ length: 40 }, () => selectItem(s, ['treble'], T0, rng, [], 'finish'));
     expect(picks.filter((p) => p === G4).length).toBeGreaterThan(30);
+  });
+
+  it('never abandons a weak note (regression: weak notes used to vanish)', () => {
+    const s = newStudent();
+    const open = ITEMS_BY_CLEF.treble.slice(0, 6);
+    for (const item of open) {
+      s.items[item.id]!.unlocked = true;
+      for (let i = 0; i < 6; i++) answerCorrect(s, item.id, T0 + i);
+    }
+    const weak = open[3]!.id;
+    for (let i = 0; i < 4; i++) recordAnswer(s, weak, 'wrong', 'B', 1000, T0);
+    const rng = seededRng(8);
+    const picks = Array.from({ length: 400 }, () => selectItem(s, ['treble'], T0, rng));
+    expect(picks.filter((p) => p === weak).length / 400).toBeGreaterThan(0.3);
+  });
+
+  it('rarely asks for the same answer letter twice in a row', () => {
+    const s = newStudent();
+    const rng = seededRng(9);
+    const prev = [{ itemId: 'name:treble:G4', correct: true }];
+    const picks = Array.from({ length: 300 }, () => selectItem(s, ['treble', 'bass'], T0, rng, prev));
+    // Bass G3 is the only other G among the six starters.
+    expect(picks.filter((p) => itemById(p).note.letter === 'G').length / 300).toBeLessThan(0.08);
+  });
+
+  it('leans on known notes during a rough patch', () => {
+    const s = newStudent();
+    for (let i = 0; i < 6; i++) answerCorrect(s, G4, T0 + i);
+    const rough = [1, 2, 3, 4].map(() => ({ itemId: 'name:bass:F3', correct: false }));
+    const fine = [1, 2, 3, 4].map(() => ({ itemId: 'name:bass:F3', correct: true }));
+    const count = (recent: typeof rough) => {
+      const rng = seededRng(10);
+      return Array.from({ length: 400 }, () => selectItem(s, ['treble'], T0, rng, recent)).filter((p) => p === G4).length;
+    };
+    expect(count(rough)).toBeGreaterThan(count(fine) * 1.5);
   });
 
   it('throws when nothing is available', () => {

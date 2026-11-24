@@ -37,6 +37,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for branching, testing, and CI convention
 **Rule:** if a decision only lives in a chat session or someone's head, it doesn't exist. Record it in
 `docs/decisions.md`.
 
+## License
+
+MIT (see [LICENSE](LICENSE)). Third-party asset licenses are in `licenses/`.
+
 ## Credits
 
 Music glyphs come from the [Bravura](https://github.com/steinbergmedia/bravura) font by Steinberg

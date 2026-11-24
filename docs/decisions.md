@@ -135,3 +135,45 @@ The item order in `ITEMS` is append-only because the code format depends on it.
 **D32. e2e on hosts without Playwright WebKit:** `NO_WEBKIT=1` swaps the iPad project to emulated
 iPad (viewport + touch) on Chromium. CI always runs real WebKit.
 *Why:* the dev machine (Arch) lacks the Ubuntu libraries Playwright's WebKit build needs.
+
+---
+
+### 2026-11-24: First play-test fixes
+
+Play-test feedback: *"Pacing is too slow at the very beginning, then too fast in the middle, and then
+I just got stuck getting the 3 different octaves of C … 18-19 out of 20 questions would be C. Becomes
+very easy to game, and very boring."* A simulation reproduced it (18/20 C picks in session 1; bass
+notes abandoned at ~0.1 recall). There were three causes, fixed below.
+
+**D33. Hand-written teaching order; the first 7 notes of each clef cover all 7 letters.**
+Treble: G4 C4 A4 F4 E4 B4 D4, then C5 D5 E5 F5 G5 A5. Bass: F3 G3 E3 A3 D3 C3 B2, then G2 A2 C4 B3 F2 E2.
+Replaces the computed "guide notes first" order.
+*Why:* starting from all the guide notes put 4 Cs among 6 starter notes. Since answers are letters,
+pressing "C" was right two-thirds of the time. The order lives in `src/core/items.ts` for the teacher
+to review.
+
+**D34. Selection weights notes by need (1 − recall); weak notes are never abandoned.** It replaces
+"closest to 80% predicted success", which penalized weak notes as much as easy ones and made them
+vanish. Additions:
+- a success controller (rough patch → lean on known notes; cruising → harder notes);
+- the same answer letter twice in a row is discouraged;
+- with both clefs, attention is split by clef first, and the weaker clef gets the bigger share.
+
+Unlocking now requires every open note to be solid (seen ≥ 2×, recall ≥ 0.7), allowing 1 weak note per
+8 open notes so one stubborn note can't block progress forever.
+*Why:* this fixes "too fast in the middle" (new notes used to stack on top of weak ones) and the
+abandoned-notes bug. Regression tests cover each failure mode.
+
+**D35. New notes are quizzed first, then taught on "?" or a miss (supersedes D29).**
+*Why:* the meet card made the start slow, especially for kids who already know their notes. The
+pretesting effect says attempting before seeing the answer helps retention even when the attempt is
+wrong, and the "?" button makes not knowing cost little.
+
+### 2026-11-24: Owner decisions
+
+**D36. License: MIT.**
+
+**D37. Hostnames: `notepractice.jpatrickbeal.com` (prod) and `notepractice-staging.jpatrickbeal.com`
+(staging).** "musicnotes" was avoided because Musicnotes is an established sheet-music brand.
+
+**D38. Terraform state lives in Cloudflare R2** (S3-compatible backend, free tier).

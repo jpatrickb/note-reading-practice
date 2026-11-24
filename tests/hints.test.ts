@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { hintFor, introductionOrder, isLandmark, nearestLandmark } from '../src/core/hints';
-import { ITEMS, ITEMS_BY_CLEF, itemById } from '../src/core/items';
-import { noteId, notesInRange, parseNote } from '../src/core/music';
+import { hintFor, isLandmark, nearestLandmark } from '../src/core/hints';
+import { ITEMS, ITEMS_BY_CLEF, TEACHING_ORDER, itemById } from '../src/core/items';
+import { LETTERS, noteId, notesInRange, parseNote } from '../src/core/music';
+import { PARAMS } from '../src/core/engine';
 
 describe('hints', () => {
   it('gives line mnemonics for notes on lines', () => {
@@ -34,21 +35,27 @@ describe('hints', () => {
     expect(isLandmark(parseNote('F3'), 'treble')).toBe(false);
     expect(nearestLandmark(parseNote('E5'), 'treble').distance).toBe(2);
   });
-
-  it('teaches guide notes first, then expands outward', () => {
-    const order = introductionOrder(notesInRange('treble'), 'treble').map(noteId);
-    expect(order.slice(0, 3)).toEqual(['C4', 'G4', 'C5']);
-    expect(order).toHaveLength(13);
-    const bass = introductionOrder(notesInRange('bass'), 'bass').map(noteId);
-    expect(bass.slice(0, 3)).toEqual(['C4', 'F3', 'C3']);
-  });
 });
 
 describe('items', () => {
   it('has unique ids and both clefs', () => {
     expect(new Set(ITEMS.map((i) => i.id)).size).toBe(ITEMS.length);
-    expect(ITEMS_BY_CLEF.treble[0]!.id).toBe('name:treble:C4');
+    expect(ITEMS_BY_CLEF.treble[0]!.id).toBe('name:treble:G4');
     expect(itemById('name:bass:F3').clef).toBe('bass');
     expect(() => itemById('nope')).toThrow();
   });
+
+  for (const clef of ['treble', 'bass'] as const) {
+    it(`${clef}: teaching order covers the range exactly once, starting at a guide note`, () => {
+      expect([...TEACHING_ORDER[clef]].sort()).toEqual(notesInRange(clef).map(noteId).sort());
+      expect(isLandmark(parseNote(TEACHING_ORDER[clef][0]!), clef)).toBe(true);
+    });
+
+    it(`${clef}: the first 7 notes cover all 7 letters, so one button can't carry early play`, () => {
+      const letters = ITEMS_BY_CLEF[clef].slice(0, 7).map((i) => i.note.letter);
+      expect(new Set(letters)).toEqual(new Set(LETTERS));
+      const starters = ITEMS_BY_CLEF[clef].slice(0, PARAMS.initialUnlock).map((i) => i.note.letter);
+      expect(new Set(starters).size).toBe(starters.length);
+    });
+  }
 });

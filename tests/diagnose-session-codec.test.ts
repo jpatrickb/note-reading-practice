@@ -203,3 +203,36 @@ describe('storage', () => {
     expect(() => saveSettings(blocked, DEFAULT_SETTINGS)).not.toThrow();
   });
 });
+
+describe('pacing regression (play-test 2026-11-24: "18 of 20 questions were C")', () => {
+  it('keeps sessions varied and both clefs alive for a kid who is weaker in bass', () => {
+    const s = newStudent();
+    let bassSkill = 0.6; // improves with practice, like a real kid
+    const rng = seededRng(7);
+    let now = T0;
+    for (let n = 1; n <= 6; n++) {
+      const session = startSession(['treble', 'bass']);
+      const letters: string[] = [];
+      let bass = 0;
+      while (!isFinished(session)) {
+        const q = nextQuestion(session, s, now, rng);
+        const item = itemById(q.itemId);
+        letters.push(item.note.letter);
+        if (item.clef === 'bass') bass++;
+        now += 1500;
+        if (item.clef === 'bass') bassSkill = Math.min(0.95, bassSkill + 0.01);
+        const p = item.clef === 'treble' ? 0.95 : bassSkill;
+        submit(session, s, rng() < p ? item.note.letter : item.note.letter === 'B' ? 'C' : 'B', now);
+        now += 800;
+      }
+      const maxSameLetter = Math.max(...['A', 'B', 'C', 'D', 'E', 'F', 'G'].map((l) => letters.filter((x) => x === l).length));
+      expect(maxSameLetter, `session ${n}: ${letters.join('')}`).toBeLessThanOrEqual(8);
+      expect(bass, `session ${n}: bass questions`).toBeGreaterThanOrEqual(5);
+      now += 10 * 60_000;
+    }
+    // Progress happened in both clefs.
+    const unlocked = (clef: string) => ITEMS.filter((i) => i.clef === clef && s.items[i.id]!.unlocked).length;
+    expect(unlocked('treble')).toBeGreaterThan(5);
+    expect(unlocked('bass')).toBeGreaterThan(3);
+  });
+});

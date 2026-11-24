@@ -55,7 +55,8 @@ export class App {
   private synth = new Synth();
   private session: Session | null = null;
   private screen: Screen = 'home';
-  private phase: 'meet' | 'asking' | 'feedback' | 'lesson' = 'asking';
+  private phase: 'asking' | 'feedback' | 'lesson' = 'asking';
+  private isNewNote = false;
   private pendingLesson: LessonId | null = null;
   private advanceTimer = 0;
   private importCode = '';
@@ -297,44 +298,13 @@ export class App {
     const q = nextQuestion(this.session, this.state, this.now(), Math.random);
     clear(this.q('.feedback'));
     clear(this.q('.banner'));
-    if (this.state.items[q.itemId]!.n === 0) return this.meet(q.itemId);
+    // First appearance: quiz right away (pretesting). "?" or a miss teaches it (decision D35).
+    this.isNewNote = this.state.items[q.itemId]!.n === 0;
+    if (this.isNewNote) this.q('.banner').append(h('span', { class: 'badge' }, '✨ New note! Know it? If not, tap ?'));
     this.phase = 'asking';
     this.drawStaff(q.itemId);
     this.setPadEnabled(true);
     this.playItem(q.itemId);
-  }
-
-  /** First time a note appears: introduce it before quizzing (teach, then test). */
-  private meet(itemId: string): void {
-    this.phase = 'meet';
-    const item = itemById(itemId);
-    const hint = hintFor(item.note, item.clef);
-    this.q('.banner').append(h('span', { class: 'badge' }, '✨ New note!'));
-    this.drawStaff(itemId, { label: item.note.letter, state: 'reveal' });
-    this.setPadEnabled(false);
-    this.playItem(itemId);
-    this.q('.feedback').append(
-      h(
-        'div',
-        { class: 'hint hint--meet' },
-        h('p', { class: 'hint__lead' }, `Meet ${item.note.letter}! ${hint.position}`),
-        h('p', {}, hint.landmark),
-        hint.mnemonic && h('p', {}, hint.mnemonic),
-        h('button', { class: 'primary', 'data-testid': 'continue', 'data-autofocus': true, onClick: () => this.endMeet() }, 'Got it, quiz me!'),
-      ),
-    );
-    this.q<HTMLElement>('[data-testid=continue]').focus();
-  }
-
-  private endMeet(): void {
-    if (this.phase !== 'meet' || !this.session?.current) return;
-    const itemId = this.session.current.itemId;
-    clear(this.q('.feedback'));
-    clear(this.q('.banner'));
-    this.session.current.shownAt = this.now();
-    this.phase = 'asking';
-    this.drawStaff(itemId);
-    this.setPadEnabled(true);
   }
 
   private answer(letter: Letter | null): void {
@@ -363,8 +333,9 @@ export class App {
 
     this.pendingLesson = res.lesson;
     const hint = hintFor(item.note, item.clef);
-    const lead =
-      res.outcome === 'wrong'
+    const lead = this.isNewNote
+      ? `Meet ${target}! ${res.outcome === 'wrong' ? `(Not ${letter}.) ` : ''}`
+      : res.outcome === 'wrong'
         ? `That one is ${target}, not ${letter}.`
         : `That one is ${target}. Thanks for being honest!`;
     this.q('.feedback').append(

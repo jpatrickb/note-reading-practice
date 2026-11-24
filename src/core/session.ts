@@ -32,7 +32,7 @@ export function isFinished(session: Session): boolean {
 export function nextQuestion(session: Session, state: StudentState, now: number, rng: Rng): Question {
   const remaining = session.length - session.results.length;
   const mode = remaining <= FINISH_EASY ? 'finish' : 'normal';
-  const recent = session.results.map((r) => r.itemId);
+  const recent = session.results.map((r) => ({ itemId: r.itemId, correct: r.outcome === 'correct' }));
   session.current = { itemId: selectItem(state, session.clefs, now, rng, recent, mode), shownAt: now };
   return session.current;
 }

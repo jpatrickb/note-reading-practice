@@ -96,8 +96,13 @@ Every link is practiced **in both directions**, with naming at the center.
 - **Item** = (note, clef, task type), giving a few hundred items in total.
 - **Per-item state:** a mastery estimate (Elo or Bayesian Knowledge Tracing), response time relative to
   the student's own baseline, when it was last seen, and a spacing interval.
-- **Selection:** pick the next item so predicted success stays near **~80–85%**, weighted toward items
-  due for spaced review. Interleave once the basics are solid.
+- **Selection:** weight each note by how much it needs practice (1 − recall), so weak notes are never
+  abandoned. A controller keeps the kid's actual success near **~80%** (leaning on known notes during
+  a rough patch, harder ones when cruising). Repeating the same answer letter back-to-back is
+  discouraged. With both clefs, attention is split by clef first, and the weaker clef gets more.
+- **Unlocking:** one note at a time, in a hand-written teaching order where the first 7 notes of each
+  clef cover all 7 letters. A new note unlocks only when the open notes are solid.
+- **New notes:** quizzed right away (pretesting). "?" or a miss teaches them.
 - **Confusion matrix:** track which wrong answers happen (for example D read as F). Detect
   **systematic misconceptions** (for example reading bass clef as treble, which shifts every answer by
   a third) and trigger a short targeted mini-lesson.

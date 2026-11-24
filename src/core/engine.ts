@@ -71,8 +71,9 @@ export const PARAMS = {
   silverMinCorrect: 3,
   fluentRatio: 1.6,
   dustyP: 0.6,
-  unlockP: 0.75,
-  unlockShare: 0.8,
+  unlockP: 0.7,
+  /** Unlocked notes allowed to still be weak when a new one unlocks: 1 per this many. */
+  weakAllowancePer: 8,
   initialUnlock: 3,
   defaultBaseline: 3500,
   rtCap: 20000,
@@ -218,53 +219,89 @@ export function recordAnswer(
   return { correct: outcome === 'correct', events };
 }
 
-/** Unlock the next note in a clef once most unlocked notes are going well. */
+/**
+ * Unlock the next note in a clef once the notes already open are solid: each seen at least twice
+ * with recall >= unlockP. Larger sets may carry 1 weak note per `weakAllowancePer`, so one stubborn
+ * note can't block progress forever, but weak notes never pile up (decision D34).
+ */
 export function maybeUnlock(state: StudentState, clef: Clef, now: number): string | null {
   const items = ITEMS_BY_CLEF[clef];
   const open = items.filter((i) => state.items[i.id]!.unlocked);
   const next = items.find((i) => !state.items[i.id]!.unlocked);
   if (!next) return null;
-  const good = open.filter((i) => {
+  const weak = open.filter((i) => {
     const it = state.items[i.id]!;
-    return it.n >= 2 && recall(it, now) >= PARAMS.unlockP;
+    return it.n < 2 || recall(it, now) < PARAMS.unlockP;
   });
-  if (good.length / open.length < PARAMS.unlockShare) return null;
+  if (weak.length > Math.floor(open.length / PARAMS.weakAllowancePer)) return null;
   state.items[next.id]!.unlocked = true;
   return next.id;
 }
 
 export type Rng = () => number;
 
+export interface RecentAnswer {
+  itemId: string;
+  correct: boolean;
+}
+
 /**
- * Choose the next item. 'normal' aims for ~80% predicted success (with a boost for new and
- * faded notes); 'finish' picks easy wins so sessions end on a success (peak-end rule).
+ * Choose the next item (decision D34).
+ *
+ * 'normal': weight each note by how much it NEEDS practice (1 - recall), with a floor so known notes
+ * still come back for review, and a bonus for brand-new and faded notes. Weak notes are never
+ * abandoned. A controller keeps the kid's actual success near the target: on a rough patch it leans
+ * on notes they know; when they're cruising it leans on harder ones. Repeating the previous answer
+ * letter is discouraged so one button can't carry a streak. With both clefs, attention is split by
+ * clef first (weaker clef gets more), so a clef with fewer unlocked notes isn't crowded out.
+ *
+ * 'finish': easy wins so the session ends on a success (peak-end rule).
  */
 export function selectItem(
   state: StudentState,
   clefs: Clef[],
   now: number,
   rng: Rng,
-  recentIds: string[] = [],
+  recent: RecentAnswer[] = [],
   mode: 'normal' | 'finish' = 'normal',
 ): string {
   let candidates = ITEMS.filter((i) => clefs.includes(i.clef) && state.items[i.id]!.unlocked);
   if (candidates.length === 0) throw new Error('No unlocked items for these clefs');
-  const avoid = recentIds.slice(-2);
+  const avoid = recent.slice(-2).map((r) => r.itemId);
   if (candidates.length > avoid.length + 1) candidates = candidates.filter((i) => !avoid.includes(i.id));
+
+  const window = recent.slice(-6);
+  const accuracy = window.length >= 3 ? window.filter((r) => r.correct).length / window.length : PARAMS.targetP;
+  const prevLetter = recent.length ? itemById(recent.at(-1)!.itemId).note.letter : null;
 
   const scored = candidates.map((i) => {
     const it = state.items[i.id]!;
     const p = recall(it, now);
-    let score: number;
+    let w: number;
     if (mode === 'finish') {
-      score = p * 6;
+      w = p ** 4 + 0.01;
     } else {
-      score = -Math.abs(p - PARAMS.targetP) * 4;
-      if (it.n < 2) score += 0.8;
-      if (isDusty(it, now)) score += 0.5;
+      w = 0.12 + (1 - p);
+      if (it.n === 0) w += 0.5;
+      if (isDusty(it, now)) w += 0.3;
+      if (accuracy < PARAMS.targetP - 0.15) w *= 0.2 + p;
+      else if (accuracy > PARAMS.targetP + 0.1) w *= 0.2 + (1 - p);
     }
-    return { id: i.id, w: Math.exp(score / 0.5) };
+    if (i.note.letter === prevLetter) w *= 0.15;
+    return { id: i.id, clef: i.clef, p, w };
   });
+
+  // With both clefs, split attention by clef first so the clef with more unlocked notes doesn't
+  // crowd out the other; the weaker clef gets the bigger share.
+  if (mode === 'normal' && clefs.length > 1) {
+    for (const clef of clefs) {
+      const mine = scored.filter((x) => x.clef === clef);
+      if (mine.length === 0) continue;
+      const sum = mine.reduce((a, x) => a + x.w, 0);
+      const need = mine.reduce((a, x) => a + (1 - x.p), 0) / mine.length;
+      for (const x of mine) x.w = (x.w / sum) * (0.3 + need);
+    }
+  }
   const total = scored.reduce((a, b) => a + b.w, 0);
   let r = rng() * total;
   for (const s of scored) {

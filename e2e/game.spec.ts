@@ -3,13 +3,9 @@ import { type Page, expect, test } from '@playwright/test';
 const LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
 const shift = (l: string, n: number) => LETTERS[(((LETTERS.indexOf(l) + n) % 7) + 7) % 7]!;
 
-/** Get to an answerable question, clicking through any "new note" introduction. */
+/** Wait for an answerable question. */
 async function nextNote(page: Page): Promise<{ letter: string; clef: string }> {
-  const meet = page.getByRole('button', { name: 'Got it, quiz me!' });
-  const ready = page.locator('.pad__key:not([disabled])').first();
-  await expect(meet.or(ready)).toBeVisible();
-  if (await meet.isVisible()) await meet.click();
-  await expect(ready).toBeVisible();
+  await expect(page.locator('.pad__key:not([disabled])').first()).toBeVisible();
   const staff = page.locator('svg.staff');
   return { letter: (await staff.getAttribute('data-note'))![0]!, clef: (await staff.getAttribute('data-clef'))! };
 }
@@ -42,12 +38,25 @@ test('home screen remembers the chosen clef', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Bass', exact: true })).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('a new note is introduced before it is quizzed', async ({ page }) => {
+test('a new note is quizzed right away, and "?" teaches it', async ({ page }) => {
   await start(page);
   await expect(page.getByText('✨ New note!')).toBeVisible();
-  await expect(page.locator('.pad__key:not([disabled])')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Got it, quiz me!' }).click();
-  await expect(page.locator('.pad__key:not([disabled])')).toHaveCount(8);
+  const { letter } = await nextNote(page);
+  await tap(page, '?');
+  await expect(page.locator('.hint')).toContainText(`Meet ${letter}!`);
+  await expect(page.locator('svg.staff .staff__label')).toHaveText(letter);
+});
+
+test('the first questions do not all share one answer letter', async ({ page }) => {
+  await start(page, 'Both');
+  const letters: string[] = [];
+  for (let i = 0; i < 8; i++) {
+    const { letter } = await nextNote(page);
+    letters.push(letter);
+    await tap(page, letter);
+  }
+  const most = Math.max(...letters.map((l) => letters.filter((x) => x === l).length));
+  expect(most, letters.join('')).toBeLessThanOrEqual(4);
 });
 
 test('a perfect session ends on the summary, earns silver, and persists', async ({ page }) => {
@@ -66,7 +75,7 @@ test('a wrong answer explains and waits for the kid', async ({ page }) => {
   const { letter } = await nextNote(page);
   const wrong = shift(letter, 3);
   await tap(page, wrong);
-  await expect(page.getByText(`That one is ${letter}, not ${wrong}.`)).toBeVisible();
+  await expect(page.getByText(`Meet ${letter}! (Not ${wrong}.)`)).toBeVisible();
   await expect(page.locator('.hint')).toContainText('🧭');
   await expect(page.locator(`[data-answer="${letter}"]`)).toHaveClass(/pad__key--right/);
   await expect(page.locator(`[data-answer="${wrong}"]`)).toHaveClass(/pad__key--wrong/);
@@ -78,11 +87,19 @@ test('a wrong answer explains and waits for the kid', async ({ page }) => {
   await nextNote(page);
 });
 
-test('"?" reveals the answer kindly', async ({ page }) => {
+test('"?" on a note seen before reveals the answer kindly', async ({ page }) => {
   await start(page);
-  const { letter } = await nextNote(page);
-  await tap(page, '?');
-  await expect(page.getByText(`That one is ${letter}. Thanks for being honest!`)).toBeVisible();
+  for (let i = 0; i < 12; i++) {
+    const { letter } = await nextNote(page);
+    if (await page.locator('.badge').isVisible()) {
+      await tap(page, letter); // new note: answer it, keep going
+      continue;
+    }
+    await tap(page, '?');
+    await expect(page.getByText(`That one is ${letter}. Thanks for being honest!`)).toBeVisible();
+    return;
+  }
+  throw new Error('never saw a repeated note');
 });
 
 test('reading bass clef like treble triggers a mini-lesson', async ({ page }) => {
@@ -138,8 +155,6 @@ test('a bad progress code shows a friendly error', async ({ page }) => {
 test('desktop: kids can type letters and use Enter to continue', async ({ page, isMobile }) => {
   test.skip(!!isMobile, 'keyboard input is a desktop feature');
   await start(page);
-  await page.getByRole('button', { name: 'Got it, quiz me!' }).focus();
-  await page.keyboard.press('Enter');
   const { letter } = await nextNote(page);
   await page.keyboard.press(shift(letter, 1).toLowerCase());
   await expect(page.getByTestId('continue')).toBeVisible();
