@@ -60,8 +60,10 @@ jobs:
         run: npm run build
       - name: Keep staging out of search engines
         if: env.ENVIRONMENT == 'staging'
+        # Add to the existing `/*` block: a second `/*` block would replace the first one entirely.
         run: |
-          printf '/*\n  X-Robots-Tag: noindex\n' >> dist/_headers
+          sed -i '0,/^\/\*$/s//\/*\n  X-Robots-Tag: noindex/' dist/_headers
+          cat dist/_headers
       - name: Deploy to Cloudflare Pages
         env:
           PROJECT: ${{ steps.tf.outputs.project }}

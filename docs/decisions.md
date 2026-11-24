@@ -205,3 +205,9 @@ Smoke tests (not the full suite) avoid repeating what the PR already proved.
 
 **D44. Security headers via `public/_headers`** (nosniff, frame deny, referrer policy, permissions
 policy denying camera/mic/geolocation). Staging adds `X-Robots-Tag: noindex`.
+
+**D45. Staging's noindex header goes inside the existing `/*` block of `_headers`.** The smoke test
+checks headers only our file sets (X-Frame-Options, Permissions-Policy).
+*Why:* the first deploy appended a second `/*` block, which silently replaced the first, so our
+security headers were dropped. The original smoke test checked `nosniff`, which Pages sends by default,
+so it passed without proving anything.
