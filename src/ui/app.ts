@@ -28,12 +28,12 @@ import {
 import { masteryCounts, renderMasteryKeyboard } from '../render/keyboard';
 import { renderStaff } from '../render/staff';
 import { clear, h } from './dom';
+import { durabilityCard, homeBanners } from './pwa';
 
 type Screen = 'home' | 'play' | 'summary' | 'map' | 'save' | 'import' | 'debug';
 type ClefChoice = 'treble' | 'bass' | 'both';
 
 const OFFSET_KEY = 'nrp:debug:clockOffset';
-const TIP_KEY = 'nrp:v1:homeTipDismissed';
 
 const clefsFor = (c: ClefChoice): Clef[] => (c === 'both' ? ['treble', 'bass'] : [c]);
 const choiceOf = (clefs: Clef[]): ClefChoice => (clefs.length === 2 ? 'both' : clefs[0]!);
@@ -41,13 +41,6 @@ const itemLabel = (id: string) => {
   const item = itemById(id);
   return `${item.note.letter} (${item.clef} clef)`;
 };
-
-function isIOS(): boolean {
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-}
-function isStandalone(): boolean {
-  return matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
-}
 
 export class App {
   private state: StudentState;
@@ -181,30 +174,13 @@ export class App {
         label,
       );
 
-    const showTip = isIOS() && !isStandalone() && !sessionStorage.getItem(TIP_KEY);
     const counts = masteryCounts(this.state);
 
     return h(
       'main',
       { class: 'screen home' },
       h('header', { class: 'topbar' }, h('h1', { class: 'title' }, '🎵 Note Reader'), this.muteButton()),
-      showTip &&
-        h(
-          'div',
-          { class: 'tip', role: 'note' },
-          h('span', {}, '📌 Keep your progress safe: tap ', h('strong', {}, 'Share'), ' → ', h('strong', {}, 'Add to Home Screen'), '.'),
-          h(
-            'button',
-            {
-              class: 'link-btn',
-              onClick: (e: Event) => {
-                sessionStorage.setItem(TIP_KEY, '1');
-                (e.currentTarget as HTMLElement).parentElement?.remove();
-              },
-            },
-            'OK',
-          ),
-        ),
+      homeBanners({ hasProgress: Object.values(this.state.items).some((i) => i.n > 0), onLoadCode: () => this.go('save') }),
       this.weeklyGoal(),
       h(
         'section',
@@ -483,6 +459,7 @@ export class App {
       'main',
       { class: 'screen save' },
       h('header', { class: 'topbar' }, h('button', { class: 'icon-btn', 'aria-label': 'Back', onClick: () => this.go('home') }, '←'), h('h1', { class: 'title' }, '💾 Save / load')),
+      durabilityCard(),
       h(
         'section',
         { class: 'card' },
