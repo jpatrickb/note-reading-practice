@@ -65,7 +65,8 @@ export interface StudentState {
   lessonsSeen: Record<string, number>;
   /**
    * Unlock lane → correct answers in a row (reset by a miss or "?"). Drives the fast track.
-   * Short-term like `recentErrors`: optional (older saves lack it) and not in the progress code.
+   * Saved with the state, so a run carries over to the next day (a day off doesn't end it; a miss
+   * does). Optional (older saves lack it) and not in the progress code.
    */
   runs?: Record<string, number>;
 }
@@ -126,7 +127,7 @@ export interface Pacing {
   transferK0: number;
   /** Correct answers in a row to be cruising (Infinity = never). */
   cruiseRun: number;
-  /** An open item must have been answered this many times to count as solid. */
+  /** An open item must have been answered this many times to count as solid (first-try credit: once). */
   minSeen: number;
   /** Cap on weak open items when unlocking (on top of 1 per `weakAllowancePer`). */
   maxWeak: number;
@@ -144,8 +145,14 @@ export interface Pacing {
    * many times likelier to be asked: they're what holds up the next unlock.
    */
   cruiseNewBoost: number;
-  /** Silver needs this many correct answers if the item was never missed (else silverMinCorrect). */
+  /**
+   * Silver needs this many correct answers if the item was never missed and the kid is on a run of
+   * at least `cleanRun` correct answers in the lane, counting this one (else silverMinCorrect).
+   */
   cleanMinCorrect: number;
+  cleanRun: number;
+  /** In the closing easy wins, never-answered items get this weight factor. */
+  finishUnseenWeight: number;
 }
 
 export const PACING: Pacing = {
@@ -154,13 +161,15 @@ export const PACING: Pacing = {
   firstTryRun: 2,
   transferK0: 1.5,
   cruiseRun: 4,
-  minSeen: 1,
+  minSeen: 2,
   maxWeak: 2,
   maxUnlocks: 3,
   gapFloor: true,
   fadeP: PARAMS.dustyP,
   cruiseNewBoost: 12,
   cleanMinCorrect: 2,
+  cleanRun: 3,
+  finishUnseenWeight: 0.05,
 };
 
 /** The original pacing (one item at a time, each seen twice). Kept for comparisons in tests. */
@@ -177,6 +186,8 @@ export const STRICT_PACING: Pacing = {
   fadeP: PARAMS.unlockP,
   cruiseNewBoost: 1,
   cleanMinCorrect: 3,
+  cleanRun: Infinity,
+  finishUnseenWeight: 1,
 };
 
 const HOUR = 3_600_000;
@@ -214,9 +225,10 @@ export function fluency(rtMs: number, baselineMs: number): number {
   return Math.max(0.6, 1 - (ratio - PARAMS.fluentRatio) * 0.15);
 }
 
-function meetsSilver(it: ItemState, state: StudentState, pacing: Pacing): boolean {
-  // Never missed counts as reliable sooner: with no misses, `cleanMinCorrect` answers will do.
-  const minCorrect = it.c === it.n ? Math.min(pacing.cleanMinCorrect, PARAMS.silverMinCorrect) : PARAMS.silverMinCorrect;
+function meetsSilver(it: ItemState, state: StudentState, pacing: Pacing, run: number): boolean {
+  // Never missed, during a run, counts as reliable sooner: `cleanMinCorrect` answers will do.
+  const clean = it.c === it.n && run >= pacing.cleanRun;
+  const minCorrect = clean ? Math.min(pacing.cleanMinCorrect, PARAMS.silverMinCorrect) : PARAMS.silverMinCorrect;
   return (
     sigmoid(it.m) >= PARAMS.silverP &&
     it.c >= minCorrect &&
@@ -249,6 +261,8 @@ function applyAnswer(
   rtMs: number,
   now: number,
   pacing: Pacing,
+  /** Correct answers in a row in this lane, counting this answer. */
+  run: number,
 ): MasteryEvent[] {
   const it = state.items[itemId];
   if (!it) throw new Error(`Unknown item: ${itemId}`);
@@ -288,7 +302,7 @@ function applyAnswer(
     if (state.practiceDays.length > PARAMS.maxPracticeDays) state.practiceDays.shift();
   }
 
-  if (outcome === 'correct' && meetsSilver(it, state, pacing)) {
+  if (outcome === 'correct' && meetsSilver(it, state, pacing, run)) {
     if (it.best === 0) {
       it.best = 1;
       it.silverDay = today;
@@ -390,7 +404,10 @@ export function createEngine<I extends PracticeItem>(set: ItemSet<I>, pacing: Pa
     const weak = open.filter((i) => {
       const it = state.items[i.id]!;
       if (sigmoid(it.m) < PARAMS.unlockP || recall(it, now) < pacing.fadeP) return true;
-      return it.n < pacing.minSeen && !(it.n === 0 && cruising);
+      // An item that earned first-try credit is solid after one answer (it.s only reaches
+      // firstTryS after a single answer through that credit).
+      const credited = it.n === 1 && it.c === 1 && pacing.firstTryS > 0 && it.s >= pacing.firstTryS;
+      return it.n < pacing.minSeen && !credited && !(it.n === 0 && cruising);
     });
     if (weak.length > Math.min(pacing.maxWeak, Math.floor(open.length / PARAMS.weakAllowancePer))) return null;
     const it = state.items[next.id]!;
@@ -414,8 +431,9 @@ export function createEngine<I extends PracticeItem>(set: ItemSet<I>, pacing: Pa
     const runBefore = state.runs?.[group] ?? 0;
     const firstTry = it?.n === 0;
     const fluent = fluency(Math.min(Math.max(rtMs, 0), PARAMS.rtCap), baseline(state)) === 1;
-    const events = applyAnswer(state, itemId, outcome, answer, rtMs, now, pacing);
-    state.runs = { ...state.runs, [group]: outcome === 'correct' ? runBefore + 1 : 0 };
+    const run = outcome === 'correct' ? runBefore + 1 : 0;
+    const events = applyAnswer(state, itemId, outcome, answer, rtMs, now, pacing, run);
+    state.runs = { ...state.runs, [group]: run };
     // First-try credit: known before we ever asked (see PACING).
     if (firstTry && outcome === 'correct' && fluent && runBefore >= pacing.firstTryRun) {
       it!.m = Math.max(it!.m, logit(pacing.firstTryP));
@@ -465,6 +483,8 @@ export function createEngine<I extends PracticeItem>(set: ItemSet<I>, pacing: Pa
       let w: number;
       if (mode === 'finish') {
         w = p ** 4 + 0.01;
+        // Easy wins are items the kid has answered, not ones the model only expects them to know.
+        if (it.n === 0) w *= pacing.finishUnseenWeight;
       } else {
         w = 0.12 + (1 - p);
         if (it.n === 0) w += 0.5;

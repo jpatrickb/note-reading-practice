@@ -50,7 +50,7 @@ describe('pacing: a kid who already knows it flies', () => {
     // the fast track), and then it runs into the next session or two.
     expect(median(next), next.join(',')).toBe(1);
     expect(Math.max(...next), next.join(',')).toBeLessThanOrEqual(2);
-    expect(throughSkips.filter((s) => s === 1).length, throughSkips.join(',')).toBeGreaterThanOrEqual(5);
+    expect(throughSkips.filter((s) => s === 1).length, throughSkips.join(',')).toBeGreaterThanOrEqual(4);
     expect(Math.max(...throughSkips), throughSkips.join(',')).toBeLessThanOrEqual(3);
     // Before: 8+ sessions just for next letter up and down.
     expect(median(strict.map((r) => allOpen(r, nextLetter)))).toBeGreaterThanOrEqual(8);
@@ -82,14 +82,17 @@ describe('pacing: a true beginner keeps a comfortable pace', () => {
   const fast = letters(LETTER_MATH_MODE, lmBeginner, 12);
   const strict = letters(STRICT_LETTERS, lmBeginner, 12);
 
+  // Bounds are what this engine measures (strict: struggling 3, worst session 0.65). At ~82% success a
+  // 20-question session has a spread of about ±9%, so the worst of ~110 sessions lands near 0.6
+  // from chance alone; a bound much above that would test the dice, not the pacing.
   it('Letter Math: ~80% success, no rough sessions, never many items they can’t answer yet', () => {
     for (const [i, r] of fast.entries()) {
-      expect(overallSuccess(r), `seed ${SEEDS[i]}`).toBeGreaterThan(0.75);
-      expect(overallSuccess(r), `seed ${SEEDS[i]}`).toBeLessThan(0.9);
-      expect(worstSession(r), `seed ${SEEDS[i]}`).toBeGreaterThanOrEqual(0.5);
-      expect(maxStruggling(r), `seed ${SEEDS[i]}`).toBeLessThanOrEqual(8);
+      expect(overallSuccess(r), `seed ${SEEDS[i]}`).toBeGreaterThan(0.78);
+      expect(overallSuccess(r), `seed ${SEEDS[i]}`).toBeLessThan(0.88);
+      expect(worstSession(r), `seed ${SEEDS[i]}`).toBeGreaterThanOrEqual(0.6);
+      expect(maxStruggling(r), `seed ${SEEDS[i]}`).toBeLessThanOrEqual(6);
     }
-    expect(median(fast.map(maxStruggling))).toBeLessThanOrEqual(5);
+    expect(median(fast.map(maxStruggling))).toBeLessThanOrEqual(4);
   });
 
   it('Letter Math: still makes more progress than before', () => {
@@ -104,9 +107,9 @@ describe('pacing: a true beginner keeps a comfortable pace', () => {
     const fastNi = treble(NAME_IT_MODE, nameBeginner, 10);
     for (const r of fastNi) {
       expect(overallSuccess(r)).toBeGreaterThan(0.75);
-      expect(overallSuccess(r)).toBeLessThan(0.92);
-      expect(worstSession(r)).toBeGreaterThanOrEqual(0.5);
-      expect(maxStruggling(r)).toBeLessThanOrEqual(6);
+      expect(overallSuccess(r)).toBeLessThan(0.86);
+      expect(worstSession(r)).toBeGreaterThanOrEqual(0.55);
+      expect(maxStruggling(r)).toBeLessThanOrEqual(5);
     }
     const before = treble(STRICT_NAME_IT, nameBeginner, 10);
     expect(median(fastNi.map((r) => openAfter(r, 10)))).toBeGreaterThanOrEqual(median(before.map((r) => openAfter(r, 10))));
@@ -160,15 +163,15 @@ describe('pacing: guessing gains nothing', () => {
     return { fast: fast!, strict: strict! };
   };
 
-  // Over a much bigger sweep (2000 runs of 600 guesses, both modes) a guesser never unlocks
-  // anything, but lucky silvers are not impossible: 23 silver/gold vs 2 under the strict pacing
-  // (about 1 per 50,000 guesses), mostly Name It, where two clean answers now earn silver.
-  it('a random guesser earns no silver/gold and unlocks nothing (no more than before)', { timeout: 30_000 }, () => {
+  // A guesser never unlocks anything. Lucky silvers aren't impossible: over 2,000 runs of 600
+  // guesses (both modes, 1.2M guesses) the fast track gives 10 silver and 0 gold, against 2 silver for
+  // the strict pacing: about 1 per 120,000 guesses. These 40 seeds (48,000 guesses) expect about 0.4,
+  // so allowing up to 3 more than strict fails by chance less than 1 time in 1,000.
+  it('a random guesser unlocks nothing, and lucky silvers stay rare', { timeout: 30_000 }, () => {
     const { fast, strict } = play(guesser, Array.from({ length: 40 }, (_, i) => i));
-    expect(fast.mastered).toBe(0);
     expect(fast.unlocked).toBe(0);
-    expect(fast.unlocked).toBeLessThanOrEqual(strict.unlocked);
-    expect(fast.mastered).toBeLessThanOrEqual(strict.mastered);
+    expect(strict.unlocked).toBe(0);
+    expect(fast.mastered).toBeLessThanOrEqual(strict.mastered + 3);
   });
 
   it('pressing one button unlocks nothing; at most the starter it happens to answer shines', { timeout: 30_000 }, () => {

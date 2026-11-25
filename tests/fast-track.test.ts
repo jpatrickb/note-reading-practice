@@ -201,11 +201,12 @@ describe('remembering after a break', () => {
 });
 
 describe('silver for an item never missed (amends D27)', () => {
-  /** Name It state where C4 was answered once, correctly and fluently, and recall is ~0.9. */
-  function onceRight(engine: Engine): StudentState {
+  /** Name It state where C4 was answered once, correctly and fluently, recall ~0.9, on a run. */
+  function onceRight(engine: Engine, run = 2): StudentState {
     const s = engine.newStudent();
     Object.assign(s.items[C4!]!, { m: Math.log(9), n: 1, c: 1, last: T0, rt: 1500 });
     s.rtBaseline = 1500;
+    s.runs = { treble: run };
     return s;
   }
 
@@ -216,6 +217,13 @@ describe('silver for an item never missed (amends D27)', () => {
     const r = right(name, s, C4!, T0 + 60_000);
     expect(s.items[C4!]!.c).toBe(2);
     expect(r.events).toContainEqual({ kind: 'silver', itemId: C4 });
+  });
+
+  it('only during a run of 3 correct answers (counting this one); otherwise three', () => {
+    const s = onceRight(name, 1); // this answer makes a run of 2
+    expect(right(name, s, C4!, T0 + 60_000).events).toEqual([]);
+    expect(right(name, s, C4!, T0 + 120_000).events).toContainEqual({ kind: 'silver', itemId: C4 });
+    expect(s.items[C4!]!.c).toBe(3);
   });
 
   it('after a miss it still takes three correct answers', () => {
