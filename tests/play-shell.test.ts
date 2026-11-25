@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Synth } from '../src/audio/synth';
 import { newStudent } from '../src/core/engine';
 import { itemById } from '../src/core/items';
-import { startSession } from '../src/core/session';
+import type { Letter } from '../src/core/music';
+import { NAME_IT_MODE, type SessionMode, startSession } from '../src/core/session';
+import { letterPad } from '../src/ui/letterPad';
 import { h } from '../src/ui/dom';
 import { letterAnswer, letterItem, LETTER_GROUP, LETTER_MATH_MODE, letterEngine } from '../src/core/letters';
 import { letterMathPlay } from '../src/ui/letterMath';
@@ -13,8 +15,8 @@ import { T0 } from './helpers';
 
 const synth = { note: vi.fn() } as unknown as Synth;
 
-function setup(length = 3) {
-  const session = startSession(['treble'], length);
+function setup(length = 3, mode: SessionMode<Letter> = NAME_IT_MODE) {
+  const session = startSession(['treble'], length, mode);
   const host = {
     session,
     state: newStudent(),
@@ -25,7 +27,7 @@ function setup(length = 3) {
     quit: vi.fn(),
     finish: vi.fn(),
   };
-  const shell: PlayShell = nameItPlay(host, synth);
+  const shell: PlayShell<Letter> = nameItPlay(host, synth);
   document.body.append(shell.render());
   return { shell, host, session };
 }
@@ -169,6 +171,103 @@ describe('play shell', () => {
   });
 });
 
+const medalMode = (kind: 'silver' | 'gold'): SessionMode<Letter> => ({
+  ...NAME_IT_MODE,
+  engine: { ...NAME_IT_MODE.engine, recordAnswer: (...a) => ({ ...NAME_IT_MODE.engine.recordAnswer(...a), events: [{ kind, itemId: a[1] }] }) },
+});
+
+describe('play shell: medals, lessons, dispose', () => {
+  it('a new silver waits 1600 ms and announces the events', async () => {
+    const s = setup(3, medalMode('silver'));
+    await tick();
+    pad(target(s)).click();
+    expect(s.host.announce).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('.praise--silver')).not.toBeNull();
+    vi.advanceTimersByTime(1599);
+    expect(document.querySelector('.praise--silver')).not.toBeNull();
+    vi.advanceTimersByTime(1);
+    expect(document.querySelector('.praise')).toBeNull();
+  });
+
+  it('dispose during the medal wait never advances or finishes', async () => {
+    const s = setup(1, medalMode('gold'));
+    await tick();
+    pad(target(s)).click();
+    vi.advanceTimersByTime(1000);
+    s.shell.dispose();
+    vi.advanceTimersByTime(5000);
+    expect(s.host.finish).not.toHaveBeenCalled();
+  });
+
+  const lessonMode: SessionMode<Letter> = { ...NAME_IT_MODE, diagnose: () => 'neighbor' };
+
+  it('a wrong answer with a diagnosis shows the lesson after Got it, then the next question', async () => {
+    const s = setup(3, lessonMode);
+    await tick();
+    pad(wrongLetter(s)).click();
+    cont()!.click();
+    const lesson = document.querySelector('[data-testid=lesson]');
+    expect(lesson).not.toBeNull();
+    expect(lesson!.getAttribute('role')).toBe('dialog');
+    expect(s.session.current).toBeNull(); // no new question yet
+    cont()!.click(); // OK, got it
+    expect(document.querySelector('[data-testid=lesson]')).toBeNull();
+    expect(s.session.current).not.toBeNull();
+  });
+
+  it('Enter dismisses the lesson', async () => {
+    const s = setup(3, lessonMode);
+    await tick();
+    pad(wrongLetter(s)).click();
+    cont()!.click();
+    (document.activeElement as HTMLElement | null)?.blur();
+    s.shell.onKey(key('Enter'));
+    expect(document.querySelector('[data-testid=lesson]')).toBeNull();
+    expect(s.session.current).not.toBeNull();
+  });
+
+  it('no diagnosis means no lesson; "?" never shows one', async () => {
+    const s = setup(3, { ...NAME_IT_MODE, diagnose: () => null });
+    await tick();
+    pad(wrongLetter(s)).click();
+    cont()!.click();
+    expect(document.querySelector('[data-testid=lesson]')).toBeNull();
+    expect(s.session.current).not.toBeNull();
+    const t = setup(3, lessonMode);
+    document.body.innerHTML = '';
+    document.body.append(t.shell.render());
+    await tick();
+    pad('?').click();
+    cont()!.click();
+    expect(document.querySelector('[data-testid=lesson]')).toBeNull();
+  });
+
+  it('dispose during a lesson ignores OK', async () => {
+    const s = setup(1, lessonMode);
+    await tick();
+    pad(wrongLetter(s)).click();
+    cont()!.click();
+    s.shell.dispose();
+    cont()!.click();
+    expect(s.host.finish).not.toHaveBeenCalled();
+  });
+
+  it('a disposed shell ignores answers even while still in the DOM', async () => {
+    const s = setup();
+    await tick();
+    s.shell.dispose();
+    s.shell.answer('C');
+    expect(s.session.results).toHaveLength(0);
+  });
+
+  it('the letter pad ignores non-letter keys', () => {
+    const p = letterPad('x', () => {}, () => 'C');
+    expect(p.fromKey(key('x'))).toBeUndefined();
+    expect(p.fromKey(key('?'))).toEqual({ answer: null });
+    expect(p.fromKey(key('g'))).toEqual({ answer: 'G' });
+  });
+});
+
 describe('play shell, Letter Math timings', () => {
   it('auto-advances after 1000 ms', async () => {
     const session = startSession([LETTER_GROUP], 3, LETTER_MATH_MODE);
@@ -182,5 +281,37 @@ describe('play shell, Letter Math timings', () => {
     vi.advanceTimersByTime(1);
     expect(document.querySelector('.praise')).toBeNull();
     expect(session.current).not.toBeNull();
+  });
+});
+
+describe('play shell, Letter Math feedback', () => {
+  function lm() {
+    const session = startSession([LETTER_GROUP], 3, LETTER_MATH_MODE);
+    const host = { session, state: letterEngine.newStudent(), now: () => T0, save: vi.fn(), announce: vi.fn(), muteButton: () => h('button'), quit: vi.fn(), finish: vi.fn() };
+    const shell = letterMathPlay(host, synth);
+    document.body.append(shell.render());
+    return { session, host };
+  }
+  const right = (session: ReturnType<typeof lm>['session']) => letterAnswer(letterItem(session.current!.itemId));
+
+  it('correct answers show the target letter in the praise', async () => {
+    const { session } = lm();
+    await tick();
+    const t = right(session);
+    pad(t).click();
+    expect(document.querySelector('.praise')!.textContent).toBe(t);
+  });
+
+  it('wrong and "?" wait for Got it', async () => {
+    const { session, host } = lm();
+    await tick();
+    pad(right(session) === 'A' ? 'B' : 'A').click();
+    vi.advanceTimersByTime(10_000);
+    expect(cont()).not.toBeNull();
+    cont()!.click();
+    pad('?').click();
+    vi.advanceTimersByTime(10_000);
+    expect(cont()).not.toBeNull();
+    expect(host.finish).not.toHaveBeenCalled();
   });
 });

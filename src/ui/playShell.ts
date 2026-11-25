@@ -16,7 +16,7 @@ import { icon } from './world/icons';
 import { type Medal, PlayChrome, praise } from './world/playChrome';
 
 /** What a mode plugs into the shell. */
-export interface PlayMode {
+export interface PlayMode<A extends string = string> {
   /** Trophy label, e.g. "keys" or "skills". */
   unit: string;
   /** Extra class on the screen (`screen play <screenClass>`). */
@@ -25,11 +25,12 @@ export interface PlayMode {
   cardClass: string;
   /** Where the prompt is drawn (a staff, a sentence...). Placed in the card under the banner. */
   promptEl: HTMLElement;
-  input: AnswerInput;
+  /** Build the answer input; call `onAnswer` when the student answers (null is "I don't know"). */
+  input(onAnswer: (answer: A | null) => void): AnswerInput<A>;
   /** Banner for a never-seen item. */
   newBadge: string;
   /** Silver + gold items in this mode before the session (the trophy count). */
-  mastered(): number;
+  mastered(state: StudentState): number;
   /** Draw the question into `promptEl`. */
   renderPrompt(itemId: string): void;
   /** Redraw the prompt once answered (e.g. label the note). Optional. */
@@ -37,15 +38,15 @@ export interface PlayMode {
   /** Play sound for the item: when the question appears and/or after the answer. Optional. */
   play?(itemId: string, when: 'ask' | 'answer'): void;
   /** The explanation after a wrong or "?" answer. The shell adds the "Got it →" button to it. */
-  feedback(f: { itemId: string; outcome: 'wrong' | 'idk'; answer: string | null; target: string; isNew: boolean }): HTMLElement;
+  feedback(f: { itemId: string; outcome: 'wrong' | 'idk'; answer: A | null; target: string; isNew: boolean }): HTMLElement;
   /** Show the answer letter next to the check after a correct answer. */
   praiseTarget?: boolean;
   /** Auto-advance delay after a correct answer, in ms. Silver/gold always take 1600. */
   correctMs: number;
 }
 
-export interface PlayHost {
-  session: Session;
+export interface PlayHost<A extends string = string> {
+  session: Session<A>;
   state: StudentState;
   now(): number;
   save(): void;
@@ -57,42 +58,49 @@ export interface PlayHost {
 
 export const MEDAL_MS = 1600;
 
-export class PlayShell {
+export class PlayShell<A extends string = string> {
   private phase: 'asking' | 'feedback' | 'lesson' = 'asking';
   private timer = 0;
   private isNew = false;
   private lesson: LessonId | null = null;
+  private readonly input: AnswerInput<A>;
+  private disposed = false;
   private el!: HTMLElement;
   private chrome!: PlayChrome;
   private banner!: HTMLElement;
   private card!: HTMLElement;
 
   constructor(
-    private readonly host: PlayHost,
-    private readonly mode: PlayMode,
-  ) {}
+    private readonly host: PlayHost<A>,
+    private readonly mode: PlayMode<A>,
+  ) {
+    this.input = mode.input((a) => this.answer(a));
+  }
 
   render(): HTMLElement {
     this.chrome = new PlayChrome({
       length: this.host.session.length,
-      mastered: this.mode.mastered(),
+      mastered: this.mode.mastered(this.host.state),
       onQuit: () => this.host.quit(),
       mute: this.host.muteButton(),
       unit: this.mode.unit,
     });
     this.banner = h('div', { class: 'banner' });
     this.card = h('div', { class: this.mode.cardClass }, this.banner, this.mode.promptEl);
-    this.el = h('main', { class: `screen play${this.mode.screenClass ? ` ${this.mode.screenClass}` : ''}` }, this.chrome.topbar, this.card, this.chrome.coach, this.mode.input.el);
+    this.el = h('main', { class: `screen play${this.mode.screenClass ? ` ${this.mode.screenClass}` : ''}` }, this.chrome.topbar, this.card, this.chrome.coach, this.input.el);
     queueMicrotask(() => this.ask());
     return this.el;
   }
 
   dispose(): void {
+    this.disposed = true;
     window.clearTimeout(this.timer);
+    this.input.dispose?.();
+    // TODO(#20): call synth.stopAll() here once the audio work (PR #66) has merged.
   }
 
   private active(): boolean {
-    return this.el.isConnected;
+    return !this.disposed && this.el.isConnected;
   }
 
   private ask(): void {
@@ -106,24 +114,24 @@ export class PlayShell {
     if (this.isNew) this.banner.append(h('span', { class: 'badge' }, this.mode.newBadge));
     this.phase = 'asking';
     this.mode.renderPrompt(qn.itemId);
-    this.mode.input.setEnabled(true);
+    this.input.setEnabled(true);
     this.chrome.asking(session.results.length, this.card);
     this.mode.play?.(qn.itemId, 'ask');
   }
 
   /** `null` is "I don't know". */
-  answer(answer: string | null): void {
+  answer(answer: A | null): void {
     const { session, state } = this.host;
     if (!this.active() || this.phase !== 'asking' || !session.current) return;
     const itemId = session.current.itemId;
-    const target = session.mode.engine.answerOf(itemId);
-    const res = submit(session, state, answer as never, this.host.now());
+    const target = String(session.mode.engine.answerOf(itemId));
+    const res = submit(session, state, answer, this.host.now());
     this.host.save();
     this.phase = 'feedback';
-    const { input } = this.mode;
+    const { input } = this;
     input.setEnabled(false);
-    const targetBtn = input.markRight(target);
-    const wrongBtn = res.outcome === 'wrong' ? input.markWrong(answer!) : null;
+    const targetBtn = input.markRight(itemId) ?? this.mode.promptEl;
+    const wrongBtn = res.outcome === 'wrong' ? input.markWrong(itemId, answer!) : null;
     this.mode.reveal?.(itemId, res.outcome, target);
     this.mode.play?.(itemId, 'answer');
     this.host.announce(res.events);
@@ -187,10 +195,10 @@ export class PlayShell {
   onKey(e: KeyboardEvent): void {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (this.phase === 'asking') {
-      const a = this.mode.input.fromKey(e);
+      const a = this.input.fromKey(e);
       if (a !== undefined) {
         e.preventDefault();
-        this.answer(a);
+        if (a !== 'handled') this.answer(a.answer);
       }
     } else if (e.key === 'Enter' || e.key === ' ') {
       const btn = this.el.querySelector<HTMLButtonElement>('[data-testid=continue]');

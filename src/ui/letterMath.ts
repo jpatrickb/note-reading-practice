@@ -12,26 +12,26 @@ import {
   rungRows,
   rungTitle,
 } from '../core/letters';
-import { frequency } from '../core/music';
+import { type Letter, frequency } from '../core/music';
 import { clear, h } from './dom';
 import { letterPad } from './letterPad';
 import { type PlayHost, PlayShell } from './playShell';
 import { icon } from './world/icons';
 import './letterMath.css';
 
-export function letterMathPlay(host: PlayHost, synth: Synth): PlayShell {
+export function letterMathPlay(host: PlayHost<Letter>, synth: Synth): PlayShell<Letter> {
   const promptEl = h('div', { class: 'lm-question', 'data-testid': 'lm-question' });
-  const shell: PlayShell = new PlayShell(host, {
+  return new PlayShell<Letter>(host, {
     unit: 'skills',
     screenClass: 'letter-math',
     cardClass: 'staff-card lm-card',
     promptEl,
-    input: letterPad('Letter names', (a) => shell.answer(a)),
+    input: (onAnswer) => letterPad('Letter names', onAnswer, (id) => host.session.mode.engine.answerOf(id)),
     newBadge: '✨ New question! Know it? If not, tap ?',
     correctMs: 1000,
     praiseTarget: true,
-    mastered: () => {
-      const c = letterCounts(host.state);
+    mastered: (state) => {
+      const c = letterCounts(state);
       return c.gold + c.silver;
     },
     renderPrompt: (id) => {
@@ -78,7 +78,6 @@ export function letterMathPlay(host: PlayHost, synth: Synth): PlayShell {
       );
     },
   });
-  return shell;
 }
 
 /** Gold/silver counts for Letter Math. */

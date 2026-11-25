@@ -3,29 +3,29 @@
 import type { Synth } from '../audio/synth';
 import { hintFor } from '../core/hints';
 import { itemById } from '../core/items';
-import { frequency } from '../core/music';
+import { type Letter, frequency } from '../core/music';
 import { masteryCounts } from '../render/keyboard';
 import { renderStaff } from '../render/staff';
 import { clear, h } from './dom';
 import { letterPad } from './letterPad';
 import { type PlayHost, PlayShell } from './playShell';
 
-export function nameItPlay(host: PlayHost, synth: Synth): PlayShell {
+export function nameItPlay(host: PlayHost<Letter>, synth: Synth): PlayShell<Letter> {
   const promptEl = h('div', { class: 'staff-host' });
   const draw = (itemId: string, opts: Parameters<typeof renderStaff>[2] = {}) => {
     const item = itemById(itemId);
     clear(promptEl);
     promptEl.append(renderStaff(item.note, item.clef, opts));
   };
-  const shell: PlayShell = new PlayShell(host, {
+  return new PlayShell<Letter>(host, {
     unit: 'keys',
     cardClass: 'staff-card',
     promptEl,
-    input: letterPad('Note names', (a) => shell.answer(a)),
+    input: (onAnswer) => letterPad('Note names', onAnswer, (id) => host.session.mode.engine.answerOf(id)),
     newBadge: '✨ New note! Know it? If not, tap ?',
     correctMs: 700,
-    mastered: () => {
-      const c = masteryCounts(host.state);
+    mastered: (state) => {
+      const c = masteryCounts(state);
       return c.gold + c.silver;
     },
     renderPrompt: (id) => draw(id),
@@ -48,5 +48,4 @@ export function nameItPlay(host: PlayHost, synth: Synth): PlayShell {
       );
     },
   });
-  return shell;
 }

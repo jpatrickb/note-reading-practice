@@ -1,23 +1,29 @@
 // The A–G + "?" answer pad, shared by Name It, Letter Math and any mode that answers with a letter.
 
-import { LETTERS } from '../core/music';
+import type { Letter } from '../core/music';
 import { h } from './dom';
 
 /** What the play shell needs from any answer input (a letter pad today; accidentals, words later). */
-export interface AnswerInput {
+export interface AnswerInput<A extends string = string> {
   el: HTMLElement;
   setEnabled(enabled: boolean): void;
-  /** Highlight the correct answer; returns its element (for the reaction effects). */
-  markRight(answer: string): HTMLElement;
-  /** Highlight the student's wrong answer; returns its element. */
-  markWrong(answer: string): HTMLElement | null;
-  /** Map a key press to an answer: a string, null for "I don't know", undefined for "not mine". */
-  fromKey(e: KeyboardEvent): string | null | undefined;
+  /** Highlight the right answer for this item; returns the element to react on, if there is one. */
+  markRight(itemId: string): HTMLElement | null;
+  /** Highlight the student's wrong answer; returns its element, if there is one. */
+  markWrong(itemId: string, answer: A): HTMLElement | null;
+  /**
+   * Map a key press to an answer: `{ answer }` (null is "I don't know"), `'handled'` when the input
+   * used the key but is not done (e.g. F, then #), or undefined when the key is not its own.
+   */
+  fromKey(e: KeyboardEvent): { answer: A | null } | 'handled' | undefined;
+  /** Remove listeners and stop sounds when the play screen closes. */
+  dispose?(): void;
 }
 
-const PAD_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+const PAD_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G'] as const;
 
-export function letterPad(label: string, onAnswer: (answer: string | null) => void): AnswerInput {
+/** The A–G + "?" pad. `target` says which letter is right for an item. */
+export function letterPad(label: string, onAnswer: (answer: Letter | null) => void, target: (itemId: string) => Letter): AnswerInput<Letter> {
   const el = h(
     'div',
     { class: 'pad', role: 'group', 'aria-label': label },
@@ -33,20 +39,20 @@ export function letterPad(label: string, onAnswer: (answer: string | null) => vo
         if (enabled) b.classList.remove('pad__key--right', 'pad__key--wrong');
       });
     },
-    markRight(answer) {
-      const b = key(answer)!;
-      b.classList.add('pad__key--right');
+    markRight(itemId) {
+      const b = key(target(itemId));
+      b?.classList.add('pad__key--right');
       return b;
     },
-    markWrong(answer) {
+    markWrong(_itemId, answer) {
       const b = key(answer);
       b?.classList.add('pad__key--wrong');
       return b;
     },
     fromKey(e) {
       const k = e.key.toUpperCase();
-      if ((LETTERS as readonly string[]).includes(k)) return k;
-      return k === '?' || k === '/' ? null : undefined;
+      if ((PAD_LETTERS as readonly string[]).includes(k)) return { answer: k as Letter };
+      return k === '?' || k === '/' ? { answer: null } : undefined;
     },
   };
 }
