@@ -4,6 +4,11 @@ import { type Page, expect, test } from '@playwright/test';
 // calm mode, reduced motion, reward size following real progress, wrong < right, and nothing moving
 // over or behind the staff while a question is up.
 
+// Nothing here is about offline support, so keep the service worker out: its first-visit claim and
+// install can cancel or replace a navigation on WebKit ("Navigation canceled by policy check",
+// "Execution context was destroyed"). pwa.spec.ts covers the service worker itself.
+test.use({ serviceWorkers: 'block' });
+
 const THEMES = ['sunny', 'ocean', 'forest', 'candy', 'space', 'studio'];
 const LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
 const shift = (l: string, n: number) => LETTERS[(((LETTERS.indexOf(l) + n) % 7) + 7) % 7]!;
@@ -52,25 +57,42 @@ async function lastReaction(page: Page) {
 }
 
 /**
- * What actually runs right now, measured from the browser, not from numbers the app records about
- * itself: the longest finite animation (CSS animations + Web Animations, outside the ambient world) in ms from
- * its start, how many are running, and how many particles are alive on the canvas.
+ * What actually runs, measured from the browser, not from numbers the app records about itself:
+ * the longest finite animation (CSS animations + Web Animations, outside the ambient world) in ms
+ * from its start, how many are running, and how many particles are alive on the canvas.
+ *
+ * The reaction lasts under the 700ms auto-advance, so a Playwright round trip after the click can
+ * arrive too late on a slow runner. The page takes its own snapshot a frame after every answer tap
+ * instead; `reactionSnapshots` returns them in tap order.
  */
-function liveReaction(page: Page) {
-  return page.evaluate(() => {
-    let longest = 0;
-    let running = 0;
-    for (const a of document.getAnimations()) {
-      const el = (a.effect as KeyframeEffect | null)?.target as Element | null;
-      if (!el || el.closest('.world') || a.playState !== 'running' || a instanceof CSSTransition) continue; // transitions: colors, progress
-      const end = a.effect!.getComputedTiming().endTime as number;
-      if (!Number.isFinite(end)) continue; // idle loops (blink, breathe) are not a reaction
-      longest = Math.max(longest, end);
-      running++;
-    }
-    return { longest, running, particles: Number(document.querySelector('.fx-layer')?.getAttribute('data-active') ?? 0) };
+async function snapshotReactions(page: Page) {
+  await page.addInitScript(() => {
+    const w = window as unknown as { reactions: unknown[] };
+    w.reactions = [];
+    const measure = () => {
+      let longest = 0;
+      let running = 0;
+      for (const a of document.getAnimations()) {
+        const el = (a.effect as KeyframeEffect | null)?.target as Element | null;
+        if (!el || el.closest('.world') || a.playState !== 'running' || a instanceof CSSTransition) continue; // transitions: colors, progress
+        const end = a.effect!.getComputedTiming().endTime as number;
+        if (!Number.isFinite(end)) continue; // idle loops (blink, breathe) are not a reaction
+        longest = Math.max(longest, end);
+        running++;
+      }
+      return { longest, running, particles: Number(document.querySelector('.fx-layer')?.getAttribute('data-active') ?? 0) };
+    };
+    document.addEventListener('click', (e) => {
+      if (!(e.target as Element).closest('[data-answer]')) return;
+      requestAnimationFrame(() => w.reactions.push(measure()));
+    });
   });
 }
+type Live = { longest: number; running: number; particles: number };
+const reactionSnapshot = async (page: Page, n: number): Promise<Live> => {
+  await expect.poll(() => page.evaluate(() => (window as unknown as { reactions: unknown[] }).reactions.length)).toBeGreaterThan(n);
+  return page.evaluate((i) => (window as unknown as { reactions: Live[] }).reactions[i]!, n);
+};
 
 /** Running animations (CSS + Web Animations) whose element overlaps the staff card. */
 function movingOverStaff(page: Page) {
@@ -169,13 +191,14 @@ test('the OS reduced-motion setting turns calm mode on', async ({ page }) => {
 
 test('a wrong answer gets a smaller, gentler reaction than a correct one', async ({ page }) => {
   await recordMoods(page);
+  await snapshotReactions(page);
   await seed(page, { theme: 'candy' });
   await page.goto('/');
   await page.getByRole('button', { name: /Start/ }).click();
 
   let l = await nextNote(page);
   await page.locator(`[data-answer="${l}"]`).click();
-  const rightLive = await liveReaction(page); // measured right away, while it is still running
+  const rightLive = await reactionSnapshot(page, 0);
   await expect(fx(page)).toHaveAttribute('data-last-kind', 'correct');
   const right = await lastReaction(page);
   expect(await moods(page)).toContain('happy');
@@ -187,7 +210,7 @@ test('a wrong answer gets a smaller, gentler reaction than a correct one', async
 
   l = await nextNote(page);
   await page.locator(`[data-answer="${shift(l, 2)}"]`).click();
-  const wrongLive = await liveReaction(page);
+  const wrongLive = await reactionSnapshot(page, 1);
   await expect(fx(page)).toHaveAttribute('data-last-kind', 'wrong');
   const wrong = await lastReaction(page);
   await expect(page.locator('.coach__mascot')).toHaveAttribute('data-mood', 'encourage');
@@ -202,7 +225,7 @@ test('a wrong answer gets a smaller, gentler reaction than a correct one', async
   await page.getByTestId('continue').click();
   await nextNote(page);
   await page.locator('[data-answer="?"]').click();
-  const idkLive = await liveReaction(page);
+  const idkLive = await reactionSnapshot(page, 2);
   await expect(fx(page)).toHaveAttribute('data-last-kind', 'idk');
   const idk = await lastReaction(page);
   expect(idk.particles).toBe(0);
