@@ -36,6 +36,9 @@ export const NAME_IT = defineItemSet<Item>({
   groups: { treble: build('treble'), bass: build('bass') },
   groupOf: (i) => i.clef,
   answerOf: (i) => i.note.letter,
+  // No transfer between notes (each is its own fact), so first-try credit is the only shortcut:
+  // let it start one answer sooner.
+  pacing: { firstTryRun: 1 },
 });
 
 /** Per clef, in teaching order. */
