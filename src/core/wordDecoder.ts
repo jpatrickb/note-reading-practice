@@ -39,14 +39,12 @@ export const isWordItemId = (id: string) => id.startsWith('word:');
 export const CANONICAL_ORDER: readonly string[] = [
   // treble
   'word:treble:ACE', 'word:treble:AGE', 'word:treble:FACE', 'word:treble:CAFE', 'word:treble:CAB',
-  'word:treble:BED', 'word:treble:FED', 'word:treble:BAG', 'word:treble:BEE', 'word:treble:EGG',
-  'word:treble:ADD', 'word:treble:BEAD', 'word:treble:BEEF', 'word:treble:FADE', 'word:treble:EDGE',
-  'word:treble:BADGE', 'word:treble:DECAF', 'word:treble:FACED', 'word:treble:DECADE', 'word:treble:FACADE',
-  'word:treble:CABBAGE', 'word:treble:BAGGAGE',
+  'word:treble:BED', 'word:treble:BAG', 'word:treble:EGG',
+  'word:treble:ADD', 'word:treble:BEAD', 'word:treble:BEEF', 'word:treble:BADGE',
+  'word:treble:DECAF', 'word:treble:FACADE', 'word:treble:CABBAGE',
   // bass
-  'word:bass:AGED', 'word:bass:FED', 'word:bass:ADD', 'word:bass:FADE', 'word:bass:EDGED',
-  'word:bass:FEED', 'word:bass:FADED', 'word:bass:ADDED', 'word:bass:ACE', 'word:bass:FACE',
-  'word:bass:BAGGED', 'word:bass:BADGE',
+  'word:bass:AGED', 'word:bass:FED', 'word:bass:FADE', 'word:bass:EDGE', 'word:bass:EDGED',
+  'word:bass:FEED', 'word:bass:FADED', 'word:bass:BAGGED',
 ];
 
 const build = (clef: Clef): WordItem[] => WORD_LISTS[clef].map((word) => ({ id: wordId(clef, word), clef, word }));

@@ -23,16 +23,16 @@ export const WORD_LISTS: Record<Clef, readonly string[]> = {
     // letters from G C A F E only
     'ACE', 'AGE', 'FACE', 'CAFE', 'EGG',
     // adds B
-    'CAB', 'BAG', 'BEE', 'BEEF',
+    'CAB', 'BAG', 'BEEF',
     // adds D
-    'ADD', 'FED', 'BED', 'BEAD', 'FADE', 'EDGE', 'BADGE', 'DECAF', 'FACED',
+    'ADD', 'BED', 'BEAD', 'BADGE', 'DECAF',
     // six and seven letters
-    'DECADE', 'FACADE', 'BAGGAGE', 'CABBAGE',
+    'FACADE', 'CABBAGE',
   ],
   bass: [
     // letters from F G E A D only
-    'FED', 'AGED', 'FADE', 'FEED', 'ADD', 'EDGED', 'FADED', 'ADDED',
-    // adds C, then B
-    'ACE', 'FACE', 'BAGGED', 'BADGE',
+    'FED', 'AGED', 'FADE', 'FEED', 'EDGE', 'EDGED', 'FADED',
+    // adds B
+    'BAGGED',
   ],
 };
