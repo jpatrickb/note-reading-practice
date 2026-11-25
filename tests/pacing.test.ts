@@ -64,6 +64,12 @@ describe('pacing: a kid who already knows it flies', () => {
     expect(strict.every((r) => firstOpen(r, rungIds('up2')) === Infinity)).toBe(true);
   });
 
+  it('a good first session still earns silver (regression: the fast track spread it too thin)', () => {
+    for (const [i, r] of fast.entries()) expect(r.sessions[0]!.silver, `seed ${SEEDS[i]}`).toBeGreaterThan(0);
+    const ni = treble(NAME_IT_MODE, knower(0.97, 1200), 1);
+    for (const [i, r] of ni.entries()) expect(r.sessions[0]!.silver, `seed ${SEEDS[i]}`).toBeGreaterThan(0);
+  });
+
   it('Name It: all 13 treble notes open within 2 sessions', () => {
     const sessions = treble(NAME_IT_MODE, knower(0.97, 1200), 3).map((r) => allOpen(r, trebleIds));
     expect(Math.max(...sessions), sessions.join(',')).toBeLessThanOrEqual(2);
@@ -154,6 +160,9 @@ describe('pacing: guessing gains nothing', () => {
     return { fast: fast!, strict: strict! };
   };
 
+  // Over a much bigger sweep (2000 runs of 600 guesses, both modes) a guesser never unlocks
+  // anything, but lucky silvers are not impossible: 23 silver/gold vs 2 under the strict pacing
+  // (about 1 per 50,000 guesses), mostly Name It, where two clean answers now earn silver.
   it('a random guesser earns no silver/gold and unlocks nothing (no more than before)', { timeout: 30_000 }, () => {
     const { fast, strict } = play(guesser, Array.from({ length: 40 }, (_, i) => i));
     expect(fast.mastered).toBe(0);

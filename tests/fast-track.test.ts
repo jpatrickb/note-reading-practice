@@ -199,3 +199,44 @@ describe('remembering after a break', () => {
     expect(recall(s.items['lm:after:C']!, T0 + 5 * DAY)).toBeLessThan(recall(now.items['lm:after:C']!, T0));
   });
 });
+
+describe('silver for an item never missed (amends D27)', () => {
+  /** Name It state where C4 was answered once, correctly and fluently, and recall is ~0.9. */
+  function onceRight(engine: Engine): StudentState {
+    const s = engine.newStudent();
+    Object.assign(s.items[C4!]!, { m: Math.log(9), n: 1, c: 1, last: T0, rt: 1500 });
+    s.rtBaseline = 1500;
+    return s;
+  }
+
+  it('two fluent correct answers with no miss earn silver once the model is confident', () => {
+    const s = name.newStudent();
+    right(name, s, G4!, T0);
+    right(name, s, C4!, T0 + 1000); // first-try credit: recall 0.9
+    const r = right(name, s, C4!, T0 + 60_000);
+    expect(s.items[C4!]!.c).toBe(2);
+    expect(r.events).toContainEqual({ kind: 'silver', itemId: C4 });
+  });
+
+  it('after a miss it still takes three correct answers', () => {
+    const s = onceRight(name);
+    name.recordAnswer(s, C4!, 'wrong', 'D', 1500, T0 + 1000);
+    const events = [1, 2].flatMap((k) => right(name, s, C4!, T0 + k * 60_000).events);
+    expect(s.items[C4!]!.c).toBe(3);
+    expect(events.filter((e) => e.kind === 'silver')).toHaveLength(0);
+  });
+
+  it('two correct answers are not enough while the estimate is still low', () => {
+    const s = name.newStudent();
+    right(name, s, G4!, T0); // no credit on the very first answer: recall 0.67
+    right(name, s, G4!, T0 + 60_000); // ~0.76 < silverP
+    expect(s.items[G4!]!.best).toBe(0);
+  });
+
+  it('the strict pacing keeps three', () => {
+    const fast = onceRight(name);
+    const strict = onceRight(strictName);
+    expect(right(name, fast, C4!, T0 + 60_000).events).toContainEqual({ kind: 'silver', itemId: C4 });
+    expect(right(strictName, strict, C4!, T0 + 60_000).events).toEqual([]);
+  });
+});
