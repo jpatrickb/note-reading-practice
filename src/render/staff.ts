@@ -1,6 +1,6 @@
 // Draws a single-note staff as SVG. Colors come from CSS (classes + currentColor) so themes can restyle it.
 
-import { type Clef, type Note, ledgerLines, noteId, staffPosition } from '../core/music';
+import { type Accidental, type Clef, type Note, ledgerLines, noteId, spokenName, staffPosition } from '../core/music';
 import { GLYPHS } from './glyphs';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -23,6 +23,15 @@ function glyph(name: keyof typeof GLYPHS, x: number, y: number, cls: string) {
   return el('path', { d: GLYPHS[name].path, transform: `translate(${x} ${y}) scale(${K} ${-K})`, class: cls });
 }
 
+/** Glyph drawn for each accidental (none for a natural). */
+export const ACCIDENTAL_GLYPH: Record<Accidental, keyof typeof GLYPHS | null> = {
+  [-2]: 'doubleFlat',
+  [-1]: 'flat',
+  0: null,
+  1: 'sharp',
+  2: 'doubleSharp',
+};
+
 export interface StaffOptions {
   /** Show the note's letter next to it (after answering). */
   label?: string;
@@ -37,7 +46,7 @@ export function renderStaff(note: Note, clef: Clef, opts: StaffOptions = {}): SV
     role: 'img',
     'data-note': noteId(note),
     'data-clef': clef,
-    'aria-label': opts.label ? `${clef} clef, the note ${opts.label}` : `${clef} clef with one note`,
+    'aria-label': opts.label ? `${clef} clef, the note ${spokenName(note)}` : `${clef} clef with one note`,
   });
 
   for (let line = 0; line <= 8; line += 2) {
@@ -54,6 +63,16 @@ export function renderStaff(note: Note, clef: Clef, opts: StaffOptions = {}): SV
     );
   }
   svg.append(glyph('noteheadWhole', NOTE_X - headW / 2, yOf(pos), 'staff__note'));
+
+  // Accidental: vertically centered on the note's line/space, left of the notehead (and clear of any
+  // ledger line). Appended after the notehead so `.staff__note` still finds the head first; it shares
+  // the `staff__note` class so it takes the note's theme colors and answer-state colors.
+  const accGlyph = ACCIDENTAL_GLYPH[note.acc ?? 0];
+  if (accGlyph) {
+    const gap = ledgerLines(pos).length ? 10 : 4;
+    const x = NOTE_X - headW / 2 - gap - GLYPHS[accGlyph].bounds[2] * K;
+    svg.append(glyph(accGlyph, x, yOf(pos), 'staff__note staff__accidental'));
+  }
 
   if (opts.label) {
     const t = el('text', { x: NOTE_X + headW / 2 + 14, y: yOf(pos) + 8, class: 'staff__label' });
