@@ -181,6 +181,7 @@ describe('progress code v3', () => {
     expect(CORE_MODES.map((m) => [m.id, m.tag])).toEqual([
       ['name', 1],
       ['letters', 2],
+      ['place', 3],
     ]);
     expect(new Set(CORE_MODES.map((m) => m.tag)).size).toBe(CORE_MODES.length);
   });
@@ -212,7 +213,7 @@ describe('progress code v3', () => {
         const now = g.decodeAt;
         const expected = { name: withNewItems(g.expected.name), letters: g.expected.letters };
         const v3 = decodeProfile(encodeProfile(expected, now), now);
-        for (const mode of CORE_MODES) {
+        for (const mode of CORE_MODES.filter((m) => m.id in expected)) {
           const a = expected[mode.id as 'name' | 'letters'];
           const b = v3[mode.id]!;
           expectSameBehavior(mode.engine, a, b, now);
@@ -245,8 +246,8 @@ describe('progress code v3', () => {
     // A locked, unplayed item is left out of the code (bitmap only).
     profile.big.items['big:150'] = { ...bigEngine.newStudent().items['big:150']!, unlocked: false };
     const back = decodeProfile(encodeProfile(profile, now, WITH_BIG), now, WITH_BIG);
-    expect(Object.keys(back).sort()).toEqual(['big', 'letters', 'name']);
-    for (const mode of WITH_BIG) expectSameBehavior(mode.engine, profile[mode.id as keyof typeof profile], back[mode.id]!, now);
+    expect(Object.keys(back).sort()).toEqual(WITH_BIG.map((m) => m.id).sort());
+    for (const mode of WITH_BIG.filter((m) => m.id in profile)) expectSameBehavior(mode.engine, profile[mode.id as keyof typeof profile], back[mode.id]!, now);
     expect(back.big!.items['big:299']!.n).toBe(15);
     expect(back.big!.items['big:150']).toEqual({ ...bigEngine.newStudent().items['big:150']!, unlocked: false });
     // Confusions and recent errors are not part of the code (D31).

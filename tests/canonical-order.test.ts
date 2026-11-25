@@ -9,6 +9,7 @@ import { createEngine, recall } from '../src/core/engine';
 import { defineItemSet } from '../src/core/itemset';
 import { NAME_IT, TEACHING_ORDER } from '../src/core/items';
 import { LETTER_MATH } from '../src/core/letters';
+import { PLACE_IT } from '../src/core/placeIt';
 import type { CoreMode } from '../src/core/modes';
 import { T0 } from './helpers';
 
@@ -48,7 +49,21 @@ const LETTER_MATH_GOLDEN = [
   'lm:down7:C', 'lm:down7:G', 'lm:down7:D', 'lm:down7:A', 'lm:down7:E', 'lm:down7:B', 'lm:down7:F',
 ];
 
+/** Place It: index 0..23 (12 notes per clef; append new ones at the end). */
+const PLACE_IT_GOLDEN = [
+  'place:treble:G4', 'place:treble:C4', 'place:treble:A4', 'place:treble:F4',
+  'place:treble:E4', 'place:treble:B4', 'place:treble:D4', 'place:treble:C5',
+  'place:treble:D5', 'place:treble:E5', 'place:treble:F5', 'place:treble:G5',
+  'place:bass:F3', 'place:bass:G3', 'place:bass:E3', 'place:bass:A3',
+  'place:bass:D3', 'place:bass:C3', 'place:bass:B2', 'place:bass:G2',
+  'place:bass:A2', 'place:bass:C4', 'place:bass:B3', 'place:bass:F2',
+];
+
 describe('canonical item order is pinned', () => {
+  it('Place It: every item keeps its index', () => {
+    expect(PLACE_IT.items.map((i) => i.id)).toEqual(PLACE_IT_GOLDEN);
+  });
+
   it('Name It: every item keeps its index', () => {
     expect(NAME_IT.items.map((i) => i.id)).toEqual(NAME_IT_GOLDEN);
     NAME_IT_GOLDEN.forEach((id, idx) => expect(NAME_IT.items.indexOf(NAME_IT.get(id)), id).toBe(idx));

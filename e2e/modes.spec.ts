@@ -31,7 +31,7 @@ async function playSome(page: Page, mode: 'name' | 'letters', questions = 4) {
 test('home shows a card per mode, grouped under headings, with the chosen one marked', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('mode-chooser')).toBeVisible();
-  await expect(page.locator('.mode-card')).toHaveCount(2);
+  await expect(page.locator('.mode-card')).toHaveCount(3);
   await expect(page.getByRole('heading', { name: 'Read notes' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Alphabet & theory' })).toBeVisible();
   await expect(card(page, 'name')).toContainText('Read the note, tap its name');
@@ -66,10 +66,13 @@ test('the keyboard focus ring shows on the chosen card, and arrow keys move the 
   await expect(name).toHaveCSS('outline-color', 'rgb(28, 126, 214)');
   await expect(name).toHaveCSS('outline-style', 'solid');
   // Arrow keys choose the next mode and keep focus on it.
+  await page.keyboard.press('ArrowRight'); // Place It shares the Read notes group
+  await expect(card(page, 'place')).toHaveAttribute('aria-checked', 'true');
   await page.keyboard.press('ArrowRight');
   await expect(card(page, 'letters')).toHaveAttribute('aria-checked', 'true');
   await expect(card(page, 'letters')).toBeFocused();
   await expect(page.getByRole('group', { name: 'Clef' })).toHaveCount(0);
+  await page.keyboard.press('ArrowLeft');
   await page.keyboard.press('ArrowLeft');
   await expect(card(page, 'name')).toHaveAttribute('aria-checked', 'true');
 });

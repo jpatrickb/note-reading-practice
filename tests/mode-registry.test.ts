@@ -66,6 +66,7 @@ describe('the core mode registry', () => {
     expect(CORE_MODES.map((m) => [m.id, m.tag])).toEqual([
       ['name', 1],
       ['letters', 2],
+      ['place', 3],
     ]);
   });
 
@@ -81,7 +82,7 @@ describe('profile storage', () => {
     const profile = loadProfile(store, [...CORE_MODES, MOVES_CORE]);
     for (const m of [...CORE_MODES, MOVES_CORE]) play(m, profile[m.id]!, T0, 20);
     saveProfile(store, profile, [...CORE_MODES, MOVES_CORE]);
-    expect([...store.data.keys()].sort()).toEqual(['nrp:v1:state', 'nrp:v1:state:letters', 'nrp:v1:state:moves']);
+    expect([...store.data.keys()].sort()).toEqual(['nrp:v1:state', 'nrp:v1:state:letters', 'nrp:v1:state:moves', 'nrp:v1:state:place']);
 
     const back = loadProfile(store, [...CORE_MODES, MOVES_CORE]);
     for (const m of [...CORE_MODES, MOVES_CORE]) expect(back[m.id], m.id).toEqual(profile[m.id]);
@@ -98,7 +99,7 @@ describe('profile storage', () => {
     saveProfile(store, { name: CORE_MODES[0]!.engine.newStudent() });
     expect([...store.data.keys()]).toEqual(['nrp:v1:state']);
     saveProfile(store, loadProfile(store));
-    expect(store.data.size).toBe(2);
+    expect(store.data.size).toBe(CORE_MODES.length);
     clearProfile(store);
     expect(store.data.size).toBe(0);
   });
@@ -118,6 +119,7 @@ describe('profile storage', () => {
     const profile = loadProfile(memoryStore());
     let now = play(coreMode('name'), profile.name, T0 - 3 * DAY, 30);
     now = play(coreMode('letters'), profile.letters, now, 30);
+    now = play(coreMode('place'), profile.place!, now, 30);
     const code = encodeProfile(profile, now);
 
     const restored = decodeProfile(code, now);
@@ -160,7 +162,7 @@ describe('migration from today\'s storage keys and settings', () => {
     // Saving again writes the same keys and nothing else.
     const keys = new Set(store.data.keys());
     saveProfile(store, profile);
-    expect(new Set(store.data.keys())).toEqual(keys);
+    for (const k of keys) expect(store.data.has(k), k).toBe(true); // modes with no play yet may add a key
     expect(JSON.parse(store.data.get('nrp:v1:state')!)).toEqual(name);
   });
 
@@ -261,7 +263,7 @@ describe('the UI mode registry', () => {
   const profile = () => loadProfile(memoryStore());
 
   it('registers Name It and Letter Math first, both backed by a core mode', () => {
-    expect(MODES.map((m) => m.id)).toEqual(['name', 'letters']);
+    expect(MODES.map((m) => m.id)).toEqual(['name', 'letters', 'place']);
     for (const m of MODES) {
       expect(m.core, m.id).toBe(coreMode(m.id));
       expect(m.session.engine, m.id).toBe(m.core.engine);
@@ -322,8 +324,8 @@ describe('the UI mode registry', () => {
   });
 
   it('the test-only locked mode exists only behind debug, and is locked with a reason', () => {
-    expect(registeredModes().map((m) => m.id)).toEqual(['name', 'letters']);
-    expect(registeredModes(true).map((m) => m.id)).toEqual(['name', 'letters', 'demo-locked']);
+    expect(registeredModes().map((m) => m.id)).toEqual(['name', 'letters', 'place']);
+    expect(registeredModes(true).map((m) => m.id)).toEqual(['name', 'letters', 'place', 'demo-locked']);
     expect(lockedDemoMode.availability(profile())).toEqual({ ok: false, reason: 'Learn 7 notes in Name It first!' });
     expect(() => lockedDemoMode.createPlay({} as never, {} as never)).toThrow();
     // Its model is not a registered one: nothing about it is saved or put in a code.
@@ -408,17 +410,18 @@ describe('the home mode chooser', () => {
     const { el, onSelect } = render([...MODES, sample('lock', 'music', true)], 'name');
     expect(el.getAttribute('role')).toBe('radiogroup');
     expect(el.getAttribute('aria-label')).toBe('Game');
-    expect(document.querySelectorAll('.mode-card[role="radio"]')).toHaveLength(3);
+    expect(document.querySelectorAll('.mode-card[role="radio"]')).toHaveLength(4);
     expect([...document.querySelectorAll('.mode-card')].filter((c) => c.getAttribute('tabindex') === '0').map((c) => (c as HTMLElement).dataset.mode)).toEqual(['name']);
 
     const press = (key: string) => card('name').dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
     card('name').focus();
+    // Cards sit in their home groups: Name It, Place It (Read notes), Letter Math, then the locked one.
     press('ArrowRight');
-    expect(onSelect).toHaveBeenLastCalledWith('letters');
+    expect(onSelect).toHaveBeenLastCalledWith('place');
     press('ArrowLeft'); // wraps past the locked card back to the last open one
     expect(onSelect).toHaveBeenLastCalledWith('letters');
     press('ArrowDown');
-    expect(onSelect).toHaveBeenLastCalledWith('letters');
+    expect(onSelect).toHaveBeenLastCalledWith('place');
     press('ArrowUp');
     expect(onSelect).toHaveBeenLastCalledWith('letters');
     onSelect.mockClear();
