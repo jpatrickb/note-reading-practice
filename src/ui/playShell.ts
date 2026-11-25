@@ -64,7 +64,7 @@ export class PlayShell<A extends string = string> {
   private phase: 'asking' | 'feedback' | 'lesson' = 'asking';
   private timer = 0;
   private isNew = false;
-  private lesson: LessonId | null = null;
+  private lesson: string | null = null;
   private readonly input: AnswerInput<A>;
   private disposed = false;
   private el!: HTMLElement;
@@ -165,10 +165,10 @@ export class PlayShell<A extends string = string> {
     this.ask();
   }
 
-  private showLesson(id: LessonId): void {
+  private showLesson(id: string): void {
     this.lesson = null;
     this.phase = 'lesson';
-    const lesson = LESSONS[id];
+    const lesson = this.host.session.mode.lessons?.[id] ?? LESSONS[id as LessonId];
     clear(this.chrome.feedback);
     this.chrome.feedback.append(
       h(

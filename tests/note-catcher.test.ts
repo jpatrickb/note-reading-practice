@@ -9,7 +9,9 @@ import { PARAMS } from '../src/core/engine';
 import { NAME_IT } from '../src/core/items';
 import { noteId, parseNote } from '../src/core/music';
 import {
+  BLACK_KEY_TIP,
   CANONICAL_ORDER,
+  CATCHER_LESSONS,
   CATCHER_RANGE,
   MIN_WHITE_KEYS,
   NOTE_CATCHER,
@@ -123,7 +125,7 @@ describe('the octave lesson', () => {
   });
 
   it('has a lesson text that points to middle C, and is the mode\'s detector (Name It\'s is not affected)', () => {
-    expect(LESSONS.octave.body.join(' ')).toMatch(/middle C/);
+    expect(CATCHER_LESSONS.octave.body.join(' ')).toMatch(/middle C/);
     expect(NOTE_CATCHER_MODE.diagnose).toBe(diagnoseCatcher);
     const s = state();
     miss(s, 'catch:treble:G4', 'G5', T0);
@@ -133,36 +135,46 @@ describe('the octave lesson', () => {
 });
 
 describe('a smaller key range for narrow screens', () => {
-  it('fits 44px keys: a phone gets 7 white keys, a portrait iPad about 17, landscape the app column', () => {
+  it('fits 44px keys: a phone gets 6 to 8 white keys, a portrait iPad about 17, landscape the app column', () => {
+    expect(whiteKeysThatFit(320)).toBe(6);
+    expect(whiteKeysThatFit(360)).toBe(7);
     expect(whiteKeysThatFit(375)).toBe(7);
     expect(whiteKeysThatFit(390)).toBe(8);
     expect(whiteKeysThatFit(820)).toBe(17);
     expect(whiteKeysThatFit(1366)).toBe(21);
+    // Every key is at least 44px wide at every supported width (the keys fill the app column).
+    for (const w of [320, 360, 375, 390, 412, 768, 820]) {
+      const shown = Math.max(MIN_WHITE_KEYS, whiteKeysThatFit(w));
+      expect((Math.min(w, 960) - 32) / shown, `${w}px`).toBeGreaterThanOrEqual(44);
+    }
   });
 
   it('shows the whole range when it fits, otherwise a window that always holds the note', () => {
     expect(keyWindow(CATCHER_RANGE.treble, parseNote('G4'), 21, 0.5)).toEqual(CATCHER_RANGE.treble);
     for (const clef of ['treble', 'bass'] as const) {
-      for (const size of [4, 7, 8, 12]) {
+      for (const size of [4, 6, 7, 8, 12]) {
         for (const item of NOTE_CATCHER.groups[clef]!) {
           for (const rand of [0, 0.37, 0.999]) {
             const w = keyWindow(CATCHER_RANGE[clef], item.note, size, rand);
             const keys = pianoKeys(w.low, w.high);
-            const whites = keys.filter((k) => !k.black);
-            expect(whites.length, `${item.id} ${size}`).toBe(Math.max(MIN_WHITE_KEYS, Math.min(size, 99)));
+            expect(keys.filter((k) => !k.black).length, `${item.id} ${size}`).toBe(Math.max(MIN_WHITE_KEYS, size));
             expect(keys.map((k) => k.id), `${item.id} ${size} ${rand}`).toContain(noteId(item.note));
-            const all = pianoKeys(CATCHER_RANGE[clef].low, CATCHER_RANGE[clef].high).map((k) => k.id);
-            expect(all).toContain(w.low);
-            expect(all).toContain(w.high);
           }
         }
       }
     }
   });
 
-  it('puts the note in varied places in the window, so position alone says little', () => {
-    const spots = new Set([0, 0.2, 0.4, 0.6, 0.8, 0.99].map((r) => keyWindow(CATCHER_RANGE.treble, parseNote('G4'), 7, r).low));
-    expect(spots.size).toBeGreaterThan(2);
+  it('puts every note, the lowest and highest too, at varied places in the window', () => {
+    for (const [clef, note] of [['treble', 'A3'], ['treble', 'A5'], ['bass', 'C2'], ['bass', 'C4']] as const) {
+      const at = new Set(
+        [0, 0.2, 0.4, 0.6, 0.8, 0.99].map((r) => {
+          const w = keyWindow(CATCHER_RANGE[clef], parseNote(note), 7, r);
+          return pianoKeys(w.low, w.high).findIndex((k) => k.id === note);
+        }),
+      );
+      expect(at.size, `${clef} ${note}`).toBeGreaterThan(3);
+    }
   });
 
   it('only names keys by place while a question is open', () => {
@@ -221,6 +233,7 @@ describe('the Note Catcher play screen', () => {
     }
     expect(document.querySelector('.staff')!.getAttribute('aria-label')).not.toMatch(/the note/);
     expect(document.querySelector('.staff__label')).toBeNull();
+    expect(piano.querySelectorAll('.piano__dot')).toHaveLength(0);
     expect(synth.note).not.toHaveBeenCalled();
     expect(s.session.current).not.toBeNull();
   });
@@ -272,7 +285,45 @@ describe('the Note Catcher play screen', () => {
     const s = setup();
     await tick();
     expect(document.querySelectorAll('.piano__key--white')).toHaveLength(7);
+    Object.defineProperty(window, 'innerWidth', { value: 320, configurable: true });
+    document.body.innerHTML = '';
+    const small = setup();
+    await tick();
+    expect(document.querySelectorAll('.piano__key--white')).toHaveLength(6);
+    expect(keyEl(answerOf(small))).not.toBeNull();
     expect(keyEl(answerOf(s))).not.toBeNull();
+  });
+
+  it('a black key is not an answer: it says so, scores nothing and lets the kid tap again', async () => {
+    const s = setup();
+    await tick();
+    const black = document.querySelector<HTMLButtonElement>('.piano__key--black')!;
+    black.click();
+    expect(document.querySelector('[data-testid=catcher-tip]')!.textContent).toBe(BLACK_KEY_TIP);
+    expect(s.session.results).toHaveLength(0);
+    expect(s.session.current).not.toBeNull();
+    expect(cont()).toBeNull();
+    expect(black.dataset.mark).toBeUndefined();
+    press(answerOf(s)); // the next tap is the answer, and clears the tip
+    expect(s.session.results[0]!.outcome).toBe('correct');
+    expect(document.querySelector('[data-testid=catcher-tip]')!.textContent).toBe('');
+  });
+
+  it('the middle-C dot never shows during a question (it would mark C4 answers), only after the answer', async () => {
+    const s = setup();
+    for (let i = 0; i < 3; i++) {
+      await tick();
+      expect(document.querySelectorAll('.piano__dot'), `question ${i}`).toHaveLength(0);
+      const want = answerOf(s);
+      press(want);
+      expect(document.querySelectorAll('.piano__dot'), `after answer ${i}`).toHaveLength(1);
+      vi.advanceTimersByTime(1700);
+    }
+  });
+
+  it('has the octave lesson for itself, and Name It keeps its own lessons', () => {
+    expect(NOTE_CATCHER_MODE.lessons!.octave!.body.join(' ')).toMatch(/middle C/);
+    expect(Object.keys(LESSONS).sort()).toEqual(['clefSwap:bass', 'clefSwap:treble', 'neighbor']);
   });
 
   it('is registered as a Find keys mode with its own map', () => {

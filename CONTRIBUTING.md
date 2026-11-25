@@ -91,7 +91,10 @@ summary, My progress, save/load, debug) never names a mode, so nothing else chan
    - `blurb`: 8 words at most; `group`: one of the home headings in `MODE_GROUPS` (`src/ui/mode.ts`).
    - `createPlay(host, env)` builds a `PlayShell` (prompt, input, feedback); `env.synth` is the synth.
    - `lanes: 'clefs'` shows the clef picker; `availability(profile)` locks the mode with a friendly
-     reason (it is shown, never hidden); `session` adds a misconception detector.
+     reason (it is shown, never hidden); `session` adds a misconception detector: `{ engine, diagnose, lessons }`, where `diagnose(state, now)`
+     returns a lesson id (or null) and `lessons` is your own table `{ [id]: { title, body } }`. Keep a mode's
+     lessons in its own file; `diagnose.ts` and its `LESSONS` table are Name It's only (see
+     `src/core/noteCatcher.ts`). A cooldown of your own goes in `state.lessonsSeen[id]`.
    - `icon` is a built-in `IconName` or a function returning your own inline SVG.
 4. **Register**: one import and one entry in `MODES` (`src/ui/modes.ts`).
 5. **Check**: `tests/mode-registry.test.ts` covers every registered mode (blurb length, hooks, labels,

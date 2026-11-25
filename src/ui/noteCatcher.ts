@@ -8,6 +8,7 @@ import { hintFor } from '../core/hints';
 import { coreMode } from '../core/modes';
 import { type Clef, frequency, midi, noteId, parseNote } from '../core/music';
 import {
+  BLACK_KEY_TIP,
   CATCHER_RANGE,
   type CatchItem,
   NOTE_CATCHER,
@@ -63,7 +64,8 @@ function catcherInput(synth: Synth, onAnswer: (answer: string | null) => void, t
   let open = true;
   const slot = h('div', { class: 'catcher-input__piano' });
   const idk = h('button', { class: 'pad__key pad__idk catcher__idk', 'data-answer': '?', 'aria-label': "I don't know", onClick: () => answer(null) }, '?');
-  const el = h('div', { class: 'catcher-input', role: 'group', 'aria-label': 'Answer with a piano key' }, slot, idk);
+  const tip = h('p', { class: 'catcher__tip', role: 'status', 'data-testid': 'catcher-tip' });
+  const el = h('div', { class: 'catcher-input', role: 'group', 'aria-label': 'Answer with a piano key' }, slot, tip, idk);
 
   const label = (named: boolean) => {
     const neutral = neutralKeyLabels(keys);
@@ -74,8 +76,23 @@ function catcherInput(synth: Synth, onAnswer: (answer: string | null) => void, t
     piano?.el.setAttribute('aria-label', named ? 'Piano keyboard' : 'Piano keys');
   };
 
+  /** After the answer: the landmark dot on middle C, as the piano's own 'middleC' label draws it. */
+  function showMiddleC() {
+    const c4 = piano?.el.querySelector<HTMLElement>('[data-note="C4"]');
+    if (!c4 || c4.querySelector('.piano__dot')) return;
+    const dot = h('span', { class: 'piano__dot', 'aria-hidden': 'true' });
+    c4.prepend(dot);
+  }
+
   function answer(a: string | null) {
     if (!open) return;
+    // A black key is never an answer here: say so, with no score, and let the kid tap again.
+    if (a !== null && parseNote(a).acc) {
+      tip.textContent = BLACK_KEY_TIP;
+      synth.note(frequency(parseNote(a)));
+      return;
+    }
+    tip.textContent = '';
     given = a;
     // The pressed key sounds at once (D4); the shell then plays the right one after a miss.
     if (a !== null) synth.note(frequency(parseNote(a)));
@@ -90,10 +107,13 @@ function catcherInput(synth: Synth, onAnswer: (answer: string | null) => void, t
       piano?.dispose();
       const range = keyWindow(CATCHER_RANGE[item.clef], item.note, whiteKeysThatFit(window.innerWidth), Math.random());
       keys = pianoKeys(range.low, range.high);
-      piano = createPiano({ low: range.low, high: range.high, labels: 'middleC', onPress: (_m, id) => answer(id) });
+      // No middle-C dot while the question is open: it would mark every C4 answer (and its absence would
+      // mark C4 by elimination). The dot appears with the answer, as a landmark (see setEnabled).
+      piano = createPiano({ low: range.low, high: range.high, labels: 'none', onPress: (_m, id) => answer(id) });
       clear(slot);
       slot.append(piano.el);
       given = null;
+      tip.textContent = '';
       label(false);
     },
     setEnabled(enabled) {
@@ -103,7 +123,10 @@ function catcherInput(synth: Synth, onAnswer: (answer: string | null) => void, t
       if (enabled) {
         piano?.clearMarks();
         label(false);
-      } else label(true);
+      } else {
+        label(true);
+        showMiddleC();
+      }
     },
     markRight(itemId) {
       const target = targetOf(itemId);

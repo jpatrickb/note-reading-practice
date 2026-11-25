@@ -1,16 +1,19 @@
 // Note Catcher: a note on the staff, tap its exact key on the piano (staff → keyboard location).
 //
 // Items are (clef, note), the same notes and teaching order as Name It but with their own learner
-// model (D55). The answer is the exact key's note id ('G4', or 'C#4' for a black key), so octave
-// matters: the right letter in the wrong octave is a wrong answer, with its own kind explanation.
+// model (D55). The answer is the exact key's note id ('G4'), so octave
+// matters (black keys are never submitted: the UI just says to try again): the right letter in the wrong octave is a wrong answer, with its own kind explanation.
 
-import { COOLDOWN_MS, type LessonId, WINDOW } from './diagnose';
 import { createEngine } from './engine';
 import { TEACHING_ORDER } from './items';
 import { defineItemSet } from './itemset';
 import { type Clef, type Note, diatonic, fromDiatonic, noteId, parseNote } from './music';
 import type { SessionMode } from './session';
 import type { StudentState } from './engine';
+
+/** How many recent errors the octave lesson looks at, and the quiet time after showing it. */
+const WINDOW = 8;
+const COOLDOWN_MS = 30 * 60_000;
 
 export interface CatchItem {
   id: string;
@@ -47,7 +50,8 @@ export const NOTE_CATCHER = defineItemSet<CatchItem, string>({
   groupOf: (i) => i.clef,
   // The exact key: 'G4'. Octave matters.
   answerOf: (i) => noteId(i.note),
-  // Same pacing as Name It: each note is its own fact.
+  // First-try credit after 1 right answer in a row (PARAMS' default is 2), the same as Name It: each
+  // note is its own fact, and with ~30 keys a guesser is very unlikely to string one together.
   pacing: { firstTryRun: 1 },
 });
 
@@ -60,24 +64,25 @@ export const CATCHER_RANGE: Record<Clef, { low: string; high: string }> = {
   bass: { low: 'C2', high: 'E4' },
 };
 
-/** The smallest key range worth showing: an octave, so the keys can still be told apart by pattern. */
-export const MIN_WHITE_KEYS = 7;
+/**
+ * The fewest white keys ever shown. 6 white keys have no letter twin (an octave has 7), and still
+ * give 6 or more answers (D63). Fewer than this would make the keys bigger than 44px for no reason.
+ */
+export const MIN_WHITE_KEYS = 6;
 
 /**
  * The white keys to show when the screen is too narrow for the clef's whole range at ≥ 44px a key:
- * `size` white keys (≥ 7) inside the range, always containing `target`, at a random offset so the
- * window's position gives little away. `rand` is in [0, 1). Returns white-key note ids.
+ * `size` white keys (at least 6) that contain `target`, at a random offset (`rand` in [0, 1)). The
+ * window may run past the clef's range, so the lowest and highest notes are not always at an edge
+ * and the window's position says little about where in the staff the note is.
  */
 export function keyWindow(range: { low: string; high: string }, target: Note, size: number, rand: number): { low: string; high: string } {
   const lo = diatonic(parseNote(range.low));
   const hi = diatonic(parseNote(range.high));
-  const total = hi - lo + 1;
-  const n = Math.max(MIN_WHITE_KEYS, Math.min(size, total));
-  if (n >= total) return range;
+  const n = Math.max(MIN_WHITE_KEYS, size);
+  if (n >= hi - lo + 1) return range;
   const t = diatonic(target);
-  const first = Math.max(lo, t - n + 1);
-  const last = Math.min(t, hi - n + 1);
-  const start = first + Math.floor(rand * (last - first + 1));
+  const start = Math.max(0, t - n + 1 + Math.floor(rand * n));
   return { low: noteId(fromDiatonic(start)), high: noteId(fromDiatonic(start + n - 1)) };
 }
 
@@ -124,7 +129,7 @@ export function missText(item: CatchItem, answer: string): string {
 // ───────────────────────── diagnose ─────────────────────────
 
 /** Right letter, wrong octave, ≥ 3 of the last 8 errors: suggest finding middle C first. */
-export function diagnoseCatcher(state: StudentState, now: number): LessonId | null {
+export function diagnoseCatcher(state: StudentState, now: number): string | null {
   const errors = state.recentErrors.slice(-WINDOW).filter((e) => e.itemId.startsWith('catch:'));
   const octaveMisses = errors.filter((e) => classifyMiss(catchItem(e.itemId), e.answer).kind === 'octave');
   if (octaveMisses.length < 3) return null;
@@ -134,4 +139,19 @@ export function diagnoseCatcher(state: StudentState, now: number): LessonId | nu
   return 'octave';
 }
 
-export const NOTE_CATCHER_MODE: SessionMode<string> = { engine: catcherEngine, diagnose: diagnoseCatcher };
+/** Note Catcher's own mini-lessons (Name It's live in diagnose.ts). */
+export const CATCHER_LESSONS = {
+  octave: {
+    title: 'Right letter, different key!',
+    body: [
+      'You found the right letter, but in a different octave. The piano repeats the same letters again and again.',
+      'Find middle C first: it sits just left of the two black keys in the middle of the piano, and on its own little line on the staff.',
+      'Then count up or down from middle C, one white key at a time, until you reach your note.',
+    ],
+  },
+} as const;
+
+export const NOTE_CATCHER_MODE: SessionMode<string> = { engine: catcherEngine, diagnose: diagnoseCatcher, lessons: CATCHER_LESSONS };
+
+/** Shown (not scored) when a black key is tapped: no staff note here is a black key, so just try again. */
+export const BLACK_KEY_TIP = "That's a black key. This note is a white key. Try again!";

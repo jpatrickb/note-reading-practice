@@ -9,6 +9,13 @@
 .catcher-input__piano {
   width: 100%;
 }
+.catcher__tip {
+  margin: 0;
+  min-height: 1.4em;
+  font-weight: 700;
+  text-align: center;
+  color: var(--ink);
+}
 .catcher__idk {
   min-width: 96px;
   min-height: 56px;
