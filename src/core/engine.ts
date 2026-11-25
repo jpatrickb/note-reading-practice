@@ -353,7 +353,9 @@ export interface Engine<I extends PracticeItem = PracticeItem, A extends string 
     now: number,
   ): AnswerResult;
   /**
-   * Record an answer given in the placement round (see placement.ts): the item's learner model,
+   * placement.ts ONLY (modes must use `session.submit`). Throws unless the item has never been
+   * answered: placement never repeats an item, and repeated calls would pre-train an item so the
+   * next real answer earned silver at once. Record an answer given in the placement round: the item's learner model,
    * speed baseline and confusions update as for any answer, but it is evidence about where the kid
    * is, not play. It never earns silver, gold or polish (decision D12), never touches the lane's
    * run of correct answers, and never unlocks or earns first-try credit: the fast track starts
@@ -484,6 +486,7 @@ export function createEngine<I extends PracticeItem, A extends string = Letter>(
   ): void {
     const it = state.items[itemId];
     if (!it) throw new Error(`Unknown item: ${itemId}`);
+    if (it.n !== 0) throw new Error('recordPlacementAnswer is for the first sighting of an item (placement only)');
     const { best, silverDay } = it;
     // run 0: no "clean" early silver; the rest of the model update is the normal one.
     applyAnswer(state, itemId, outcome, answer, rtMs, now, pacing, 0);

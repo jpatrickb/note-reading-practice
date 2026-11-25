@@ -20,11 +20,16 @@
 // and the mastery levels stay as they were: medals still need the kid's own correct answers in
 // play (D12, D27).
 //
+// Needs an answer space of at least 5: each level is a 1-in-n^2 lucky pass (D63 warns about
+// 3-answer modes), so a mode with fewer answers should not use placement without more checks.
+// Placement answers feed practiceDays, confusions and recentErrors like any answer.
+//
 // COMPOSING WITH FAST PACING (D60-D66). Placement chooses where the normal engine starts; it is
 // not evidence the fast track may count again. Placement answers don't touch the lane's run of
 // correct answers, don't earn first-try credit and don't unlock anything. Seeded items are unseen
-// (n = 0) at a prior below the unlock bar, so they are "weak" under D64 until the kid has
-// answered them: the engine must still verify them (need-weighted, D34), and first-try credit,
+// (n = 0) with a prior ABOVE the unlock bar, so recall alone doesn't hold them back: they are
+// "weak" under D64 only through minSeen (n < 2; cruising exempts n = 0 only, so answered-once items
+// still hold it back). The engine must still verify them: the engine must still verify them (need-weighted, D34), and first-try credit,
 // cruising and transfer then verify them in a session or two. A kid placed too high is corrected
 // by the same rule; a kid placed too low (a sandbagger) climbs out quickly on the fast track.
 
@@ -40,7 +45,7 @@ export const STOP_BRACKET = 2;
 export const VERIFY_ABOVE = 3;
 /** ...with this many correct answers on items spread below the frontier. */
 export const VERIFY_CHECKS = 3;
-/** Recall seeded for items below the frontier: moderate, below silverP (0.85). */
+/** Recall seeded for items below the frontier: moderate, above unlockP (0.7) and below silverP (0.85). */
 export const PLACEMENT_PRIOR = 0.75;
 /** Stability (hours) seeded with the prior. */
 export const PLACEMENT_STABILITY = 24;
@@ -254,7 +259,12 @@ export function applyPlacement(engine: Engine, state: StudentState, run: Placeme
   if (run.answers.length === 0 || !canPlace(engine, state, run.group)) {
     return { ...result, applied: false, events: [] };
   }
-  for (const a of run.answers) engine.recordPlacementAnswer(state, a.itemId, a.outcome, a.answer, a.rtMs, a.at);
+  // Answers on items that stay locked are not recorded: a locked item with n = 1 would lose its
+  // "New note!" introduction (and transfer prior) when it opens. They only shaped the search.
+  const openIds = new Set(result.open);
+  for (const a of run.answers) {
+    if (openIds.has(a.itemId)) engine.recordPlacementAnswer(state, a.itemId, a.outcome, a.answer, a.rtMs, a.at);
+  }
   const prior = Math.log(PLACEMENT_PRIOR / (1 - PLACEMENT_PRIOR));
   run.ids.forEach((id, i) => {
     const it = state.items[id]!;

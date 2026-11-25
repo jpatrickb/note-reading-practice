@@ -102,11 +102,16 @@ describe.each(LANES)('placement: $name', (lane) => {
     expect(low / runs).toBeGreaterThanOrEqual(0.99);
   });
 
-  it('a kid who guesses on what they do not know is placed near what they do', () => {
+  it('a kid who guesses on what they do not know is placed near what they do (rate over seeds)', () => {
     for (const k of KS) {
-      const r = placementResult(engine, place(lane, knowsFirst(lane, k, 1, 'guess'), 3));
-      expect(r.frontier).toBeLessThanOrEqual(k + 2);
-      expect(r.frontier).toBeGreaterThanOrEqual(k - 2);
+      let near = 0;
+      const runs = 200;
+      for (let seed = 1; seed <= runs; seed++) {
+        const r = placementResult(engine, place(lane, knowsFirst(lane, k, 1, 'guess'), seed));
+        if (Math.abs(r.frontier - k) <= 2) near++;
+        expect(r.frontier, `k=${k} seed ${seed}`).toBeLessThanOrEqual(k + 6);
+      }
+      expect(near / runs, `k=${k}`).toBeGreaterThanOrEqual(0.85);
     }
   });
 
@@ -153,7 +158,11 @@ describe.each(LANES)('placement: $name', (lane) => {
           expect(recall(it, T0), id).toBeLessThan(PARAMS.silverP);
         }
       });
-      for (const a of run.answers) expect(state.items[a.itemId]!.n).toBe(1);
+      for (const a of run.answers) {
+        const i = ids.indexOf(a.itemId);
+        // Answers on items that stay locked are not recorded (they keep their "New note!" intro).
+        expect(state.items[a.itemId]!.n, a.itemId).toBe(i < res.open.length ? 1 : 0);
+      }
       expect(state.runs?.[group] ?? 0).toBe(0);
     });
 
@@ -169,6 +178,15 @@ describe.each(LANES)('placement: $name', (lane) => {
       const state = engine.newStudent();
       const res = applyPlacement(engine, state, run);
       if (res.open.length < size) expect(engine.maybeUnlock(state, group, T0 + HOUR)).toBeNull();
+    });
+
+    it.each([4, 10])('holds back even while cruising (k=%i): answered-once seeded items are weak (D64, minSeen)', (k) => {
+      const run = place(lane, knowsFirst(lane, k), 2);
+      const state = engine.newStudent();
+      const res = applyPlacement(engine, state, run);
+      state.runs = { [group]: 4 };
+      expect(res.open.length).toBeLessThan(size);
+      expect(engine.maybeUnlock(state, group, T0 + HOUR)).toBeNull();
     });
   });
 });
@@ -208,6 +226,13 @@ describe('placement: edge cases', () => {
     const before = structuredClone(state);
     expect(applyPlacement(engine, state, place(lane, knowsFirst(lane, 10), 2)).applied).toBe(false);
     expect(state).toEqual(before);
+  });
+
+  it('the engine hook is for first sightings only: a second call on an item throws', () => {
+    const state = engine.newStudent();
+    const id = engine.set.groups[group]![0]!.id;
+    engine.recordPlacementAnswer(state, id, 'correct', 'G', 1500, T0);
+    expect(() => engine.recordPlacementAnswer(state, id, 'correct', 'G', 1500, T0 + 1)).toThrow(/placement only/);
   });
 
   it('an unknown lane cannot be placed', () => {
@@ -289,7 +314,7 @@ describe('placement and the normal engine after it', () => {
     }
   });
 
-  it.each(LANES)('$name: sandbagging gains nothing lasting over an honest placement', (lane) => {
+  it.each(LANES)('$name: a sandbagger ends within 2 items of an honestly placed kid', (lane) => {
     const kid = knowsFirst(lane, 10);
     const sand = lane.engine.newStudent();
     applyPlacement(lane.engine, sand, place(lane, sayIdk, 1));
@@ -300,11 +325,18 @@ describe('placement and the normal engine after it', () => {
     expect(openCount(lane, a.state)).toBeGreaterThanOrEqual(openCount(lane, b.state) - 2);
   });
 
-  it.each(LANES)('$name: a guesser gets no inflated start and earns no rewards afterwards', (lane) => {
+  it.each(LANES)('$name: guessers get no inflated start (rate) and earn no rewards afterwards', (lane) => {
+    let low = 0;
+    const runs = 300;
+    for (let seed = 1; seed <= runs; seed++) {
+      const state = lane.engine.newStudent();
+      applyPlacement(lane.engine, state, place(lane, randomGuesser<string>(LETTERS), seed));
+      if (openCount(lane, state) <= PARAMS.initialUnlock + 1) low++;
+    }
+    expect(low / runs).toBeGreaterThanOrEqual(0.99);
     for (const seed of [1, 2, 3]) {
       const state = lane.engine.newStudent();
       applyPlacement(lane.engine, state, place(lane, randomGuesser<string>(LETTERS), seed));
-      expect(openCount(lane, state)).toBeLessThanOrEqual(PARAMS.initialUnlock + 1);
       const after = play(lane, state, randomGuesser<string>(LETTERS), 10, seed, DAY2);
       expect(after.events.filter((e) => e !== 'polished')).toEqual([]);
     }
