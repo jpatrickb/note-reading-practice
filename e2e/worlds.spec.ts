@@ -22,6 +22,24 @@ async function nextNote(page: Page): Promise<string> {
   return (await page.locator('svg.staff').getAttribute('data-note'))![0]!;
 }
 
+/**
+ * Record every mood the mascot takes. A correct answer's "happy" lasts only until the 700ms
+ * auto-advance, which a slow runner can outrun before a check gets to look.
+ */
+async function recordMoods(page: Page) {
+  await page.addInitScript(() => {
+    const w = window as unknown as { moods: string[] };
+    w.moods = [];
+    new MutationObserver((records) => {
+      for (const r of records) {
+        const el = r.target as Element;
+        if (el.classList.contains('coach__mascot')) w.moods.push(el.getAttribute('data-mood') ?? '');
+      }
+    }).observe(document, { subtree: true, attributes: true, attributeFilter: ['data-mood'] });
+  });
+}
+const moods = (page: Page) => page.evaluate(() => (window as unknown as { moods: string[] }).moods);
+
 const fx = (page: Page) => page.locator('.fx-layer');
 
 async function lastReaction(page: Page) {
@@ -99,6 +117,7 @@ test('the selected mode / clef stands out clearly (Space)', async ({ page }) => 
 });
 
 test('calm mode: the toggle persists and turns ambient motion and effects off', async ({ page, hasTouch }) => {
+  await recordMoods(page);
   await seed(page, { theme: 'ocean' });
   await page.goto('/');
   await expect(page.locator('html')).toHaveAttribute('data-calm', 'false');
@@ -127,7 +146,7 @@ test('calm mode: the toggle persists and turns ambient motion and effects off', 
   await expect(fx(page)).toHaveAttribute('data-last-kind', 'correct');
   expect(await lastReaction(page)).toMatchObject({ particles: 0, ms: 0 });
   // The mascot still shows it is happy, just without the hop.
-  await expect(page.locator('.coach__mascot')).toHaveAttribute('data-mood', 'happy');
+  expect(await moods(page)).toContain('happy');
 });
 
 test('the OS reduced-motion setting turns calm mode on', async ({ page }) => {
@@ -149,6 +168,7 @@ test('the OS reduced-motion setting turns calm mode on', async ({ page }) => {
 });
 
 test('a wrong answer gets a smaller, gentler reaction than a correct one', async ({ page }) => {
+  await recordMoods(page);
   await seed(page, { theme: 'candy' });
   await page.goto('/');
   await page.getByRole('button', { name: /Start/ }).click();
@@ -158,7 +178,7 @@ test('a wrong answer gets a smaller, gentler reaction than a correct one', async
   const rightLive = await liveReaction(page); // measured right away, while it is still running
   await expect(fx(page)).toHaveAttribute('data-last-kind', 'correct');
   const right = await lastReaction(page);
-  await expect(page.locator('.coach__mascot')).toHaveAttribute('data-mood', 'happy');
+  expect(await moods(page)).toContain('happy');
   expect(right.particles).toBeGreaterThan(0);
   expect(right.particles).toBeLessThanOrEqual(20); // small: the big show is saved for new mastery
   expect(right.ms).toBeLessThan(700); // fits inside the auto-advance
