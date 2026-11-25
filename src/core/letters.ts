@@ -34,7 +34,8 @@ export const LETTER_GROUP = 'letters';
  *  - Numbered intervals start with 2nds and 3rds (new names for steps and skips), then octaves,
  *    5ths, 4ths, 6ths, 7ths. Their start letters go around the circle of fifths.
  *
- * Item ids depend on (rung, start) only, but the progress code depends on this ORDER: only append.
+ * Item ids depend on (rung, start) only. This is the teaching order: the progress-code order is
+ * CANONICAL_ORDER below.
  */
 const CIRCLE = 'CGDAEBF';
 export const LADDER: { rung: Rung; starts: string }[] = [
@@ -78,6 +79,50 @@ export function rungTitle(rung: Rung): string {
   return `${ordinal(rungSize(rung)!)} ${rung.startsWith('up') ? 'up' : 'down'}`;
 }
 
+/**
+ * The CANONICAL order of Letter Math items: progress codes store one record per item by its index
+ * here. APPEND-ONLY: never reorder or remove (tests/canonical-order.test.ts pins every index).
+ * LADDER above is the teaching order and may be edited freely; new items get appended here.
+ */
+export const CANONICAL_ORDER: readonly string[] = [
+  // after
+  'lm:after:C', 'lm:after:E', 'lm:after:A', 'lm:after:G', 'lm:after:D', 'lm:after:F', 'lm:after:B',
+  // before
+  'lm:before:D', 'lm:before:G', 'lm:before:B', 'lm:before:A', 'lm:before:E', 'lm:before:F', 'lm:before:C',
+  // skipUp
+  'lm:skipUp:C', 'lm:skipUp:E', 'lm:skipUp:G', 'lm:skipUp:B', 'lm:skipUp:D', 'lm:skipUp:F', 'lm:skipUp:A',
+  // skipDown
+  'lm:skipDown:C', 'lm:skipDown:A', 'lm:skipDown:F', 'lm:skipDown:D', 'lm:skipDown:B', 'lm:skipDown:G', 'lm:skipDown:E',
+  // up2
+  'lm:up2:C', 'lm:up2:G', 'lm:up2:D', 'lm:up2:A', 'lm:up2:E', 'lm:up2:B', 'lm:up2:F',
+  // down2
+  'lm:down2:C', 'lm:down2:G', 'lm:down2:D', 'lm:down2:A', 'lm:down2:E', 'lm:down2:B', 'lm:down2:F',
+  // up3
+  'lm:up3:C', 'lm:up3:G', 'lm:up3:D', 'lm:up3:A', 'lm:up3:E', 'lm:up3:B', 'lm:up3:F',
+  // down3
+  'lm:down3:C', 'lm:down3:G', 'lm:down3:D', 'lm:down3:A', 'lm:down3:E', 'lm:down3:B', 'lm:down3:F',
+  // up8
+  'lm:up8:C', 'lm:up8:G', 'lm:up8:D', 'lm:up8:A', 'lm:up8:E', 'lm:up8:B', 'lm:up8:F',
+  // down8
+  'lm:down8:C', 'lm:down8:G', 'lm:down8:D', 'lm:down8:A', 'lm:down8:E', 'lm:down8:B', 'lm:down8:F',
+  // up5
+  'lm:up5:C', 'lm:up5:G', 'lm:up5:D', 'lm:up5:A', 'lm:up5:E', 'lm:up5:B', 'lm:up5:F',
+  // down5
+  'lm:down5:C', 'lm:down5:G', 'lm:down5:D', 'lm:down5:A', 'lm:down5:E', 'lm:down5:B', 'lm:down5:F',
+  // up4
+  'lm:up4:C', 'lm:up4:G', 'lm:up4:D', 'lm:up4:A', 'lm:up4:E', 'lm:up4:B', 'lm:up4:F',
+  // down4
+  'lm:down4:C', 'lm:down4:G', 'lm:down4:D', 'lm:down4:A', 'lm:down4:E', 'lm:down4:B', 'lm:down4:F',
+  // up6
+  'lm:up6:C', 'lm:up6:G', 'lm:up6:D', 'lm:up6:A', 'lm:up6:E', 'lm:up6:B', 'lm:up6:F',
+  // down6
+  'lm:down6:C', 'lm:down6:G', 'lm:down6:D', 'lm:down6:A', 'lm:down6:E', 'lm:down6:B', 'lm:down6:F',
+  // up7
+  'lm:up7:C', 'lm:up7:G', 'lm:up7:D', 'lm:up7:A', 'lm:up7:E', 'lm:up7:B', 'lm:up7:F',
+  // down7
+  'lm:down7:C', 'lm:down7:G', 'lm:down7:D', 'lm:down7:A', 'lm:down7:E', 'lm:down7:B', 'lm:down7:F',
+];
+
 function buildItems(): LetterItem[] {
   return LADDER.flatMap(({ rung, starts }) =>
     [...starts].map((s) => ({ id: `lm:${rung}:${s}`, rung, start: s as Letter, steps: rungSteps(rung) })),
@@ -91,6 +136,7 @@ export function letterAnswer(item: LetterItem): Letter {
 export const LETTER_MATH = defineItemSet<LetterItem>({
   id: 'letters',
   groups: { [LETTER_GROUP]: buildItems() },
+  order: CANONICAL_ORDER,
   groupOf: () => LETTER_GROUP,
   answerOf: letterAnswer,
   // Items of a rung predict each other: ace a few and the rest of the rung opens (see PACING).
