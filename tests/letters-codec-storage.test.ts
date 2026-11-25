@@ -52,7 +52,9 @@ function expectSameModel(a: StudentState, b: StudentState, ids: string[], now: n
     expect(y.best, id).toBe(x.best);
     expect(y.n, id).toBe(Math.min(15, x.n));
     expect(y.c, id).toBe(Math.min(15, x.c));
-    expect(y.silverDay, id).toBe(x.silverDay);
+    // A compact gold record leaves out silverDay (only silver→gold reads it); a plain one keeps it.
+    if (x.best === 2) expect([x.silverDay, -1], id).toContain(y.silverDay);
+    else expect(y.silverDay, id).toBe(x.silverDay);
     expect(y.m, id).toBeCloseTo(x.m, 1);
     // v3 stores time since the last answer on a log scale (within ~4.5%).
     if (x.last !== 0) expect(Math.abs(y.last - x.last), id).toBeLessThanOrEqual(0.046 * (now - x.last + HOUR));
