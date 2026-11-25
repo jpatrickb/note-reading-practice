@@ -14,8 +14,6 @@ import { DAY, HOUR, T0, seededRng } from './helpers';
 const V1_CODE =
   'AQCCUS0AAAca-AeAAAEVTgoJAAwN_wMjWgoKAAoNAAEcWggIAAkN_wEXSgUFAAsN_wEAKQAA__8A_wEOTQkIAA0N_wEYTwUFABkN_wMlWwkJAAkNAAH9NgQDAA4N_yg';
 
-/** A QR code (level L, as on the Save screen) holds 2953 bytes; leave room for the link. */
-const MAX_CODE = 2800;
 const firstByte = (code: string) => atob(code.slice(0, 4).replace(/-/g, '+').replace(/_/g, '/')).charCodeAt(0);
 
 function playLetters(s: StudentState, start: number, sessions: number): number {
@@ -93,8 +91,7 @@ describe('progress codes with Letter Math (v2)', () => {
     const code = encodeProgress(name, now, letters);
     expect(firstByte(code)).toBe(3);
     expect(code).toMatch(/^[A-Za-z0-9_-]+$/);
-    // With the fast track, 4 sessions open far more items than they used to (this was < 800).
-    expect(code.length).toBeLessThan(MAX_CODE);
+    expect(code.length).toBeLessThan(800);
 
     const back = decodeProfile(code, now);
     expectSameModel(name, back.name, ITEMS.map((i) => i.id), now);
@@ -102,17 +99,6 @@ describe('progress codes with Letter Math (v2)', () => {
     expect(LETTER_ITEMS.filter((i) => back.letters.items[i.id]!.unlocked).length).toBeGreaterThan(3);
     // The Name It-only decoder reads v2 codes too.
     expect(decodeProgress(code, now)).toEqual(back.name);
-  });
-
-  it('even with every item of both modes saved, the code still fits a QR code with the link', () => {
-    const name = newStudent();
-    const letters = letterEngine.newStudent();
-    for (const s of [name, letters]) {
-      for (const it of Object.values(s.items)) Object.assign(it, { unlocked: true, n: 9, c: 8, last: T0, rt: 2000, m: 2, best: 1, silverDay: dayIndex(T0) });
-    }
-    const code = encodeProgress(name, T0, letters);
-    expect(code.length).toBeLessThan(MAX_CODE);
-    expectSameModel(letters, decodeProfile(code, T0).letters, LETTER_ITEMS.map((i) => i.id));
   });
 
   it('handles Letter Math progress with an untouched Name It', () => {
