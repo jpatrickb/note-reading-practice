@@ -26,6 +26,25 @@ export const TEACHING_ORDER: Record<Clef, string[]> = {
   bass: ['F3', 'G3', 'E3', 'A3', 'D3', 'C3', 'B2', 'G2', 'A2', 'C4', 'B3', 'F2', 'E2'],
 };
 
+/**
+ * The CANONICAL order of Name It items: progress codes store one record per item by its index here.
+ * APPEND-ONLY: never reorder or remove (tests/canonical-order.test.ts pins every index). It is
+ * separate from TEACHING_ORDER on purpose: notes can be added to any clef, or taught in a different
+ * order, by editing TEACHING_ORDER and appending the new ids here.
+ */
+export const CANONICAL_ORDER: readonly string[] = [
+  // treble
+  'name:treble:G4', 'name:treble:C4', 'name:treble:A4', 'name:treble:F4',
+  'name:treble:E4', 'name:treble:B4', 'name:treble:D4', 'name:treble:C5',
+  'name:treble:D5', 'name:treble:E5', 'name:treble:F5', 'name:treble:G5',
+  'name:treble:A5',
+  // bass
+  'name:bass:F3', 'name:bass:G3', 'name:bass:E3', 'name:bass:A3',
+  'name:bass:D3', 'name:bass:C3', 'name:bass:B2', 'name:bass:G2',
+  'name:bass:A2', 'name:bass:C4', 'name:bass:B3', 'name:bass:F2',
+  'name:bass:E2',
+];
+
 function build(clef: Clef): Item[] {
   return TEACHING_ORDER[clef].map((id) => ({ id: `name:${clef}:${id}`, task: 'name' as const, clef, note: parseNote(id) }));
 }
@@ -34,6 +53,7 @@ function build(clef: Clef): Item[] {
 export const NAME_IT = defineItemSet<Item>({
   id: 'name',
   groups: { treble: build('treble'), bass: build('bass') },
+  order: CANONICAL_ORDER,
   groupOf: (i) => i.clef,
   answerOf: (i) => i.note.letter,
   // No transfer between notes (each is its own fact), so first-try credit is the only shortcut:
@@ -44,10 +64,7 @@ export const NAME_IT = defineItemSet<Item>({
 /** Per clef, in teaching order. */
 export const ITEMS_BY_CLEF = NAME_IT.groups as Record<Clef, Item[]>;
 
-/**
- * Canonical item list (treble, then bass). The progress-code format depends on this ORDER:
- * only ever APPEND new items, and bump the codec version if that's impossible.
- */
+/** Canonical item list (see CANONICAL_ORDER): the progress-code format depends on this ORDER. */
 export const ITEMS = NAME_IT.items as Item[];
 
 export function itemById(id: string): Item {

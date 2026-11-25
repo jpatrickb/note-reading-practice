@@ -8,6 +8,7 @@ import {
   isDusty,
   level,
   maybeUnlock,
+  nameEngine,
   newStudent,
   normalize,
   recall,
@@ -15,8 +16,8 @@ import {
   selectItem,
 } from '../src/core/engine';
 import { ITEMS, ITEMS_BY_CLEF, itemById } from '../src/core/items';
-import { LETTERS, type Letter } from '../src/core/music';
 import { DAY, HOUR, T0, seededRng } from './helpers';
+import { honestLearner, randomGuesser, simulate } from './sim';
 
 const G4 = 'name:treble:G4';
 
@@ -135,36 +136,16 @@ describe('mastery rewards', () => {
   });
 
   it('a random guesser never earns mastery (guessing has negative value)', () => {
-    const s = newStudent();
-    const rng = seededRng(1);
-    const events = [];
-    let now = T0;
-    for (let i = 0; i < 600; i++) {
-      const id = selectItem(s, ['treble', 'bass'], now, rng);
-      const guess = LETTERS[Math.floor(rng() * 7)] as Letter;
-      const target = itemById(id).note.letter;
-      // Mashing: super fast answers.
-      events.push(...recordAnswer(s, id, guess === target ? 'correct' : 'wrong', guess, 250, now).events);
-      now += 2000;
-    }
-    expect(events.filter((e) => e.kind === 'silver' || e.kind === 'gold')).toHaveLength(0);
-    const meanRecall =
-      ITEMS.filter((i) => s.items[i.id]!.unlocked).reduce((a, i) => a + recall(s.items[i.id]!, now), 0) / 6;
-    expect(meanRecall).toBeLessThan(0.5);
+    const r = simulate({ engine: nameEngine, groups: ['treble', 'bass'], policy: randomGuesser(), sessions: 30, seed: 1 });
+    expect(r.picks).toHaveLength(600);
+    expect(r.silver + r.gold).toBe(0);
+    expect(r.meanRecall).toBeLessThan(0.5);
   });
 
   it('an honest learner who knows the notes earns silver and unlocks new notes quickly', () => {
-    const s = newStudent();
-    const rng = seededRng(2);
-    const events = [];
-    let now = T0;
-    for (let i = 0; i < 60; i++) {
-      const id = selectItem(s, ['treble'], now, rng);
-      events.push(...answerCorrect(s, id, now, 1200).events);
-      now += 4000;
-    }
-    expect(events.filter((e) => e.kind === 'silver').length).toBeGreaterThanOrEqual(3);
-    expect(events.filter((e) => e.kind === 'unlocked').length).toBeGreaterThanOrEqual(3);
+    const r = simulate({ engine: nameEngine, groups: ['treble'], policy: honestLearner({ learnAfter: 0, rtMs: 1200 }), sessions: 3, seed: 2 });
+    expect(r.silver).toBeGreaterThanOrEqual(3);
+    expect(r.unlocked).toBeGreaterThanOrEqual(3);
   });
 });
 
