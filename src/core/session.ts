@@ -64,7 +64,7 @@ export function submit<A extends string>(session: Session<A>, state: StudentStat
   const q = session.current;
   if (!q) throw new Error('No current question');
   const { engine } = session.mode;
-  const outcome: Outcome = answer === null ? 'idk' : engine.isCorrect(q.itemId, answer) ? 'correct' : 'wrong';
+  const outcome = engine.grade(q.itemId, answer);
   const rtMs = now - q.shownAt;
   const { events } = engine.recordAnswer(state, q.itemId, outcome, answer, rtMs, now);
   session.results.push({ itemId: q.itemId, outcome, rtMs });

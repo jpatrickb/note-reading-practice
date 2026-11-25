@@ -6,7 +6,8 @@ import { describe, expect, it } from 'vitest';
 import { NAME_IT_MODE, type SessionMode } from '../src/core/session';
 import { LETTER_GROUP, LETTER_MATH_MODE } from '../src/core/letters';
 import { LETTERS } from '../src/core/music';
-import { recall } from '../src/core/engine';
+import { PARAMS, recall } from '../src/core/engine';
+import { CORE_MODES } from '../src/core/modes';
 import { MOVES, MOVE_MODE } from './fixtures/moves';
 import { T0 } from './helpers';
 import { type Policy, honestLearner, knower, masher, randomGuesser, sandbagger, simulate } from './sim';
@@ -32,6 +33,23 @@ const CASES: Case[] = [
 ];
 const SEEDS = [1, 2, 3, 4, 5];
 
+/**
+ * Modes (by CORE_MODES id) that skip the suite, each with the reason. Empty is the goal: a new mode
+ * adds a CASES line instead. An exemption needs a comment a reviewer will accept.
+ */
+const EXEMPT: Record<string, string> = {};
+
+describe('every shipped mode is under the guardrails', () => {
+  it('has a CASES entry (or a commented exemption) for each CORE_MODES mode', () => {
+    for (const m of CORE_MODES) {
+      const covered = CASES.some((c) => c.mode.engine === m.engine);
+      expect(covered || m.id in EXEMPT, `mode "${m.id}" needs a guardrails CASES entry in tests/guardrails.test.ts`).toBe(true);
+      expect(covered && m.id in EXEMPT, `mode "${m.id}" is covered, so drop its exemption`).toBe(false);
+    }
+    for (const id of Object.keys(EXEMPT)) expect(CORE_MODES.map((m) => m.id), `exemption for unknown mode ${id}`).toContain(id);
+  });
+});
+
 describe.each(CASES)('guardrails: $name', ({ mode, groups, space, luckySilver }) => {
   const run = (policy: Policy<string>, sessions: number, seed: number) =>
     simulate({ mode, groups, policy, sessions, seed });
@@ -56,8 +74,8 @@ describe.each(CASES)('guardrails: $name', ({ mode, groups, space, luckySilver })
         // that one item may legitimately shine (silver, then gold on a later day). Nothing else.
         expect(r.silver, `${button} seed ${seed}`).toBeLessThanOrEqual(groups.length);
         expect(r.gold, `${button} seed ${seed}`).toBeLessThanOrEqual(groups.length);
-        const right = r.answers.filter((a, i) => a !== null && mode.engine.isCorrect(r.picks[i]!, a)).length;
-        expect(right / r.answers.length, `${button} seed ${seed}`).toBeLessThan(0.5);
+        const right = r.outcomes.filter((o) => o === 'correct').length;
+        expect(right / r.outcomes.length, `${button} seed ${seed}`).toBeLessThan(0.5);
       }
     }
   });
@@ -76,8 +94,7 @@ describe.each(CASES)('guardrails: $name', ({ mode, groups, space, luckySilver })
     const id = engine.set.items[0]!.id;
     const after = (answer: string | null) => {
       const state = engine.newStudent();
-      const outcome = answer === null ? 'idk' : engine.isCorrect(id, answer) ? 'correct' : 'wrong';
-      engine.recordAnswer(state, id, outcome, answer, 1500, T0);
+      engine.recordAnswer(state, id, engine.grade(id, answer), answer, 1500, T0);
       return recall(state.items[id]!, T0);
     };
     const start = recall(engine.newStudent().items[id]!, T0);
@@ -100,8 +117,9 @@ describe.each(CASES)('guardrails: $name', ({ mode, groups, space, luckySilver })
   it('early play is varied: the open items answer differently, and repeats are rare (D33, D56)', () => {
     const { set } = mode.engine;
     for (const lane of Object.values(set.groups)) {
-      const first = lane.slice(0, 3).map((i) => set.answerOf(i));
-      expect(new Set(first).size, `${first.join(',')}`).toBe(Math.min(3, space.length));
+      const open = set.initialUnlock ?? PARAMS.initialUnlock;
+      const first = lane.slice(0, open).map((i) => set.answerOf(i));
+      expect(new Set(first).size, `${first.join(',')}`).toBe(Math.min(open, space.length));
     }
     for (const seed of SEEDS) {
       const r = run(honestLearner({ learnAfter: 0, answerSpace: space }), 6, seed);

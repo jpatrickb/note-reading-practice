@@ -250,7 +250,7 @@ describe('Letter Math with the shared engine', () => {
   it('pressing one button every time stays stuck: mostly wrong, nothing unlocks', () => {
     for (const button of LETTERS) {
       const r = simulate({ engine: letterEngine, groups: [LETTER_GROUP], policy: masher(button), sessions: 10, seed: 12 });
-      const right = r.answers.filter((a, i) => a !== null && letterEngine.isCorrect(r.picks[i]!, a)).length;
+      const right = r.outcomes.filter((o) => o === 'correct').length;
       expect(right / 200, button).toBeLessThan(0.5);
       expect(r.unlocked, button).toBe(0);
       // At most the one starter item whose answer really is that letter can shine.

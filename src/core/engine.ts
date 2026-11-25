@@ -16,9 +16,10 @@
 //
 // The engine is shared by every game mode. A mode supplies an ItemSet (its items, teaching order
 // per unlock lane, and the answer for each item: a letter, a key, "step"/"skip"… any string) and
-// gets a bound engine from `createEngine(set)`. Each mode keeps its own StudentState, so speed baselines and confusions
-// never mix across modes. The Name It bindings (`newStudent`, `recordAnswer`, …) are exported at
-// the bottom for existing callers.
+// gets a bound engine from `createEngine(set)`. Each mode keeps its own StudentState, so speed
+// baselines and confusions never mix across modes. Answers are graded by `engine.grade` (see
+// `session.submit`), never by the mode. The Name It bindings (`newStudent`, `recordAnswer`, …) are
+// exported at the bottom for existing callers.
 
 import type { ItemSet, PracticeItem } from './itemset';
 import { NAME_IT } from './items';
@@ -337,6 +338,12 @@ export interface Engine<I extends PracticeItem = PracticeItem, A extends string 
   answerOf(itemId: string): A;
   /** Is `answer` right for this item? (More than one answer can be valid; see ItemSet.isCorrect.) */
   isCorrect(itemId: string, answer: A): boolean;
+  /** Grade an answer (null = "?"): `isCorrect`, which defaults to `answer === answerOf`. */
+  grade(itemId: string, answer: A | null): Outcome;
+  /**
+   * Update the learner model. `outcome` must come from `grade` (which `session.submit` calls): modes
+   * never decide or pass an outcome themselves, so every mode is scored the same way.
+   */
   recordAnswer(
     state: StudentState,
     itemId: string,
@@ -366,6 +373,8 @@ export function createEngine<I extends PracticeItem, A extends string = Letter>(
     const item = set.get(itemId);
     return set.isCorrect ? set.isCorrect(item, answer) : answer === set.answerOf(item);
   };
+  const grade = (itemId: string, answer: A | null): Outcome =>
+    answer === null ? 'idk' : isCorrect(itemId, answer) ? 'correct' : 'wrong';
   const skillOf = (item: I) => set.skillOf?.(item) ?? item.id;
 
   function newStudent(): StudentState {
@@ -528,7 +537,7 @@ export function createEngine<I extends PracticeItem, A extends string = Letter>(
     return scored.at(-1)!.id;
   }
 
-  return { set, newStudent, normalize, answerOf, isCorrect, recordAnswer, maybeUnlock, selectItem };
+  return { set, newStudent, normalize, answerOf, isCorrect, grade, recordAnswer, maybeUnlock, selectItem };
 }
 
 /** Days practiced in the current Monday-start week, across one or more modes' learner models. */

@@ -28,7 +28,7 @@
 //   knower(p), learner(k0)       a kid who already knows it / who learns with practice (pacing tests)
 
 import { diagnose } from '../src/core/diagnose';
-import { type Engine, STRICT_PACING, type StudentState, createEngine, recall } from '../src/core/engine';
+import { type Engine, type Outcome, STRICT_PACING, type StudentState, createEngine, recall } from '../src/core/engine';
 import type { PracticeItem } from '../src/core/itemset';
 import { NAME_IT } from '../src/core/items';
 import { LETTER_ITEMS, LETTER_MATH, type Rung, letterItem } from '../src/core/letters';
@@ -201,6 +201,8 @@ export interface SimResult<A extends string = Letter> {
   picks: string[];
   /** Every answer given (null = "?"), in order, parallel to `picks`. */
   answers: (A | null)[];
+  /** How the engine graded each answer (`engine.grade`), parallel to `picks`. */
+  outcomes: Outcome[];
   /** The learner model at the end. */
   state: StudentState;
 }
@@ -237,6 +239,7 @@ export function simulate<A extends string = Letter>(opts: SimOptions<A>): SimRes
   const sessions: SessionStats[] = [];
   const picks: string[] = [];
   const answers: (A | null)[] = [];
+  const outcomes: Outcome[] = [];
   let now = opts.startTime ?? T0;
   let lastAnswerAt = now;
   for (let n = 1; n <= opts.sessions; n++) {
@@ -249,6 +252,7 @@ export function simulate<A extends string = Letter>(opts: SimOptions<A>): SimRes
       const { answer, rtMs } = opts.policy.answer(q.itemId, engine.answerOf(q.itemId), ...seen(q.itemId), rng);
       picks.push(q.itemId);
       answers.push(answer);
+      outcomes.push(engine.grade(q.itemId, answer));
       exposures.set(q.itemId, (exposures.get(q.itemId) ?? 0) + 1);
       skillExposures.set(skillOf(q.itemId), (skillExposures.get(skillOf(q.itemId)) ?? 0) + 1);
       now += Math.round(rtMs);
@@ -276,6 +280,7 @@ export function simulate<A extends string = Letter>(opts: SimOptions<A>): SimRes
     meanRecall: open.reduce((a, i) => a + recall(state.items[i.id]!, lastAnswerAt), 0) / Math.max(1, open.length),
     picks,
     answers,
+    outcomes,
     state,
   };
 }

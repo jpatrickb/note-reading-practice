@@ -33,6 +33,15 @@ describe('item sets with another answer type', () => {
     expect(moveEngine.isCorrect('mv:a:2:4', 'skip')).toBe(false);
   });
 
+  it('grade turns an answer into an outcome: "?" is idk, isCorrect decides the rest', () => {
+    expect(moveEngine.grade(EITHER_ID, null)).toBe('idk');
+    expect(moveEngine.grade(EITHER_ID, 'skip')).toBe('correct');
+    expect(moveEngine.grade(EITHER_ID, 'step')).toBe('wrong');
+    // No isCorrect on the set: equality with the teaching answer.
+    expect(moveEngine.grade('mv:a:0:1', 'step')).toBe('correct');
+    expect(moveEngine.grade('mv:a:0:1', 'leap')).toBe('wrong');
+  });
+
   it('the first items open in each lane have different answers', () => {
     for (const items of Object.values(MOVE_SET.groups)) {
       const first = items.slice(0, 3).map((i) => MOVE_SET.answerOf(i));
