@@ -1,4 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
+import { skipPlacement } from './skipPlacement';
 
 const bg = (page: Page) => page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor);
 const themeColor = (page: Page) => page.locator('meta[name="theme-color"]').getAttribute('content');
@@ -35,6 +36,7 @@ test('picking a theme applies it everywhere and survives a reload', async ({ pag
 
   // The game itself is themed: the staff is drawn in the theme's colors.
   await page.getByRole('button', { name: /Start/ }).click();
+  await skipPlacement(page);
   const line = page.locator('svg.staff .staff__line').first();
   await expect(line).toHaveCSS('stroke', 'rgb(213, 217, 245)');
 });
@@ -91,6 +93,7 @@ test('answer feedback uses the theme’s readable colors (dark theme)', async ({
   await page.addInitScript(() => localStorage.setItem('nrp:v1:settings', JSON.stringify({ clefs: ['treble'], muted: true, theme: 'space' })));
   await page.goto('/');
   await page.getByRole('button', { name: /Start/ }).click();
+  await skipPlacement(page);
   await expect(page.locator('.pad__key:not([disabled])').first()).toBeVisible();
   const letter = (await page.locator('svg.staff').getAttribute('data-note'))![0]!;
   const wrong = letter === 'C' ? 'D' : 'C';

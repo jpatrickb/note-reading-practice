@@ -3,6 +3,8 @@ import { type Profile, ProgressCodeError, decodeProfile, encodeProfile } from '.
 import { type MasteryEvent, WEEKLY_GOAL, daysThisWeek, isDusty, level, recall } from '../core/engine';
 import { codeFromHash, codeFromPasted, progressQr } from '../core/progress-qr';
 import type { Clef } from '../core/music';
+import { type PlacementRun, MAX_ANSWERS, applyPlacement, startPlacement } from '../core/placement';
+import { placementLane } from '../core/placementFlow';
 import { type Session, startSession, summarize } from '../core/session';
 import {
   DEFAULT_MODE,
@@ -20,6 +22,7 @@ import {
 import { clear, h } from './dom';
 import { hasProgress, modeIcon, type UiMode } from './mode';
 import { renderModeChooser } from './modeChooser';
+import { renderPlacementOffer, renderPlacementResult } from './placementScreens';
 import { modeById, registeredModes } from './modes';
 import type { PlayHost, PlayShell } from './playShell';
 import { renderThemePicker } from './themePicker';
@@ -31,7 +34,7 @@ import { renderMascot, setMood } from './world/mascots';
 import type { Medal } from './world/playChrome';
 import { setCalm, setWorldMode } from './world/world';
 
-type Screen = 'home' | 'play' | 'summary' | 'map' | 'save' | 'import' | 'debug' | 'theme';
+type Screen = 'home' | 'play' | 'summary' | 'map' | 'save' | 'import' | 'debug' | 'theme' | 'offer' | 'placed';
 type ClefChoice = 'treble' | 'bass' | 'both';
 
 const OFFSET_KEY = 'nrp:debug:clockOffset';
@@ -50,6 +53,8 @@ export class App {
   private synth = new Synth();
   private session: Session<string> | null = null;
   private importCode = '';
+  /** A placement round in progress (or just finished, for its result screen), and the lane it places. */
+  private placing: { run: PlacementRun; lane: string; applied: boolean } | null = null;
   private readonly debug: boolean;
 
   constructor(private root: HTMLElement) {
@@ -115,6 +120,8 @@ export class App {
       save: () => this.renderSave(),
       import: () => this.renderImport(),
       debug: () => this.renderDebug(),
+      offer: () => this.renderOffer(),
+      placed: () => this.renderPlaced(),
       theme: () =>
         renderThemePicker({
           settings: this.settings,
@@ -304,10 +311,17 @@ export class App {
 
   // ───────────────────────── play ─────────────────────────
 
-  private startPlay(mode: UiMode): void {
+  /** Start practice. A mode that opts in offers placement first, on a lane with no progress only. */
+  private startPlay(mode: UiMode, offer = true): void {
     this.synth.unlock();
     const clefs = lanesFor(this.settings, mode.id);
     this.active = { mode, clefs };
+    this.placing = null;
+    const lane = offer && mode.placement ? placementLane(mode.core.engine, this.profile[mode.core.id], mode.groups(clefs)) : null;
+    if (lane) {
+      this.placing = { run: startPlacement(mode.core.engine, lane), lane, applied: false };
+      return this.go('offer');
+    }
     this.session = startSession(mode.groups(clefs), undefined, mode.session);
     this.go('play');
   }
@@ -325,8 +339,39 @@ export class App {
       finish: () => this.go('summary'),
       stopSound: () => this.synth.stopAll(),
     };
+    if (this.placing && !this.placing.applied) host.placement = { run: this.placing.run, done: () => this.finishPlacement() };
     this.play = mode.createPlay(host, { synth: this.synth });
     return this.play.render();
+  }
+
+  // ───────────────────────── placement ─────────────────────────
+
+  private renderOffer(): HTMLElement {
+    const { mode } = this.active!;
+    return renderPlacementOffer({
+      mode,
+      onBack: () => this.go('home'),
+      onBegin: () => this.startPlay(mode, false),
+      // The round is the play screen with the run attached; nothing is saved until it finishes.
+      onPlace: () => {
+        this.session = startSession([this.placing!.lane], MAX_ANSWERS, mode.session);
+        this.go('play');
+      },
+    });
+  }
+
+  /** The round is over: open the lane up to where the kid placed, then show where they start. */
+  private finishPlacement(): void {
+    const { mode } = this.active!;
+    applyPlacement(mode.core.engine, this.profile[mode.core.id]!, this.placing!.run);
+    this.saveMode(mode);
+    this.placing!.applied = true;
+    this.go('placed');
+  }
+
+  private renderPlaced(): HTMLElement {
+    const { mode } = this.active!;
+    return renderPlacementResult({ mode, run: this.placing!.run, onGo: () => this.startPlay(mode, false) });
   }
 
   private onKey(e: KeyboardEvent): void {

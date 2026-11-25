@@ -1,4 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
+import { skipPlacement } from './skipPlacement';
 
 // The home mode chooser, the per-mode profile, and the mode-by-mode save/load of progress.
 
@@ -16,6 +17,7 @@ async function answerOne(page: Page, answer = 'C') {
 async function playSome(page: Page, mode: 'name' | 'letters', questions = 4) {
   await card(page, mode).click();
   await page.getByRole('button', { name: /Start/ }).click();
+  await skipPlacement(page);
   for (let i = 0; i < questions; i++) {
     await answerOne(page);
     // A wrong answer or "?" waits for "Got it"; a right one moves on by itself.
@@ -171,11 +173,13 @@ test('a minimal saved state { version: 1, items: {} } still plays Name It and Le
 
   await card(page, 'name').click();
   await page.getByRole('button', { name: /Start/ }).click();
+  await skipPlacement(page);
   await answerOne(page);
   await page.getByRole('button', { name: 'Stop and go home' }).click();
 
   await card(page, 'letters').click();
   await page.getByRole('button', { name: /Start/ }).click();
+  await skipPlacement(page);
   await answerOne(page);
   await page.getByRole('button', { name: 'Stop and go home' }).click();
   expect(errors).toEqual([]);

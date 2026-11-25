@@ -1,4 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
+import { skipPlacement } from './skipPlacement';
 
 const LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
 const shift = (l: string, n: number) => LETTERS[(((LETTERS.indexOf(l) + n) % 7) + 7) % 7]!;
@@ -18,6 +19,7 @@ async function start(page: Page, clef: 'Treble' | 'Bass' | 'Both' = 'Treble') {
   await page.goto('/');
   await page.getByRole('button', { name: clef, exact: true }).click();
   await page.getByRole('button', { name: /Start/ }).click();
+  await skipPlacement(page);
 }
 
 /** A full session takes ~15–20 s by design (pauses after correct answers), so allow more time. */
