@@ -1,11 +1,12 @@
 import qrcode from 'qrcode-generator';
 import { describe, expect, it } from 'vitest';
-import { BitWriter, ProgressCodeError, codeFromBase32, codeToBase32, crc16, decodeProfile, decodeProgress, encodeProfile, encodeProgress } from '../src/core/codec';
+import { decodeProfile as liveDecode, encodeProfile as liveEncode } from '../src/core/codec';
+import { BitWriter, ProgressCodeError, codeFromBase32, codeToBase32, crc16, decodeProfile, decodeProgress, encodeProfile, encodeProgress, newerFormatCode } from '../src/core/codec';
 import { type Engine, type ItemState, PARAMS, type StudentState, createEngine, dayIndex, isDusty, nameEngine, newStudent, recall } from '../src/core/engine';
 import { defineItemSet } from '../src/core/itemset';
 import { letterEngine } from '../src/core/letters';
 import { CORE_MODES, type CoreMode } from '../src/core/modes';
-import { codeFromHash, progressQr } from '../src/core/progress-qr';
+import { codeFromHash, codeFromPasted, progressQr } from '../src/core/progress-qr';
 import { isFinished, nextQuestion, startSession, submit } from '../src/core/session';
 import * as frozen from './fixtures/codec-v3-frozen';
 import { GOLDEN_CODES } from './fixtures/codes';
@@ -52,6 +53,31 @@ const BIG = defineItemSet({
 });
 const bigEngine = createEngine(BIG);
 const WITH_BIG: readonly CoreMode[] = [...CORE_MODES, { id: 'big', tag: 200, engine: bigEngine }];
+
+/**
+ * Real engines over the item lists the previous codec knew (frozen in codec-v3-frozen.ts), so the
+ * comparisons with it hold however the live modes grow.
+ */
+function pinnedEngine(id: string, spec: { order: readonly string[]; groups: Readonly<Record<string, readonly string[]>> }) {
+  const lane = new Map(Object.entries(spec.groups).flatMap(([k, ids]) => ids.map((i) => [i, k] as const)));
+  const answers = 'ABCDEFG';
+  const index = new Map(spec.order.map((i, k) => [i, k] as const));
+  return createEngine(
+    defineItemSet({
+      id,
+      groups: Object.fromEntries(Object.entries(spec.groups).map(([k, ids]) => [k, ids.map((i) => ({ id: i }))])),
+      order: spec.order,
+      groupOf: (item) => lane.get(item.id)!,
+      answerOf: (item) => answers[index.get(item.id)! % 7] as 'A',
+    }),
+  );
+}
+const PINNED_NAME = pinnedEngine('name', frozen.FROZEN_ITEMS.name);
+const PINNED_LETTERS = pinnedEngine('letters', frozen.FROZEN_ITEMS.letters);
+const PINNED: readonly CoreMode[] = [
+  { id: 'name', tag: 1, engine: PINNED_NAME },
+  { id: 'letters', tag: 2, engine: PINNED_LETTERS },
+];
 
 /** Every item unlocked and played, with varied values (the largest code a mode can make). */
 function fullyPlayed(engine: Engine, now: number, seed: number): StudentState {
@@ -417,6 +443,13 @@ const bin = (v: number, width: number) => v.toString(2).padStart(width, '0');
 describe('compact gold records (#60)', () => {
   const now = T0 + 50 * DAY;
 
+  // Everything here is checked against the previous codec on the same (pinned) item lists.
+  const nameEngine = PINNED_NAME;
+  const letterEngine = PINNED_LETTERS;
+  const encodeProfile = (p: Parameters<typeof liveEncode>[0], t: number, modes: readonly CoreMode[] = PINNED) => liveEncode(p, t, modes);
+  const decodeProfile = (c: string, t: number, modes: readonly CoreMode[] = PINNED) => liveDecode(c, t, modes);
+  const encodeProgress = (s: StudentState, t: number, l?: StudentState) => encodeProfile({ name: s, letters: l }, t);
+
   describe('BitWriter', () => {
     it('flush pads the last byte with zeros', () => {
       const w = new BitWriter();
@@ -486,6 +519,109 @@ describe('compact gold records (#60)', () => {
       const older = decodeProfile(code, now);
       expect(older.big).toBeUndefined();
       expect(older.name).toEqual(decodeProfile(code, now, WITH_BIG).name);
+    });
+  });
+
+  describe('out-of-range best (M1)', () => {
+    /** A hand-made v1 code: Name It's first saved item gets `best` bits 11 (a value 3), then a valid CRC-8. */
+    const v1WithBest3 = () => {
+      const g = GOLDEN_CODES.v1Fresh!;
+      const bytes = [...toBytes(g.code)];
+      const first = 8 + 1 + Math.ceil(nameEngine.set.items.length / 8); // header, itemCount, bitmap
+      bytes[first] = bytes[first]! | 0b110;
+      const body = bytes.slice(0, -1);
+      return { code: toCode([...body, crc8(body)]), g };
+    };
+
+    it('a v1 code whose flags say best = 3 reads as gold, like the earlier builds did', () => {
+      const { code, g } = v1WithBest3();
+      const id = nameEngine.set.items[0]!.id;
+      expect(decodeProfile(code, g.decodeAt).name.items[id]!.best).toBe(2);
+      expect(frozen.decodeProfile(code, g.decodeAt).name.items[id]!.best).toBe(3); // the old reader let it through
+    });
+
+    it('re-encoding it gives a code that decodes every item correctly (no shifted records)', () => {
+      const { code, g } = v1WithBest3();
+      const loaded = decodeProfile(code, g.decodeAt);
+      // Make it a profile with plenty of compact gold around the odd item.
+      for (const id in loaded.name.items) {
+        if (id !== nameEngine.set.items[0]!.id) Object.assign(loaded.name.items[id]!, { best: id.endsWith('4') ? 2 : 1, last: g.decodeAt - HOUR, n: 9, c: 7 });
+      }
+      const again = decodeProfile(encodeProfile(loaded, g.decodeAt), g.decodeAt);
+      for (const item of nameEngine.set.items) {
+        const want = loaded.name.items[item.id]!;
+        expect(again.name.items[item.id], item.id).toMatchObject({ unlocked: want.unlocked, best: want.best, n: want.n });
+      }
+    });
+
+    it('the writer maps any best to 0, 1 or 2 and never shifts the records after it', () => {
+      const s = fuzzState(nameEngine, now, 11);
+      const ids = nameEngine.set.items.map((i) => i.id);
+      for (const id of ids) Object.assign(s.items[id]!, { unlocked: true, best: 2, n: 20, c: 18, last: now - HOUR });
+      const odd: [string, number, number][] = [
+        [ids[1]!, 3, 2],
+        [ids[3]!, -1, 0],
+        [ids[5]!, 7, 2],
+        [ids[7]!, Number.NaN, 0],
+        [ids[9]!, 1.6, 2],
+      ];
+      for (const [id, best] of odd) s.items[id]!.best = best as 0;
+      const back = decodeProfile(encodeProfile({ name: s }, now), now).name;
+      for (const id of ids) {
+        const want = odd.find(([o]) => o === id)?.[2] ?? 2;
+        expect(back.items[id]!.best, id).toBe(want);
+        expect(back.items[id]!.unlocked, id).toBe(true);
+        expect(back.items[id]!.n, id).toBe(15);
+      }
+    });
+
+    it('normalize clamps a bad best in a saved state', () => {
+      const s = nameEngine.newStudent();
+      const [a, b, c] = nameEngine.set.items.map((i) => i.id);
+      s.items[a!]!.best = 3 as 2;
+      s.items[b!]!.best = -1 as 0;
+      s.items[c!]!.best = 1;
+      const n = nameEngine.normalize(s);
+      expect([n.items[a!]!.best, n.items[b!]!.best, n.items[c!]!.best]).toEqual([2, 0, 1]);
+    });
+  });
+
+  describe('when the compact layout is used (L1)', () => {
+    it('stays plain when it would save nothing: one gold item below the count cap', () => {
+      const p = { name: nameEngine.newStudent() };
+      const id = nameEngine.set.items[0]!.id;
+      Object.assign(p.name.items[id]!, { unlocked: true, best: 2, n: 8, c: 8, last: now - HOUR, silverDay: dayIndex(now) - 2 });
+      const code = encodeProfile(p, now);
+      expect(code).toBe(frozen.encodeProfile(p, now));
+      expect(frozen.decodeProfile(code, now).name.items[id]!.best).toBe(2);
+    });
+
+    it('never makes a code longer than the previous layout', () => {
+      for (let seed = 1; seed <= 40; seed++) {
+        const p = { name: fuzzState(nameEngine, now, seed), letters: fuzzState(letterEngine, now, 500 + seed) };
+        expect(encodeProfile(p, now).length).toBeLessThanOrEqual(frozen.encodeProfile(p, now).length);
+      }
+    });
+  });
+
+  describe('links from a newer build (L2)', () => {
+    it('any other import… key gets the "different version" message', () => {
+      for (const hash of ['#import33=ABCDEFGH', '#importv4=ABC-_', '#IMPORT64=AAAA', '#imported=abc']) {
+        const code = codeFromHash(hash)!;
+        expect(code).toBe(newerFormatCode());
+        expect(() => decodeProfile(code, now)).toThrow(/different version/);
+      }
+      expect(codeFromHash('#unrelated=abc')).toBeNull();
+    });
+
+    it('the Load box takes a pasted link, its # part, base32 or the plain code', () => {
+      const code = encodeProfile({ name: fuzzState(nameEngine, now, 5) }, now);
+      const b32 = codeToBase32(code);
+      expect(codeFromPasted(`  https://notepractice.jpatrickbeal.com/#import32=${b32}\n`)).toBe(code);
+      expect(codeFromPasted(`https://example.com/app/#import=${code}`)).toBe(code);
+      expect(codeFromPasted(`#IMPORT32=${b32}`)).toBe(code);
+      expect(codeFromPasted(` ${code} `)).toBe(code);
+      expect(codeFromPasted('https://example.com/#nothing')).toBe('https://example.com/#nothing');
     });
   });
 
@@ -573,7 +709,7 @@ describe('compact gold records (#60)', () => {
         expect(decodeProfile(oldCode, now)).toEqual(A);
 
         let anyCompact = false;
-        for (const mode of CORE_MODES) {
+        for (const mode of PINNED) {
           const orig = profile[mode.id as 'name' | 'letters'];
           const a = A[mode.id]!;
           const b = B[mode.id]!;

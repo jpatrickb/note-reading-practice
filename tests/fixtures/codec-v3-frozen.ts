@@ -1,7 +1,9 @@
 // FROZEN COPY of src/core/codec.ts as it was just before compact gold records (#60), kept so tests can
 // run "today's v3 decoder" (the build already on kids' iPads) against codes the current build writes,
 // and compare the current codec with the one that wrote the v3 golden codes. Do not edit or update it
-// when codec.ts changes; only its imports may be adjusted to keep it compiling.
+// when codec.ts changes. It is self-contained (the constants it used, and the item lists of the two
+// modes as they are today, are copied below), so it keeps behaving like the build on kids' iPads
+// when the engine or the modes change; only types are imported.
 //
 // Progress code: every mode's learner model packed into a few hundred bytes, base64url-encoded, so
 // it fits in a QR code or a link (for moving devices and as a backup). A kid's code must never stop
@@ -42,8 +44,55 @@
 //
 // Not included in any version: confusions and recent errors (short-term diagnostics, D31).
 
-import { type Engine, PARAMS, type StudentState, dayIndex } from '../../src/core/engine';
-import { CORE_MODES, type CoreMode } from '../../src/core/modes';
+import type { StudentState } from '../../src/core/engine';
+
+// ── what this codec used from the engine and the modes, as they were ─────────────────────────────
+const PARAMS = { initialS: 6, fluentRatio: 1.6, defaultBaseline: 3500, initialUnlock: 3 } as const;
+
+function dayIndex(now: number): number {
+  return Math.floor((now - new Date(now).getTimezoneOffset() * 60_000) / 86_400_000);
+}
+
+/** The part of an engine this codec used: its item list and a brand-new learner. */
+export interface Engine {
+  set: { items: readonly { id: string }[] };
+  newStudent(): StudentState;
+}
+export interface CoreMode {
+  id: string;
+  tag: number;
+  engine: Engine;
+}
+
+/** Item order (canonical) and lanes (teaching order, first 3 of each open) of the modes then. */
+export const FROZEN_ITEMS = {
+  name: {
+    order: ["name:treble:G4", "name:treble:C4", "name:treble:A4", "name:treble:F4", "name:treble:E4", "name:treble:B4", "name:treble:D4", "name:treble:C5", "name:treble:D5", "name:treble:E5", "name:treble:F5", "name:treble:G5", "name:treble:A5", "name:bass:F3", "name:bass:G3", "name:bass:E3", "name:bass:A3", "name:bass:D3", "name:bass:C3", "name:bass:B2", "name:bass:G2", "name:bass:A2", "name:bass:C4", "name:bass:B3", "name:bass:F2", "name:bass:E2"],
+    groups: {"treble": ["name:treble:G4", "name:treble:C4", "name:treble:A4", "name:treble:F4", "name:treble:E4", "name:treble:B4", "name:treble:D4", "name:treble:C5", "name:treble:D5", "name:treble:E5", "name:treble:F5", "name:treble:G5", "name:treble:A5"], "bass": ["name:bass:F3", "name:bass:G3", "name:bass:E3", "name:bass:A3", "name:bass:D3", "name:bass:C3", "name:bass:B2", "name:bass:G2", "name:bass:A2", "name:bass:C4", "name:bass:B3", "name:bass:F2", "name:bass:E2"]},
+  },
+  letters: {
+    order: ["lm:after:C", "lm:after:E", "lm:after:A", "lm:after:G", "lm:after:D", "lm:after:F", "lm:after:B", "lm:before:D", "lm:before:G", "lm:before:B", "lm:before:A", "lm:before:E", "lm:before:F", "lm:before:C", "lm:skipUp:C", "lm:skipUp:E", "lm:skipUp:G", "lm:skipUp:B", "lm:skipUp:D", "lm:skipUp:F", "lm:skipUp:A", "lm:skipDown:C", "lm:skipDown:A", "lm:skipDown:F", "lm:skipDown:D", "lm:skipDown:B", "lm:skipDown:G", "lm:skipDown:E", "lm:up2:C", "lm:up2:G", "lm:up2:D", "lm:up2:A", "lm:up2:E", "lm:up2:B", "lm:up2:F", "lm:down2:C", "lm:down2:G", "lm:down2:D", "lm:down2:A", "lm:down2:E", "lm:down2:B", "lm:down2:F", "lm:up3:C", "lm:up3:G", "lm:up3:D", "lm:up3:A", "lm:up3:E", "lm:up3:B", "lm:up3:F", "lm:down3:C", "lm:down3:G", "lm:down3:D", "lm:down3:A", "lm:down3:E", "lm:down3:B", "lm:down3:F", "lm:up8:C", "lm:up8:G", "lm:up8:D", "lm:up8:A", "lm:up8:E", "lm:up8:B", "lm:up8:F", "lm:down8:C", "lm:down8:G", "lm:down8:D", "lm:down8:A", "lm:down8:E", "lm:down8:B", "lm:down8:F", "lm:up5:C", "lm:up5:G", "lm:up5:D", "lm:up5:A", "lm:up5:E", "lm:up5:B", "lm:up5:F", "lm:down5:C", "lm:down5:G", "lm:down5:D", "lm:down5:A", "lm:down5:E", "lm:down5:B", "lm:down5:F", "lm:up4:C", "lm:up4:G", "lm:up4:D", "lm:up4:A", "lm:up4:E", "lm:up4:B", "lm:up4:F", "lm:down4:C", "lm:down4:G", "lm:down4:D", "lm:down4:A", "lm:down4:E", "lm:down4:B", "lm:down4:F", "lm:up6:C", "lm:up6:G", "lm:up6:D", "lm:up6:A", "lm:up6:E", "lm:up6:B", "lm:up6:F", "lm:down6:C", "lm:down6:G", "lm:down6:D", "lm:down6:A", "lm:down6:E", "lm:down6:B", "lm:down6:F", "lm:up7:C", "lm:up7:G", "lm:up7:D", "lm:up7:A", "lm:up7:E", "lm:up7:B", "lm:up7:F", "lm:down7:C", "lm:down7:G", "lm:down7:D", "lm:down7:A", "lm:down7:E", "lm:down7:B", "lm:down7:F"],
+    groups: {"letters": ["lm:after:C", "lm:after:E", "lm:after:A", "lm:after:G", "lm:after:D", "lm:after:F", "lm:after:B", "lm:before:D", "lm:before:G", "lm:before:B", "lm:before:A", "lm:before:E", "lm:before:F", "lm:before:C", "lm:skipUp:C", "lm:skipUp:E", "lm:skipUp:G", "lm:skipUp:B", "lm:skipUp:D", "lm:skipUp:F", "lm:skipUp:A", "lm:skipDown:C", "lm:skipDown:A", "lm:skipDown:F", "lm:skipDown:D", "lm:skipDown:B", "lm:skipDown:G", "lm:skipDown:E", "lm:up2:C", "lm:up2:G", "lm:up2:D", "lm:up2:A", "lm:up2:E", "lm:up2:B", "lm:up2:F", "lm:down2:C", "lm:down2:G", "lm:down2:D", "lm:down2:A", "lm:down2:E", "lm:down2:B", "lm:down2:F", "lm:up3:C", "lm:up3:G", "lm:up3:D", "lm:up3:A", "lm:up3:E", "lm:up3:B", "lm:up3:F", "lm:down3:C", "lm:down3:G", "lm:down3:D", "lm:down3:A", "lm:down3:E", "lm:down3:B", "lm:down3:F", "lm:up8:C", "lm:up8:G", "lm:up8:D", "lm:up8:A", "lm:up8:E", "lm:up8:B", "lm:up8:F", "lm:down8:C", "lm:down8:G", "lm:down8:D", "lm:down8:A", "lm:down8:E", "lm:down8:B", "lm:down8:F", "lm:up5:C", "lm:up5:G", "lm:up5:D", "lm:up5:A", "lm:up5:E", "lm:up5:B", "lm:up5:F", "lm:down5:C", "lm:down5:G", "lm:down5:D", "lm:down5:A", "lm:down5:E", "lm:down5:B", "lm:down5:F", "lm:up4:C", "lm:up4:G", "lm:up4:D", "lm:up4:A", "lm:up4:E", "lm:up4:B", "lm:up4:F", "lm:down4:C", "lm:down4:G", "lm:down4:D", "lm:down4:A", "lm:down4:E", "lm:down4:B", "lm:down4:F", "lm:up6:C", "lm:up6:G", "lm:up6:D", "lm:up6:A", "lm:up6:E", "lm:up6:B", "lm:up6:F", "lm:down6:C", "lm:down6:G", "lm:down6:D", "lm:down6:A", "lm:down6:E", "lm:down6:B", "lm:down6:F", "lm:up7:C", "lm:up7:G", "lm:up7:D", "lm:up7:A", "lm:up7:E", "lm:up7:B", "lm:up7:F", "lm:down7:C", "lm:down7:G", "lm:down7:D", "lm:down7:A", "lm:down7:E", "lm:down7:B", "lm:down7:F"]},
+  },
+} as const;
+
+function frozenEngine(spec: { order: readonly string[]; groups: Readonly<Record<string, readonly string[]>> }): Engine {
+  return {
+    set: { items: spec.order.map((id) => ({ id })) },
+    newStudent() {
+      const items: StudentState['items'] = {};
+      for (const id of spec.order) items[id] = { unlocked: false, m: 0, s: PARAMS.initialS, n: 0, c: 0, last: 0, rt: 0, best: 0, silverDay: -1 };
+      for (const lane of Object.values(spec.groups)) for (const id of lane.slice(0, PARAMS.initialUnlock)) items[id]!.unlocked = true;
+      return { version: 1, items, rtBaseline: 0, confusions: {}, recentErrors: [], practiceDays: [], lessonsSeen: {} };
+    },
+  };
+}
+
+const CORE_MODES: readonly CoreMode[] = [
+  { id: 'name', tag: 1, engine: frozenEngine(FROZEN_ITEMS.name) },
+  { id: 'letters', tag: 2, engine: frozenEngine(FROZEN_ITEMS.letters) },
+];
+export { CORE_MODES as FROZEN_MODES };
 
 const V1 = 1;
 const V2 = 2;

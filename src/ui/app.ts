@@ -1,6 +1,6 @@
 import { Synth } from '../audio/synth';
 import { type Profile, ProgressCodeError, decodeProfile, encodeProgress } from '../core/codec';
-import { codeFromHash, progressQr } from '../core/progress-qr';
+import { codeFromHash, codeFromPasted, progressQr } from '../core/progress-qr';
 import {
   type MasteryEvent,
   type StudentState,
@@ -481,7 +481,7 @@ export class App {
           {
             class: 'secondary',
             onClick: () => {
-              this.importCode = input.value.trim();
+              this.importCode = codeFromPasted(input.value);
               if (this.importCode) this.go('import');
             },
           },

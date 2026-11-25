@@ -1,8 +1,9 @@
 import { type Browser, expect, test } from '@playwright/test';
+import jsQR from 'jsqr';
 import qrcode from 'qrcode-generator';
 import { codeToBase32, decodeProfile } from '../src/core/codec';
 import type { StudentState } from '../src/core/engine';
-import { progressQr } from '../src/core/progress-qr';
+import { codeFromHash } from '../src/core/progress-qr';
 import * as frozen from '../tests/fixtures/codec-v3-frozen';
 import { GOLDEN_CODES } from '../tests/fixtures/codes';
 
@@ -57,15 +58,47 @@ test.describe('a code with gold keys', () => {
     expect(decodeProfile(code, Date.now()).name.items['name:treble:G4']!.best).toBe(2);
   });
 
-  test('the Save screen QR code holds the base32 link in alphanumeric mode', async ({ page, baseURL }) => {
+  test('scanning the Save screen QR code gives the base32 link, which imports', async ({ page, browser, baseURL }) => {
+    // Rasterize the QR the way a camera sees it (black on white, quiet zone included) and decode it.
+    const raster = await page.evaluate(async () => {
+      const svg = document.querySelector('.qr svg')!;
+      const side = Number(svg.getAttribute('viewBox')!.trim().split(/\s+/)[2]);
+      const scale = 4;
+      const xml = new XMLSerializer().serializeToString(svg).replace('<svg ', `<svg width="${side * scale}" height="${side * scale}" `);
+      const img = new Image();
+      img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(xml)}`;
+      await img.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = side * scale;
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
+      const px = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let bin = '';
+      for (let i = 0; i < px.length; i += 8192) bin += String.fromCharCode(...px.subarray(i, i + 8192));
+      return { width: canvas.width, height: canvas.height, base64: btoa(bin) };
+    });
+    const pixels = Uint8ClampedArray.from(Buffer.from(raster.base64, 'base64'));
+    const scanned = jsQR(pixels, raster.width, raster.height)?.data;
+    expect(scanned).toBe(`${new URL('/', baseURL).href}#import32=${codeToBase32(code)}`);
+
+    // The scanned link opens the import screen on another device, with the same code inside.
+    expect(codeFromHash(`#${scanned!.split('#')[1]}`)).toBe(code);
+    const other = await otherDevice(browser);
+    await other.goto(scanned!);
+    await expect(other.getByText(importText.name)).toBeVisible();
+    await expect(other.getByTestId('import-error')).toHaveCount(0);
+  });
+
+  test('the QR code is smaller than one holding the base64 link', async ({ page, baseURL }) => {
     const appUrl = new URL('/', baseURL).href;
     const viewBox = await page.locator('.qr svg').getAttribute('viewBox');
-    const size = (count: number) => `0 0 ${count * 4 + 4} ${count * 4 + 4}`;
-    expect(viewBox?.trim()).toBe(size(progressQr(appUrl, code).getModuleCount()));
     const plain = qrcode(0, 'L');
     plain.addData(`${appUrl}#import=${code}`);
     plain.make();
-    expect(viewBox?.trim()).not.toBe(size(plain.getModuleCount()));
+    const side = Number(viewBox!.trim().split(/\s+/)[2]);
+    expect((side - 4) / 4).toBeLessThan(plain.getModuleCount());
   });
 
   test('imports from the QR link (base32)', async ({ browser }) => {
@@ -99,6 +132,20 @@ test.describe('a code with gold keys', () => {
     await page.getByRole('button', { name: 'Load…' }).click();
     await expect(page.getByText(importText.name)).toBeVisible();
     await expect(page.getByText(importText.letters)).toBeVisible();
+  });
+
+  test('imports from a whole link pasted on the Save screen', async ({ page, baseURL }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: /Save/ }).click();
+    await page.getByLabel('Progress code to load').fill(`${new URL('/', baseURL).href}#import32=${codeToBase32(code)}`);
+    await page.getByRole('button', { name: 'Load…' }).click();
+    await expect(page.getByText(importText.name)).toBeVisible();
+  });
+
+  test('a link in a format from a newer build says so', async ({ browser }) => {
+    const page = await otherDevice(browser);
+    await page.goto('/#import64=ABCDEFGH');
+    await expect(page.getByTestId('import-error')).toContainText('different version');
   });
 
   test('a damaged QR link gets the friendly error, not a blank screen', async ({ browser }) => {

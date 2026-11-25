@@ -388,7 +388,10 @@ export function createEngine<I extends PracticeItem, A extends string = Letter>(
 
   function normalize(state: StudentState): StudentState {
     const fresh = newStudent();
-    for (const item of set.items) state.items[item.id] ??= fresh.items[item.id]!;
+    for (const item of set.items) {
+      const it = (state.items[item.id] ??= fresh.items[item.id]!);
+      if (it.best !== 0 && it.best !== 1 && it.best !== 2) it.best = it.best > 2 ? 2 : 0; // a hand-edited or corrupt save
+    }
     return state;
   }
 

@@ -7,10 +7,13 @@
 // The text code and a `#import=<base64 code>` link stay valid and are what people copy and paste.
 
 import qrcode from 'qrcode-generator';
-import { codeFromBase32, codeToBase32 } from './codec';
+import { codeFromBase32, codeToBase32, newerFormatCode } from './codec';
 
-/** Link-fragment keys: `import` carries the base64url code, `import32` the base32 one. */
-const IMPORT_HASH = /^#(import|import32)=([A-Za-z0-9_-]+)$/i;
+/**
+ * Link-fragment keys: `import` carries the base64url code, `import32` the base32 one. Any other
+ * `import…` key is a format a newer build made, which this build can only say so about.
+ */
+const IMPORT_HASH = /^#(import[a-z0-9]*)=([A-Za-z0-9_-]+)$/i;
 
 /** The QR code for `appUrl` (origin and path, no fragment) opening with this progress code. */
 export function progressQr(appUrl: string, code: string): ReturnType<typeof qrcode> {
@@ -21,14 +24,23 @@ export function progressQr(appUrl: string, code: string): ReturnType<typeof qrco
   return qr;
 }
 
-/** The progress code (base64url text) in a link fragment such as `#import32=ABC…`, or null if none. */
+/** The progress code (base64url text) in a link fragment such as `#import32=ABC…`, or null if none (a key from a newer build gives a code that says so). */
 export function codeFromHash(hash: string): string | null {
   const m = IMPORT_HASH.exec(hash);
   if (!m) return null;
-  if (m[1]!.toLowerCase() !== 'import32') return m[2]!;
+  const key = m[1]!.toLowerCase();
+  if (key === 'import') return m[2]!;
+  if (key !== 'import32') return newerFormatCode();
   try {
     return codeFromBase32(m[2]!);
   } catch {
     return m[2]!; // Not base32 after all: let the import screen explain what is wrong with it.
   }
+}
+
+/** What was pasted into the Load box: a progress code, or a link (or just its `#…` part) holding one. */
+export function codeFromPasted(text: string): string {
+  const t = text.trim();
+  const at = t.indexOf('#');
+  return (at >= 0 ? codeFromHash(t.slice(at)) : null) ?? t;
 }

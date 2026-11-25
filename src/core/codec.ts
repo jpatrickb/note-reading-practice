@@ -74,6 +74,15 @@ export type Profile = Record<string, StudentState> & { name: StudentState; lette
 
 export class ProgressCodeError extends Error {}
 
+/**
+ * A code that decodes as "from a different version of the game": what a link in a format this build
+ * doesn't know (a newer build's) stands for, so the import screen can say so.
+ */
+export function newerFormatCode(): string {
+  const body = [0xff, 0, 0, 0, 0, 0, 0];
+  return toBase64Url(Uint8Array.from([...body, crc8(Uint8Array.from(body))]));
+}
+
 const incomplete = () => new ProgressCodeError('That code is incomplete.');
 const otherVersion = () => new ProgressCodeError('That code is from a different version of the game.');
 
@@ -327,9 +336,12 @@ interface Baselines {
 
 type Item = StudentState['items'][string];
 
+/** `best` as the 2-bit field every reader understands (0, 1 or 2), whatever a saved state holds. */
+const bestOf = (it: Item): 0 | 1 | 2 => clampInt(it.best || 0, 0, 2) as 0 | 1 | 2;
+
 /** True if `it` can be written as a compact gold record: gold, answered, with nothing else it needs. */
 function isCompactGold(it: Item): boolean {
-  return it.unlocked && it.best === 2 && it.last > 0;
+  return it.unlocked && bestOf(it) === 2 && it.last > 0;
 }
 
 const quantM = (it: Item) => clampInt(it.m / M_STEP + 63, 0, 126);
@@ -357,7 +369,7 @@ function writeFullBody(w: BitWriter, it: Item, now: number, refDay: number, base
   w.write(Math.min(n, it.c), 4);
   writeMsh(w, it, now);
   w.write(encodeRt(it.rt, baselines.stored, it.rt <= PARAMS.fluentRatio * baselines.original), 4);
-  w.write(it.best === 0 || it.silverDay < 0 ? SILVER_NONE : clampInt(refDay - it.silverDay, 0, SILVER_MAX), 4);
+  w.write(bestOf(it) === 0 || it.silverDay < 0 ? SILVER_NONE : clampInt(refDay - it.silverDay, 0, SILVER_MAX), 4);
 }
 
 function readFullBody(r: BitReader, unlocked: boolean, best: 0 | 1 | 2, now: number, refDay: number, baseline: number): Item {
@@ -372,7 +384,7 @@ function readFullBody(r: BitReader, unlocked: boolean, best: 0 | 1 | 2, now: num
 /** Fixed 40-bit record (recordLen 5). */
 function writeFixedRecord(w: BitWriter, it: Item, now: number, refDay: number, baselines: Baselines) {
   w.write(it.unlocked ? 1 : 0, 1);
-  w.write(it.best, 2);
+  w.write(bestOf(it), 2);
   writeFullBody(w, it, now, refDay, baselines);
 }
 
@@ -383,7 +395,7 @@ function readFixedRecord(bytes: readonly number[], now: number, refDay: number, 
   return readFullBody(r, unlocked, best, now, refDay, baseline);
 }
 
-/** Mixed-width record of the compact-gold layout: 23 bits for a compact gold item, else 40. */
+/** Mixed-width record of the compact-gold layout: 24 or 32 bits for a compact gold item, else 40. */
 function writeVariableRecord(w: BitWriter, it: Item, now: number, refDay: number, baselines: Baselines) {
   if (isCompactGold(it)) {
     const n = Math.min(COUNT_CAP, it.n);
@@ -398,7 +410,7 @@ function writeVariableRecord(w: BitWriter, it: Item, now: number, refDay: number
     writeMsh(w, it, now);
     return;
   }
-  w.write(it.best, 2);
+  w.write(bestOf(it), 2);
   w.write(it.unlocked ? 1 : 0, 1);
   writeFullBody(w, it, now, refDay, baselines);
 }
@@ -444,22 +456,21 @@ function writeSection(w: Writer, mode: CoreMode, state: StudentState, now: numbe
     for (let k = 0; k < 8; k++) if (saved[b * 8 + k]) byte |= 0x80 >> k;
     body.u8(byte);
   }
-  // Only a section with a gold item to shrink uses the compact layout; any other stays a plain
-  // v3 section that builds from before the compact layout can still read.
-  const compact = states.some((it, idx) => saved[idx] && isCompactGold(it));
-  const records = new BitWriter();
-  if (compact) {
+  // Use the compact layout only when it is smaller than plain 5-byte records (its layout byte costs
+  // one, so a lone gold item that isn't at the count cap saves nothing). A section that doesn't
+  // shrink stays a plain v3 section that builds from before the compact layout can still read.
+  const savedStates = states.filter((_, idx) => saved[idx]);
+  const variable = new BitWriter();
+  for (const it of savedStates) writeVariableRecord(variable, it, now, refDay, baselines);
+  const compactBytes = variable.flush();
+  if (savedStates.some(isCompactGold) && 1 + compactBytes.length < RECORD_LEN * savedStates.length) {
     body.u8(VARIABLE);
     body.u8(LAYOUT_COMPACT_GOLD);
-    states.forEach((it, idx) => {
-      if (saved[idx]) writeVariableRecord(records, it, now, refDay, baselines);
-    });
-    body.bytes(records.flush());
+    body.bytes(compactBytes);
   } else {
     body.u8(RECORD_LEN);
-    states.forEach((it, idx) => {
-      if (saved[idx]) writeFixedRecord(records, it, now, refDay, baselines);
-    });
+    const records = new BitWriter();
+    for (const it of savedStates) writeFixedRecord(records, it, now, refDay, baselines);
     body.bytes(records.bytes());
   }
 
@@ -557,7 +568,7 @@ function readLegacyItems(r: Reader, engine: Engine, rtBaseline: number, practice
     if (!item) continue; // Code from a newer version with more items: ignore the extras.
     state.items[item.id] = {
       unlocked: (flags & 1) === 1,
-      best: ((flags >> 1) & 3) as 0 | 1 | 2,
+      best: Math.min(2, (flags >> 1) & 3) as 0 | 1 | 2,
       m,
       s,
       n,
