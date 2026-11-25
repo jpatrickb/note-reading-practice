@@ -58,6 +58,7 @@ const MARK_WORDS: Record<PianoMark, string> = {
 export function pianoKeys(low: string, high: string): PianoKey[] {
   const lo = parseNote(low);
   const hi = parseNote(high);
+  if (lo.acc || hi.acc) throw new Error(`Piano bounds must be white keys (natural notes): ${low}–${high}`);
   const start = lo.octave * 7 + LETTERS.indexOf(lo.letter);
   const end = hi.octave * 7 + LETTERS.indexOf(hi.letter);
   if (end < start) throw new Error(`Piano range is upside down: ${low}–${high}`);

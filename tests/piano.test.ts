@@ -75,7 +75,9 @@ describe('pianoKeys layout', () => {
 
   it('rejects upside-down ranges and accidentals as bounds', () => {
     expect(() => pianoKeys('C5', 'C4')).toThrow(/upside down/);
-    expect(() => pianoKeys('C#4', 'C5')).toThrow();
+    expect(() => pianoKeys('C#4', 'C5')).toThrow(/white keys/);
+    expect(() => pianoKeys('C4', 'Bb5')).toThrow(/white keys/);
+    expect(() => pianoKeys('H4', 'C5')).toThrow(/Bad note id/);
   });
 });
 
