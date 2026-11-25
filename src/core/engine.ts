@@ -144,6 +144,8 @@ export interface Pacing {
    * many times likelier to be asked: they're what holds up the next unlock.
    */
   cruiseNewBoost: number;
+  /** Silver needs this many correct answers if the item was never missed (else silverMinCorrect). */
+  cleanMinCorrect: number;
 }
 
 export const PACING: Pacing = {
@@ -158,6 +160,7 @@ export const PACING: Pacing = {
   gapFloor: true,
   fadeP: PARAMS.dustyP,
   cruiseNewBoost: 12,
+  cleanMinCorrect: 2,
 };
 
 /** The original pacing (one item at a time, each seen twice). Kept for comparisons in tests. */
@@ -173,6 +176,7 @@ export const STRICT_PACING: Pacing = {
   gapFloor: false,
   fadeP: PARAMS.unlockP,
   cruiseNewBoost: 1,
+  cleanMinCorrect: 3,
 };
 
 const HOUR = 3_600_000;
@@ -210,10 +214,12 @@ export function fluency(rtMs: number, baselineMs: number): number {
   return Math.max(0.6, 1 - (ratio - PARAMS.fluentRatio) * 0.15);
 }
 
-function meetsSilver(it: ItemState, state: StudentState): boolean {
+function meetsSilver(it: ItemState, state: StudentState, pacing: Pacing): boolean {
+  // Never missed counts as reliable sooner: with no misses, `cleanMinCorrect` answers will do.
+  const minCorrect = it.c === it.n ? Math.min(pacing.cleanMinCorrect, PARAMS.silverMinCorrect) : PARAMS.silverMinCorrect;
   return (
     sigmoid(it.m) >= PARAMS.silverP &&
-    it.c >= PARAMS.silverMinCorrect &&
+    it.c >= minCorrect &&
     it.rt > 0 &&
     it.rt <= PARAMS.fluentRatio * baseline(state)
   );
@@ -282,7 +288,7 @@ function applyAnswer(
     if (state.practiceDays.length > PARAMS.maxPracticeDays) state.practiceDays.shift();
   }
 
-  if (outcome === 'correct' && meetsSilver(it, state)) {
+  if (outcome === 'correct' && meetsSilver(it, state, pacing)) {
     if (it.best === 0) {
       it.best = 1;
       it.silverDay = today;
