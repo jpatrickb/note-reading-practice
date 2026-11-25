@@ -76,6 +76,30 @@ npm run test:e2e    # end-to-end (builds and serves the app; E2E_PORT=4174 to ru
 npm run check       # typecheck + lint
 ```
 
+## Adding a game mode
+
+A mode is its own files plus single-line registrations. The app (home chooser, play start, toasts,
+summary, My progress, save/load, debug) never names a mode, so nothing else changes.
+
+1. **Core** (`src/core/<mode>.ts`): an `ItemSet` plus `createEngine` (see `letters.ts`). `set.id` must
+   equal the mode id; it is also the storage key suffix. Then add one line to `CORE_MODES` in
+   `src/core/modes.ts` with the next unused **permanent** tag (it is written into every progress
+   code; never reuse or renumber). Item lists are append-only (canonical order, see `itemset.ts`).
+2. **Guardrails**: add one `CASES` line in `tests/guardrails.test.ts` (it fails until you do).
+3. **UI** (`src/ui/<mode>.ts`): `export const myMode = defineMode<AnswerType>({ id, title, icon,
+   blurb, group, core: coreMode('<id>'), words, createPlay, renderMap })`.
+   - `blurb`: 8 words at most; `group`: one of the home headings in `MODE_GROUPS` (`src/ui/mode.ts`).
+   - `createPlay(host, env)` builds a `PlayShell` (prompt, input, feedback); `env.synth` is the synth.
+   - `lanes: 'clefs'` shows the clef picker; `availability(profile)` locks the mode with a friendly
+     reason (it is shown, never hidden); `session` adds a misconception detector.
+   - `icon` is a built-in `IconName` or a function returning your own inline SVG.
+4. **Register**: one import and one entry in `MODES` (`src/ui/modes.ts`).
+5. **Check**: `tests/mode-registry.test.ts` covers every registered mode (blurb length, hooks, labels,
+   maps, tags, ids). Add the mode's own unit and e2e tests; run `npm run check` and `npm test`.
+
+Kids choose **what** to practice, never difficulty; rewards are for new mastery only (decisions D12,
+D14). The shared engine and play shell already enforce this, so a mode must not add its own scoring.
+
 ## CI/CD (GitHub Actions)
 
 Principle: **thorough, but never wasteful or redundant.**

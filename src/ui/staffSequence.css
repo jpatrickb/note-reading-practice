@@ -1,0 +1,66 @@
+/* Multi-note staff (src/render/staffSequence.ts). Theme variables only, so every theme restyles it. */
+
+.staff--seq {
+  height: auto;
+}
+/* Never smaller than 1.8 CSS px per viewBox unit (--staff-seq-w), so notes stay readable on an iPad;
+   a phrase wider than its container scrolls sideways inside .staff-seq-scroll (see mountStaffSequence). */
+.staff--seq {
+  min-width: var(--staff-seq-w);
+}
+.staff-seq-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.staff-seq-scroll:focus-visible {
+  outline: 3px solid var(--reveal);
+  outline-offset: 2px;
+}
+
+.staff-seq__stem {
+  stroke: var(--ink);
+  stroke-width: 2.2;
+  transition: stroke 0.15s;
+}
+
+/* Reading cursor: a soft tinted box plus an outline, so it doesn't rely on color alone. */
+.staff-seq__cursor {
+  fill: var(--primary);
+  fill-opacity: 0.16;
+  stroke: var(--primary);
+  stroke-width: 2;
+}
+
+.staff-seq__group--right .staff__note,
+.staff-seq__group--right .staff__label {
+  fill: var(--right);
+}
+.staff-seq__group--right .staff-seq__stem {
+  stroke: var(--right);
+}
+.staff-seq__group--wrong .staff__note,
+.staff-seq__group--wrong .staff__label {
+  fill: var(--wrong);
+}
+.staff-seq__group--wrong .staff-seq__stem {
+  stroke: var(--wrong);
+}
+.staff-seq__group--reveal .staff__note,
+.staff-seq__group--reveal .staff__label {
+  fill: var(--reveal);
+}
+.staff-seq__group--reveal .staff-seq__stem {
+  stroke: var(--reveal);
+}
+.staff-seq__mark {
+  font: 800 24px var(--font);
+}
+.staff-seq__mark--right {
+  fill: var(--right);
+}
+.staff-seq__mark--wrong {
+  fill: var(--wrong);
+}
+.staff-seq__label {
+  text-anchor: middle;
+}

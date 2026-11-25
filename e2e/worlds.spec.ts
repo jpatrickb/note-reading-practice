@@ -271,3 +271,13 @@ test('the summary celebrates, and the journey reaches its goal', async ({ page }
   await expect(page.locator('.summary .chip--silver').first()).toBeVisible();
   await expect(page.locator('.summary .keys-frame svg.keys')).toBeVisible();
 });
+
+test('the "new note" badge never covers the staff', async ({ page }) => {
+  await seed(page, { theme: 'sunny' });
+  await page.goto('/');
+  await page.getByRole('button', { name: /Start/ }).click();
+  await nextNote(page);
+  const badge = await page.locator('.banner .badge').boundingBox();
+  const staff = await page.locator('.staff').boundingBox();
+  expect(badge!.y + badge!.height).toBeLessThanOrEqual(staff!.y);
+});

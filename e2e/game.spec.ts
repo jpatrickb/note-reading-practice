@@ -66,7 +66,7 @@ test('a perfect session ends on the summary, earns silver, and persists', async 
   await expect(page.getByTestId('weekly-goal')).toContainText('1 of 4 days');
 
   await page.reload();
-  await page.getByRole('button', { name: /My keyboard/ }).click();
+  await page.getByRole('button', { name: /My progress/ }).click();
   expect(await page.locator('.key[data-level="silver"]').count()).toBeGreaterThan(0);
 });
 
@@ -139,7 +139,7 @@ test('progress moves to another device with a progress code link', async ({ page
   await page2.goto(`${baseURL}/#import=${code}`);
   await expect(page2.getByText(`🥈 ${silver} silver`)).toBeVisible();
   await page2.getByTestId('confirm-import').click();
-  await page2.getByRole('button', { name: /My keyboard/ }).click();
+  await page2.getByRole('button', { name: /My progress/ }).click();
   await expect(page2.locator('.key[data-level="silver"]')).toHaveCount(silver);
   await other.close();
 });
@@ -172,3 +172,73 @@ test('touch targets are at least 44px', async ({ page }) => {
     expect(box.height).toBeGreaterThanOrEqual(44);
   }
 });
+
+// ───────────── two ledger lines (#24) ─────────────
+
+test('the mastery map shows 17 keys per clef, locked ones dashed', async ({ page }) => {
+  // My progress only lists modes with progress (#20), so play one Name It question first.
+  await start(page, 'Both');
+  const { letter } = await nextNote(page);
+  await tap(page, letter);
+  await page.getByRole('button', { name: 'Stop and go home' }).click();
+  await page.getByRole('button', { name: /My progress/ }).click();
+  const keys = page.locator('svg.keys');
+  await expect(keys).toHaveCount(2);
+  for (const svg of await keys.all()) {
+    await expect(svg.locator('.key')).toHaveCount(17);
+    expect(await svg.locator('.key--locked').count()).toBeGreaterThan(0);
+    const box = (await svg.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  }
+  await expect(page.locator('.key--locked .key__body').first()).toHaveCSS('stroke-dasharray', /\d/);
+});
+
+for (const [clef, note] of [
+  ['Treble', 'C6'],
+  ['Treble', 'A3'],
+  ['Bass', 'E4'],
+  ['Bass', 'C2'],
+] as const) {
+  test(`a seeded ${clef.toLowerCase()} ${note} (two ledger lines) renders and answers correctly`, async ({ page }) => {
+    const id = `name:${clef.toLowerCase()}:${note}`;
+    // Every note saved, all locked (so the engine adds no starters) except the one under test.
+    const all = ['G4','C4','A4','F4','E4','B4','D4','C5','D5','E5','F5','G5','A5','B5','C6','B3','A3'].map((n) => `name:treble:${n}`)
+      .concat(['F3','G3','E3','A3','D3','C3','B2','G2','A2','C4','B3','F2','E2','D4','E4','D2','C2'].map((n) => `name:bass:${n}`));
+    await page.addInitScript(([itemId, ids]) => {
+      if (localStorage.getItem('nrp:v1:state')) return;
+      const items: Record<string, unknown> = {};
+      for (const k of ids!) items[k] = { unlocked: k === itemId, best: 0, m: 0, n: 0, c: 0, last: 0, rt: 0, s: 6, silverDay: -1 };
+      localStorage.setItem('nrp:v1:state', JSON.stringify({ version: 1, items, rtBaseline: 0, confusions: {}, recentErrors: [], practiceDays: [], lessonsSeen: {} }));
+    }, [id, all] as const);
+    await start(page, clef);
+    const staff = page.locator('svg.staff');
+    await expect(staff).toHaveAttribute('data-note', note);
+    // The note and every ledger line sit inside the staff's viewBox.
+    const frame = (await staff.boundingBox())!;
+    const boxes = await staff.locator('.staff__note, .staff__ledger').evaluateAll((els) =>
+      els.map((e) => {
+        const b = e.getBoundingClientRect();
+        return [b.left, b.top, b.right, b.bottom];
+      }),
+    );
+    const tol = 0.5;
+    for (const box of boxes) {
+      expect(box[0]).toBeGreaterThanOrEqual(frame.x - tol);
+      expect(box[1]).toBeGreaterThanOrEqual(frame.y - tol);
+      expect(box[2]).toBeLessThanOrEqual(frame.x + frame.width + tol);
+      expect(box[3]).toBeLessThanOrEqual(frame.y + frame.height + tol);
+    }
+    await expect(staff.locator('.staff__ledger')).toHaveCount(2);
+    await tap(page, note[0]!);
+    // The correct reaction is gone within 700 ms, so check what it saved instead.
+    await expect
+      .poll(() =>
+        page.evaluate((itemId) => {
+          const it = JSON.parse(localStorage.getItem('nrp:v1:state')!).items[itemId];
+          return it.n > 0 && it.c === it.n;
+        }, id),
+      )
+      .toBe(true);
+  });
+}
