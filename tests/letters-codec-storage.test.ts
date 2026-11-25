@@ -44,7 +44,7 @@ function playName(s: StudentState, start: number): number {
   return now;
 }
 
-function expectSameModel(a: StudentState, b: StudentState, ids: string[]) {
+function expectSameModel(a: StudentState, b: StudentState, ids: string[], now: number) {
   expect(b.practiceDays).toEqual(a.practiceDays);
   expect(b.rtBaseline).toBeCloseTo(a.rtBaseline, -1);
   for (const id of ids) {
@@ -52,11 +52,13 @@ function expectSameModel(a: StudentState, b: StudentState, ids: string[]) {
     const y = b.items[id]!;
     expect(y.unlocked, id).toBe(x.unlocked);
     expect(y.best, id).toBe(x.best);
-    expect(y.n, id).toBe(x.n);
-    expect(y.c, id).toBe(x.c);
+    expect(y.n, id).toBe(Math.min(15, x.n));
+    expect(y.c, id).toBe(Math.min(15, x.c));
     expect(y.silverDay, id).toBe(x.silverDay);
     expect(y.m, id).toBeCloseTo(x.m, 1);
-    expect(Math.abs(y.last - x.last), id).toBeLessThanOrEqual(HOUR);
+    // v3 stores time since the last answer on a log scale (within ~4.5%).
+    if (x.last !== 0) expect(Math.abs(y.last - x.last), id).toBeLessThanOrEqual(0.046 * (now - x.last + HOUR));
+    else expect(y.last, id).toBe(0);
   }
 }
 
@@ -75,28 +77,28 @@ describe('progress codes with Letter Math (v2)', () => {
     expect(decodeProgress(V1_CODE, T0)).toEqual(name);
   });
 
-  it('keeps writing v1 while Letter Math is untouched (older builds can still read it)', () => {
+  it('writes v3 even while Letter Math is untouched (an untouched mode adds nothing)', () => {
     const name = newStudent();
     const now = playName(name, T0);
-    const v1 = encodeProgress(name, now);
-    expect(firstByte(v1)).toBe(1);
-    expect(encodeProgress(name, now, letterEngine.newStudent())).toBe(v1);
+    const code = encodeProgress(name, now);
+    expect(firstByte(code)).toBe(3);
+    expect(encodeProgress(name, now, letterEngine.newStudent())).toBe(code);
   });
 
-  it('round-trips both modes in a v2 code', () => {
+  it('round-trips both modes', () => {
     const name = newStudent();
     const letters = letterEngine.newStudent();
     let now = playName(name, T0 - 3 * DAY);
     now = playLetters(letters, now, 4);
     const code = encodeProgress(name, now, letters);
-    expect(firstByte(code)).toBe(2);
+    expect(firstByte(code)).toBe(3);
     expect(code).toMatch(/^[A-Za-z0-9_-]+$/);
     // With the fast track, 4 sessions open far more items than they used to (this was < 800).
     expect(code.length).toBeLessThan(MAX_CODE);
 
     const back = decodeProfile(code, now);
-    expectSameModel(name, back.name, ITEMS.map((i) => i.id));
-    expectSameModel(letters, back.letters, LETTER_ITEMS.map((i) => i.id));
+    expectSameModel(name, back.name, ITEMS.map((i) => i.id), now);
+    expectSameModel(letters, back.letters, LETTER_ITEMS.map((i) => i.id), now);
     expect(LETTER_ITEMS.filter((i) => back.letters.items[i.id]!.unlocked).length).toBeGreaterThan(3);
     // The Name It-only decoder reads v2 codes too.
     expect(decodeProgress(code, now)).toEqual(back.name);
@@ -117,11 +119,11 @@ describe('progress codes with Letter Math (v2)', () => {
     const letters = letterEngine.newStudent();
     const now = playLetters(letters, T0, 1);
     const back = decodeProfile(encodeProgress(newStudent(), now, letters), now);
-    expectSameModel(letters, back.letters, LETTER_ITEMS.map((i) => i.id));
+    expectSameModel(letters, back.letters, LETTER_ITEMS.map((i) => i.id), now);
     expect(back.name.items['name:treble:G4']!.unlocked).toBe(true);
   });
 
-  it('rejects truncated and corrupted v2 codes', () => {
+  it('rejects truncated and corrupted codes', () => {
     const letters = letterEngine.newStudent();
     const now = playLetters(letters, T0, 2);
     const code = encodeProgress(newStudent(), now, letters);
@@ -129,7 +131,7 @@ describe('progress codes with Letter Math (v2)', () => {
     const typo = code.slice(0, 40) + (code[40] === 'A' ? 'B' : 'A') + code.slice(41);
     expect(() => decodeProfile(typo, now)).toThrow(ProgressCodeError);
     // A v2 header whose Letter Math section is missing (valid checksum) is "incomplete".
-    const bytes = Uint8Array.from(atob(encodeProgress(newStudent(), now).replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+    const bytes = Uint8Array.from(atob(V1_CODE.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
     const body = [2, ...bytes.subarray(1, -1)];
     let crc = 0;
     for (const b of body) {
