@@ -93,6 +93,8 @@ export const LETTER_MATH = defineItemSet<LetterItem>({
   groups: { [LETTER_GROUP]: buildItems() },
   groupOf: () => LETTER_GROUP,
   answerOf: letterAnswer,
+  // Items of a rung predict each other: ace a few and the rest of the rung opens (see PACING).
+  skillOf: (i) => i.rung,
 });
 
 export const LETTER_ITEMS = LETTER_MATH.items;

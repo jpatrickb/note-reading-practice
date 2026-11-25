@@ -165,7 +165,15 @@ export class App {
       if (e.kind === 'silver') this.toast(`🥈 Silver${key}: ${label}!`, 'silver');
       if (e.kind === 'gold') this.toast(`🥇 Gold${key}: ${label}! You remembered it on a new day.`, 'gold');
       if (e.kind === 'polished') this.toast(`✨ Polished: ${label}`, 'polish');
-      if (e.kind === 'unlocked') this.toast(`🔓 A new ${lm ? 'question' : 'note'} is coming up!`, 'unlock');
+    }
+    // One answer can open several items (the fast track): one toast, one screen-reader announcement.
+    const unlocked = events.filter((e) => e.kind === 'unlocked');
+    if (unlocked.length > 0) {
+      const noun = isLetterItemId(unlocked[0]!.itemId) ? 'question' : 'note';
+      this.toast(
+        unlocked.length === 1 ? `🔓 A new ${noun} is coming up!` : `🔓 ${unlocked.length} new ${noun}s are coming up!`,
+        'unlock',
+      );
     }
     if (events.some((e) => e.kind === 'gold')) this.synth.fanfare(true);
     else if (events.some((e) => e.kind === 'silver')) this.synth.fanfare(false);
