@@ -415,6 +415,16 @@ export interface Engine<I extends PracticeItem = PracticeItem, A extends string 
     rtMs: number,
     now: number,
   ): AnswerResult;
+  /**
+   * placement.ts ONLY (modes must use `session.submit`). Throws unless the item has never been
+   * answered: placement never repeats an item, and repeated calls would pre-train an item so the
+   * next real answer earned silver at once. Record an answer given in the placement round: the item's learner model,
+   * speed baseline and confusions update as for any answer, but it is evidence about where the kid
+   * is, not play. It never earns silver, gold or polish (decision D12), never touches the lane's
+   * run of correct answers, and never unlocks or earns first-try credit: the fast track starts
+   * from zero after placement, so nothing is counted twice.
+   */
+  recordPlacementAnswer(state: StudentState, itemId: string, outcome: Outcome, answer: A | null, rtMs: number, now: number): void;
   maybeUnlock(state: StudentState, group: string, now: number): string | null;
   selectItem(
     state: StudentState,
@@ -527,6 +537,24 @@ export function createEngine<I extends PracticeItem, A extends string = Letter>(
     return { correct: outcome === 'correct', events };
   }
 
+  function recordPlacementAnswer(
+    state: StudentState,
+    itemId: string,
+    outcome: Outcome,
+    answer: A | null,
+    rtMs: number,
+    now: number,
+  ): void {
+    const it = state.items[itemId];
+    if (!it) throw new Error(`Unknown item: ${itemId}`);
+    if (it.n !== 0) throw new Error('recordPlacementAnswer is for the first sighting of an item (placement only)');
+    const { best, silverDay } = it;
+    // run 0: no "clean" early silver; the rest of the model update is the normal one.
+    applyAnswer(state, itemId, outcome, answer, rtMs, now, pacing, 0);
+    it.best = best;
+    it.silverDay = silverDay;
+  }
+
   /**
    * Choose the next item (decision D34).
    *
@@ -598,7 +626,7 @@ export function createEngine<I extends PracticeItem, A extends string = Letter>(
     return scored.at(-1)!.id;
   }
 
-  return { set, newStudent, normalize, answerOf, isCorrect, grade, recordAnswer, maybeUnlock, selectItem };
+  return { set, newStudent, normalize, answerOf, isCorrect, grade, recordAnswer, recordPlacementAnswer, maybeUnlock, selectItem };
 }
 
 /** Days practiced in the current Monday-start week, across one or more modes' learner models. */
