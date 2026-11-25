@@ -176,9 +176,12 @@ test('touch targets are at least 44px', async ({ page }) => {
 // ───────────── two ledger lines (#24) ─────────────
 
 test('the mastery map shows 17 keys per clef, locked ones dashed', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Both', exact: true }).click();
-  await page.getByRole('button', { name: /My keyboard/ }).click();
+  // My progress only lists modes with progress (#20), so play one Name It question first.
+  await start(page, 'Both');
+  const { letter } = await nextNote(page);
+  await tap(page, letter);
+  await page.getByRole('button', { name: 'Stop and go home' }).click();
+  await page.getByRole('button', { name: /My progress/ }).click();
   const keys = page.locator('svg.keys');
   await expect(keys).toHaveCount(2);
   for (const svg of await keys.all()) {
