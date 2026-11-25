@@ -490,6 +490,20 @@ export class App {
     const inCode = incoming ? this.modes.filter((m) => incoming!.present.includes(m.core.id)) : [];
     const kept = this.modes.filter((m) => !inCode.includes(m) && hasProgress(this.profile[m.core.id]));
     const names = (ms: readonly UiMode[]) => ms.map((m) => m.title).reduce((a, t, i, all) => (i === 0 ? t : `${a}${i === all.length - 1 ? ' and ' : ', '}${t}`), '');
+    const swaps = inCode.filter((m) => hasProgress(this.profile[m.core.id]));
+    const adds = inCode.filter((m) => !swaps.includes(m));
+    const effect = [
+      swaps.length > 0 ? `This swaps your ${names(swaps)} progress for the one in the code.` : '',
+      adds.length > 0 ? `This adds ${names(adds)}.` : '',
+      kept.length > 0 ? `Your ${names(kept)} progress stays.` : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const lessThanDevice = swaps.filter((m) => {
+      const c = m.counts(incoming!.profile[m.core.id]!);
+      const d = m.counts(this.profile[m.core.id]!);
+      return c.gold < d.gold || (c.gold === d.gold && c.silver < d.silver);
+    });
     return h(
       'main',
       { class: 'screen import' },
@@ -511,8 +525,13 @@ export class App {
                 }),
               ),
               inCode.length > 0
-                ? h('p', { class: 'warn', 'data-testid': 'import-effect' }, `Replaces ${names(inCode)}.${kept.length > 0 ? ` Keeps your ${names(kept)} progress.` : ''}`)
-                : h('p', { class: 'muted' }, 'Nothing on this device would change.'),
+                ? h('p', { class: 'warn', 'data-testid': 'import-effect' }, effect)
+                : h('p', { class: 'muted', 'data-testid': 'import-effect' }, incoming.unreadable > 0 ? 'This code is from a newer version of the game, so this version can’t read it yet.' : 'Nothing on this device would change.'),
+              ...lessThanDevice.map((m) => {
+                const c = m.counts(incoming!.profile[m.core.id]!);
+                const d = m.counts(this.profile[m.core.id]!);
+                return h('p', { class: 'muted', 'data-testid': 'import-less', 'data-mode': m.id }, `Careful: this code has ${c.gold} gold and ${c.silver} silver in ${m.title}; this device has ${d.gold} and ${d.silver}.`);
+              }),
               h(
                 'div',
                 { class: 'row' },

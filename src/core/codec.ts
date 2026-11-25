@@ -531,21 +531,23 @@ export function encodeProfile(profile: Readonly<Record<string, StudentState | un
   return toBase64Url(Uint8Array.from(w.out));
 }
 
-function decodeV3(bytes: Uint8Array, now: number, modes: readonly CoreMode[]): Record<string, StudentState> {
+function decodeV3(bytes: Uint8Array, now: number, modes: readonly CoreMode[]): { out: Record<string, StudentState>; skipped: number } {
   const body = bytes.subarray(0, -3);
   const r = new Reader(body);
   r.u8(); // version
   const refDay = r.u16();
   const count = r.u8();
   const out: Record<string, StudentState> = {};
+  let skipped = 0;
   for (let k = 0; k < count; k++) {
     const tag = r.u8();
     const section = r.take(r.u16());
     const mode = modes.find((m) => m.tag === tag);
-    if (!mode || out[mode.id]) continue; // Unknown tag (newer build): skip it.
+    if (!mode) skipped++; // Unknown tag (newer build): skip it.
+    if (!mode || out[mode.id]) continue;
     out[mode.id] = readSection(section, mode.engine, now, refDay);
   }
-  return out;
+  return { out, skipped };
 }
 
 // ───────────────────────────── v1 / v2 (read only) ─────────────────────────────
@@ -612,6 +614,7 @@ function decodeWithSections(code: string, now: number, modes: readonly CoreMode[
   const crc8Ok = crc8(bytes.subarray(0, -1)) === bytes[bytes.length - 1];
 
   let decoded: Record<string, StudentState>;
+  let skipped = 0;
   if (version === V1 || version === V2) {
     if (bytes.length < 10) throw new ProgressCodeError('That code is too short.');
     if (!crc8Ok) throw new ProgressCodeError('That code has a typo in it.');
@@ -619,7 +622,7 @@ function decodeWithSections(code: string, now: number, modes: readonly CoreMode[
   } else if (version === V3) {
     const crc = (bytes[bytes.length - 3]! << 8) | bytes[bytes.length - 2]!;
     if (!crc8Ok || crc16(bytes.subarray(0, -3)) !== crc) throw new ProgressCodeError('That code has a typo in it.');
-    decoded = decodeV3(bytes, now, modes);
+    ({ out: decoded, skipped } = decodeV3(bytes, now, modes));
   } else {
     throw crc8Ok ? otherVersion() : new ProgressCodeError('That code has a typo in it.');
   }
@@ -627,14 +630,19 @@ function decodeWithSections(code: string, now: number, modes: readonly CoreMode[
   const profile: Record<string, StudentState> = {};
   for (const m of modes) profile[m.id] = decoded[m.id] ?? m.engine.newStudent();
   for (const id in decoded) profile[id] ??= decoded[id]!;
-  return { profile: profile as Profile, present: modes.filter((m) => decoded[m.id]).map((m) => m.id) };
+  // A v1/v2 code always writes a Name It section, even an untouched one, so "has a section" isn't
+  // enough: a mode is present only when its section holds something a fresh model doesn't.
+  const present = modes.filter((m) => decoded[m.id] && touched(m.engine, decoded[m.id]!)).map((m) => m.id);
+  return { profile: profile as Profile, present, unreadable: skipped };
 }
 
 /** A decoded code, and which modes it actually carried a section for (the rest are fresh stand-ins). */
 export interface DecodedCode {
   profile: Profile;
-  /** Ids of the modes the code had a section for. v1 holds Name It, v2 Name It and Letter Math. */
+  /** Ids of the modes the code carries progress for: sections that are not empty stand-ins (v1/v2 always write a Name It section). */
   present: string[];
+  /** Sections of a newer build this one can't read (unknown mode tags). */
+  unreadable: number;
 }
 
 export function decodeProfile(code: string, now: number, modes: readonly CoreMode[] = CORE_MODES): Profile {
@@ -648,7 +656,8 @@ export function decodeProfileSections(code: string, now: number, modes: readonly
 
 /**
  * The profile after importing a code: modes the code contains are replaced by the code's progress;
- * every other mode keeps the device's. Practice days are unioned (newest kept, capped), never lost.
+ * every other mode keeps the device's, returned by reference: don't keep `device` as an undo
+ * snapshot and then mutate the result (clone it first). Neither argument is mutated. Practice days are unioned (newest kept, capped), never lost.
  */
 export function mergeImport(device: Profile, imported: DecodedCode, modes: readonly CoreMode[] = CORE_MODES): Profile {
   const out: Record<string, StudentState> = { ...device };

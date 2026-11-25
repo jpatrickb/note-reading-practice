@@ -194,7 +194,7 @@ test('importing a code without a mode keeps that mode’s progress', async ({ pa
   await page.goto('about:blank');
   await page.goto(`/#import=${GOLDEN_CODES.v1Played!.code}`);
   await expect(page.getByTestId('import-modes').locator('li')).toHaveCount(1);
-  await expect(page.getByTestId('import-effect')).toHaveText('Replaces Name It. Keeps your Letter Math progress.');
+  await expect(page.getByTestId('import-effect')).toHaveText('This adds Name It. Your Letter Math progress stays.');
   await page.getByTestId('confirm-import').click();
 
   expect(await page.evaluate(() => localStorage.getItem('nrp:v1:state:letters'))).toBe(lettersBefore);

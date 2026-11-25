@@ -92,4 +92,61 @@ describe('importing a progress code', () => {
     expect(merged.third).toEqual(device.third);
     expect(merged.letters).toEqual(code.profile.letters);
   });
+
+  it('a v2 code from a kid who only played Letter Math never wipes the device\u2019s Name It', () => {
+    // Real v2 encoder output: it always wrote a Name It section, untouched here.
+    const g = GOLDEN_CODES.v2LettersOnly!;
+    expect(Object.values(g.expected.name.items).every((i) => i.n === 0)).toBe(true);
+    const code = decodeProfileSections(g.code, g.decodeAt, MODES);
+    expect(code.present).toEqual(['letters']);
+    const device = profileOf(5);
+    device.name.items[NAME.engine.set.items[0]!.id]!.best = 2;
+    const merged = mergeImport(device, code, MODES);
+    expect(merged.name).toEqual(device.name);
+    expect(merged.third).toEqual(device.third);
+    expect(merged.letters).toEqual(code.profile.letters);
+  });
+
+  it('an empty code changes nothing', () => {
+    const code = decodeProfileSections(encodeProfile({}, T0, MODES), T0, MODES);
+    expect(code.present).toEqual([]);
+    expect(code.unreadable).toBe(0);
+    const device = profileOf(5);
+    expect(mergeImport(device, code, MODES)).toEqual(device);
+  });
+
+  it('skips sections of modes this build does not know, and says so', () => {
+    const encoded = encodeProfile({ third: profileOf(9).third }, T0, MODES);
+    const code = decodeProfileSections(encoded, T0, CORE_MODES);
+    expect(code.present).toEqual([]);
+    expect(code.unreadable).toBe(1);
+    const mixed = decodeProfileSections(encodeProfile(profileOf(9), T0, MODES), T0, CORE_MODES);
+    expect(mixed.present).toEqual(['name', 'letters']);
+    expect(mixed.unreadable).toBe(1);
+    expect(mixed.profile.third).toBeUndefined();
+  });
+
+  it('reads a duplicated tag once (the first section wins)', () => {
+    const twin: CoreMode = { id: 'twin', tag: NAME.tag, engine: NAME.engine };
+    const encoded = encodeProfile({ name: played(NAME, 9), twin: played(NAME, 3) }, T0, [NAME, twin]);
+    const code = decodeProfileSections(encoded, T0, [NAME]);
+    expect(code.present).toEqual(['name']);
+    expect(code.profile.name.items[NAME.engine.set.items[0]!.id]!.n).toBe(9);
+  });
+
+  it('does not mutate the device profile or the decoded code', () => {
+    const device = profileOf(5, [today - 1]);
+    const code = importOf(profileOf(9, [today]), ['name']);
+    const deviceBefore = structuredClone(device);
+    const codeBefore = structuredClone(code);
+    mergeImport(device, code, MODES);
+    expect(device).toEqual(deviceBefore);
+    expect(code).toEqual(codeBefore);
+  });
+
+  it('drops the oldest practice days when over the cap', () => {
+    const many = Array.from({ length: PARAMS.maxPracticeDays }, (_, i) => today - 100 + i);
+    const capped = mergeImport({ ...profileOf(5), name: { ...profileOf(5).name, practiceDays: many } } as Profile, importOf(profileOf(9, [today]), ['name']), MODES);
+    expect(capped.name.practiceDays).toEqual([...many.slice(1), today]);
+  });
 });
