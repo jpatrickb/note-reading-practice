@@ -44,12 +44,12 @@ async function playPerfectSession(page: Page) {
 
 test('the home screen offers Letter Math and remembers the choice', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('radio', { name: /Name It/ })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByRole('radio', { name: /^Name It/ })).toHaveAttribute('aria-checked', 'true');
   await page.getByRole('radio', { name: /Letter Math/ }).click();
   await expect(page.getByRole('button', { name: 'Treble', exact: true })).toHaveCount(0);
   await page.reload();
   await expect(page.getByRole('radio', { name: /Letter Math/ })).toHaveAttribute('aria-checked', 'true');
-  await page.getByRole('radio', { name: /Name It/ }).click();
+  await page.getByRole('radio', { name: /^Name It/ }).click();
   await expect(page.getByRole('button', { name: 'Treble', exact: true })).toBeVisible();
 });
 
