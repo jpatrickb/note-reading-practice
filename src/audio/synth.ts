@@ -14,6 +14,8 @@ export const LOOKAHEAD = 0.2;
 export const TICK_MS = 25;
 /** Gap before a sequence starts, so the first note is scheduled rather than "now". */
 const START_DELAY = 0.06;
+/** A killed voice is disconnected this long after (fade 8 ms + stop at 50 ms), even if `onended` never fires. */
+const KILL_CLEANUP_MS = 120;
 
 interface Timbre {
   harmonics: number[];
@@ -113,6 +115,7 @@ export class Synth {
   note(freq: number, when = 0, duration = 1.4, volume = 0.35): void {
     const ctx = this.ctx;
     if (!ctx || this._muted) return;
+    this.keepAlive.touch();
     this.voiceAt(freq, ctx.currentTime + when, duration, volume, 'melody');
   }
 
@@ -120,6 +123,7 @@ export class Synth {
   chord(midis: readonly number[], when = 0, dur = 1.2, volume = TIMBRES.chord.volume): void {
     const ctx = this.ctx;
     if (!ctx || this._muted) return;
+    this.keepAlive.touch();
     for (const m of midis) this.voiceAt(midiToFreq(m), ctx.currentTime + when, dur, volume, 'chord');
   }
 
@@ -138,6 +142,7 @@ export class Synth {
     const tl = scheduleSequence(events, opts.bpm);
     if (!ctx || this._muted || tl.notes.length === 0) return { stop() {}, done: Promise.resolve() };
 
+    this.keepAlive.touch();
     const t0 = ctx.currentTime + START_DELAY;
     let next = 0; // next note to schedule
     let called = 0; // next note to announce via onNote
@@ -146,8 +151,10 @@ export class Synth {
     let finish!: () => void;
     const done = new Promise<void>((r) => (finish = r));
 
+    let stopped = false;
     const end = (silence: boolean) => {
-      if (timer === null && !this.sequences.has(stop)) return;
+      if (stopped) return;
+      stopped = true;
       if (timer !== null) clearInterval(timer);
       timer = null;
       this.sequences.delete(stop);
@@ -161,15 +168,22 @@ export class Synth {
       const now = ctx.currentTime - t0;
       const due = dueNotes(tl, next, now + LOOKAHEAD);
       for (const n of due.notes) {
-        const v = this.voiceAt(midiToFreq(n.midi), t0 + n.start, n.ring, TIMBRES[n.voice].volume * n.vel, n.voice);
+        // After a throttled or hidden tab, notes already over are skipped, not played in a burst.
+        if (n.start + n.ring < now) continue;
+        const v =this.voiceAt(midiToFreq(n.midi), t0 + n.start, n.ring, TIMBRES[n.voice].volume * n.vel, n.voice);
         if (v) mine.add(v);
       }
       next = due.upTo;
-      while (called < tl.notes.length && tl.notes[called]!.start <= now) {
+      while (!stopped && called < tl.notes.length && tl.notes[called]!.start <= now) {
         const n = tl.notes[called++]!;
-        opts.onNote?.(n.index);
+        if (n.start + n.ring < now) continue; // missed entirely: no stale highlight
+        try {
+          opts.onNote?.(n.index);
+        } catch (e) {
+          console.error(e); // a throwing callback must not repeat every tick or stop the music
+        }
       }
-      if (now >= tl.total) end(false);
+      if (!stopped && now >= tl.total) end(false);
     };
 
     this.sequences.add(stop);
@@ -232,25 +246,31 @@ export class Synth {
       gains.push(g);
     });
 
-    const voice: Voice = {
-      start: t,
-      end: t + duration,
-      voice: kind,
-      kill: (at) => {
-        // Quick fade (no click), then the oscillators stop; `onended` below tears the graph down.
-        out.gain.cancelScheduledValues(at);
-        out.gain.setTargetAtTime(0.0001, at, 0.008);
-        for (const o of oscs) o.stop(at + 0.05);
-      },
-    };
-    this.voices.add(voice);
-    oscs[0]!.onended = () => {
+    let cleanup: ReturnType<typeof setTimeout> | null = null;
+    const teardown = () => {
+      if (cleanup !== null) clearTimeout(cleanup);
+      cleanup = null;
       this.voices.delete(voice);
       for (const o of oscs) o.disconnect();
       for (const g of gains) g.disconnect();
       filter.disconnect();
       out.disconnect();
     };
+    const voice: Voice = {
+      start: t,
+      end: t + duration,
+      voice: kind,
+      kill: (at) => {
+        // Quick fade (no click), then the oscillators stop. A voice that never started may never fire
+        // `onended`, so also disconnect after the fade on a timer.
+        out.gain.cancelScheduledValues(at);
+        out.gain.setTargetAtTime(0.0001, at, 0.008);
+        for (const o of oscs) o.stop(at + 0.05);
+        cleanup ??= setTimeout(teardown, KILL_CLEANUP_MS);
+      },
+    };
+    this.voices.add(voice);
+    oscs[0]!.onended = teardown;
     return voice;
   }
 }

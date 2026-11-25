@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type NoteEvent } from '../src/audio/sequence';
-import { SilentSwitchKeepAlive, silentWavDataUri } from '../src/audio/silentSwitch';
+import { SilentSwitchKeepAlive, detectIPhone, silentWavDataUri } from '../src/audio/silentSwitch';
 import { LOOKAHEAD, MAX_VOICES, Synth } from '../src/audio/synth';
 
 class FakeParam {
@@ -54,10 +54,10 @@ class FakeContext {
 
 function setup() {
   const ctx = new FakeContext();
-  const keepAlive = { start: vi.fn(), stop: vi.fn() } as unknown as SilentSwitchKeepAlive;
+  const keepAlive = { start: vi.fn(), stop: vi.fn(), touch: vi.fn() } as unknown as SilentSwitchKeepAlive;
   const synth = new Synth({ createContext: () => ctx as unknown as AudioContext, keepAlive });
   synth.unlock();
-  return { ctx, synth, keepAlive: keepAlive as unknown as { start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn> } };
+  return { ctx, synth, keepAlive: keepAlive as unknown as Record<'start' | 'stop' | 'touch', ReturnType<typeof vi.fn>> };
 }
 
 const mel = (midi: number, beat: number, beats = 1, voice: NoteEvent['voice'] = 'melody'): NoteEvent => ({ midi, beat, beats, voice, vel: 1 });
@@ -237,6 +237,7 @@ describe('stop() and stopAll()', () => {
     const scheduled = ctx.oscs.length;
     ctx.advance(0.2);
     h.stop();
+    vi.advanceTimersByTime(200); // let the kill-cleanup timers run
     expect(vi.getTimerCount()).toBe(0);
     await h.done;
     ctx.advance(0.1);
@@ -266,6 +267,7 @@ describe('stop() and stopAll()', () => {
     ctx.advance(0.1);
     synth.stopAll();
     await Promise.all([a.done, b.done]);
+    vi.advanceTimersByTime(200);
     expect(vi.getTimerCount()).toBe(0);
     ctx.advance(0.1);
     expect(ctx.oscs.every((o) => o.stopAt! <= ctx.currentTime)).toBe(true);
@@ -283,6 +285,7 @@ describe('stop() and stopAll()', () => {
     synth.muted = true;
     await h.done;
     expect(keepAlive.stop).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(200);
     expect(vi.getTimerCount()).toBe(0);
     ctx.advance(1);
     expect(ctx.liveNodes).toHaveLength(0);
@@ -296,57 +299,227 @@ describe('stop() and stopAll()', () => {
   });
 });
 
+describe('sequence robustness', () => {
+  it('onNote that stops the sequence gets no further calls, even with several notes due', () => {
+    const { ctx, synth } = setup();
+    const seen: number[] = [];
+    const ref: { stop?: () => void } = {};
+    ref.stop = synth.playSequence([mel(60, 0), mel(62, 0.1), mel(64, 0.2), mel(65, 0.3)], {
+      bpm: 60,
+      onNote: (i) => {
+        seen.push(i);
+        ref.stop?.();
+      },
+    }).stop;
+    ctx.advance(1);
+    vi.advanceTimersByTime(100);
+    expect(seen).toEqual([0]);
+  });
+
+  it('a throwing onNote is reported once per note and does not stop the music', () => {
+    const { ctx, synth } = setup();
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let calls = 0;
+    synth.playSequence([mel(60, 0), mel(62, 1)], {
+      bpm: 60,
+      onNote: () => {
+        calls++;
+        throw new Error('boom');
+      },
+    });
+    ctx.advance(0.1);
+    vi.advanceTimersByTime(100);
+    expect(calls).toBe(1); // not repeated every tick
+    ctx.advance(1);
+    vi.advanceTimersByTime(25);
+    expect(calls).toBe(2);
+    expect(err).toHaveBeenCalledTimes(2);
+    err.mockRestore();
+  });
+
+  it('after a long stall, notes already over are skipped instead of bursting', () => {
+    const { ctx, synth } = setup();
+    const seen: number[] = [];
+    // 60 bpm: notes at 0, 1, 2, 3 s, each ringing 1.3 s.
+    synth.playSequence([mel(60, 0), mel(62, 1), mel(64, 2), mel(65, 3)], { bpm: 60, onNote: (i) => seen.push(i) });
+    const first = ctx.oscs.length;
+    ctx.advance(2.9); // tab was throttled; now is 2.84 s into the tune
+    vi.advanceTimersByTime(25);
+    const t0 = 10.06;
+    const newStarts = new Set(ctx.oscs.slice(first).map((o) => o.startAt));
+    expect(newStarts).toEqual(new Set([t0 + 2, t0 + 3])); // notes 0 and 1 are over and skipped
+    expect(seen).toEqual([2]); // 0 and 1 were missed entirely: no stale highlights
+  });
+
+  it('a killed voice is disconnected by timer even if onended never fires', () => {
+    const { ctx, synth } = setup();
+    const h = synth.playSequence([mel(60, 5)], { bpm: 60 });
+    ctx.advance(0.1);
+    synth.note(440, 5);
+    h.stop();
+    synth.stopAll();
+    vi.advanceTimersByTime(200); // the fake clock never passed the stop times: no onended
+    expect(ctx.liveNodes).toHaveLength(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('note, chord and sequence touch the keep-alive', () => {
+    const { synth, keepAlive } = setup();
+    keepAlive.touch.mockClear();
+    synth.note(440);
+    synth.chord([60]);
+    synth.playSequence([mel(60, 0)], { bpm: 60 });
+    expect(keepAlive.touch).toHaveBeenCalledTimes(3);
+  });
+});
+
 describe('silent-switch keep-alive', () => {
   function fakeEl() {
     return { src: '', loop: false, volume: 1, play: vi.fn(() => Promise.resolve()), pause: vi.fn(), setAttribute: vi.fn() };
   }
+  const iphone = { isIPhone: () => true, session: () => undefined };
 
-  it('the clip is a tiny valid silent WAV', () => {
+  it('the clip is a 1 s silent WAV', () => {
     const uri = silentWavDataUri();
     expect(uri.startsWith('data:audio/wav;base64,')).toBe(true);
-    expect(uri.length).toBeLessThan(2000);
+    expect(uri.length).toBeLessThan(12000);
     const bin = atob(uri.split(',')[1]!);
     expect(bin.slice(0, 4)).toBe('RIFF');
     expect(bin.slice(8, 12)).toBe('WAVE');
+    expect(bin.length).toBe(44 + 8000);
     expect([...bin.slice(44)].every((c) => c.charCodeAt(0) === 128)).toBe(true);
   });
 
-  it('starts a looping element once, pauses when stopped, and restarts', () => {
+  it('detects iPhone/iPod only; iPads (including the Mac-like UA) and others do not qualify', () => {
+    const ua = (s: string) => vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(s);
+    ua('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148');
+    expect(detectIPhone()).toBe(true);
+    ua('Mozilla/5.0 (iPod touch; CPU iPhone OS 15_0 like Mac OS X)');
+    expect(detectIPhone()).toBe(true);
+    ua('Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15');
+    expect(detectIPhone()).toBe(false);
+    ua('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15');
+    expect(detectIPhone()).toBe(false);
+    ua('Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36');
+    expect(detectIPhone()).toBe(false);
+    vi.restoreAllMocks();
+  });
+
+  it('does nothing off iPhone (iPad, Android, desktop)', () => {
     const el = fakeEl();
-    const ka = new SilentSwitchKeepAlive(() => el);
+    const session = { type: 'auto' };
+    const ka = new SilentSwitchKeepAlive({ make: () => el, isIPhone: () => false, session: () => session });
+    ka.start();
+    ka.touch();
+    expect(el.play).not.toHaveBeenCalled();
+    expect(session.type).toBe('auto');
+    expect(ka.active).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('element fallback: starts once, loops, pauses on stop, restarts', () => {
+    const el = fakeEl();
+    const ka = new SilentSwitchKeepAlive({ make: () => el, ...iphone });
     ka.start();
     ka.start();
     expect(el.play).toHaveBeenCalledTimes(1);
     expect(el.loop).toBe(true);
     expect(el.src).toContain('data:audio/wav');
-    expect(ka.active).toBe(true);
     ka.stop();
     expect(el.pause).toHaveBeenCalled();
     expect(ka.active).toBe(false);
     ka.start();
     expect(el.play).toHaveBeenCalledTimes(2);
+    ka.stop();
+  });
+
+  it('uses audioSession alone when it exists, and resets it to auto on stop', () => {
+    const el = fakeEl();
+    const session = { type: 'auto' };
+    const make = vi.fn(() => el);
+    const ka = new SilentSwitchKeepAlive({ make, isIPhone: () => true, session: () => session });
+    ka.start();
+    expect(session.type).toBe('playback');
+    expect(make).not.toHaveBeenCalled();
+    expect(ka.active).toBe(true);
+    ka.stop();
+    expect(session.type).toBe('auto');
+    expect(ka.active).toBe(false);
+  });
+
+  it('releases after 30 s idle and comes back on the next touch; activity postpones the release', () => {
+    const el = fakeEl();
+    const session = { type: 'auto' };
+    const ka = new SilentSwitchKeepAlive({ make: () => el, isIPhone: () => true, session: () => session });
+    ka.start();
+    vi.advanceTimersByTime(25_000);
+    ka.touch(); // a note: resets the countdown
+    vi.advanceTimersByTime(25_000);
+    expect(ka.active).toBe(true);
+    vi.advanceTimersByTime(5_001);
+    expect(ka.active).toBe(false);
+    expect(session.type).toBe('auto');
+    expect(vi.getTimerCount()).toBe(0);
+    ka.touch();
+    expect(ka.active).toBe(true);
+    expect(session.type).toBe('playback');
+    ka.stop();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('touch after mute does not restart it', () => {
+    const el = fakeEl();
+    const ka = new SilentSwitchKeepAlive({ make: () => el, ...iphone });
+    ka.start();
+    ka.stop();
+    ka.touch();
+    expect(ka.active).toBe(false);
+    expect(el.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('pauses when the page is hidden and resumes on visible only if still wanted', () => {
+    const state = vi.spyOn(document, 'visibilityState', 'get');
+    state.mockReturnValue('visible');
+    const el = fakeEl();
+    const ka = new SilentSwitchKeepAlive({ make: () => el, ...iphone });
+    const fire = (v: 'hidden' | 'visible') => {
+      state.mockReturnValue(v);
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
+    ka.start();
+    fire('hidden');
+    expect(ka.active).toBe(false);
+    ka.touch(); // still hidden: stays off
+    expect(ka.active).toBe(false);
+    fire('visible');
+    expect(ka.active).toBe(true);
+    // Muted while visible, then hidden and visible again: stays off.
+    ka.stop();
+    fire('hidden');
+    fire('visible');
+    expect(ka.active).toBe(false);
+    // Never unlocked: becoming visible does not start anything.
+    const fresh = new SilentSwitchKeepAlive({ make: () => el, ...iphone });
+    fire('visible');
+    expect(fresh.active).toBe(false);
+    state.mockRestore();
   });
 
   it('survives a rejected play() and a throwing element', async () => {
     const el = fakeEl();
     el.play.mockReturnValue(Promise.reject(new Error('NotAllowedError')));
-    const ka = new SilentSwitchKeepAlive(() => el);
+    const ka = new SilentSwitchKeepAlive({ make: () => el, ...iphone });
     ka.start();
     await Promise.resolve();
     await Promise.resolve();
     expect(ka.active).toBe(false); // so the next gesture retries
-    const bad = new SilentSwitchKeepAlive(() => {
-      throw new Error('no Audio');
+    const bad = new SilentSwitchKeepAlive({
+      make: () => {
+        throw new Error('no Audio');
+      },
+      ...iphone,
     });
     expect(() => bad.start()).not.toThrow();
     expect(() => bad.stop()).not.toThrow();
-  });
-
-  it('asks Safari for the playback audio session when available', () => {
-    const session = { type: 'auto' };
-    Object.defineProperty(navigator, 'audioSession', { value: session, configurable: true });
-    new SilentSwitchKeepAlive(() => fakeEl()).start();
-    expect(session.type).toBe('playback');
-    delete (navigator as unknown as { audioSession?: unknown }).audioSession;
   });
 });
