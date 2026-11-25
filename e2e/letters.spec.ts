@@ -27,6 +27,19 @@ async function tap(page: Page, answer: string) {
   await page.locator(`[data-answer="${answer}"]`).click();
 }
 
+/**
+ * Silver needs a reaction time within 1.6x the kid's own baseline, measured with Date.now().
+ * Under load one slow tap makes a perfect session earn no silver. Here app time moves only on a
+ * click, 800ms each, so every answer counts as equally fluent.
+ */
+async function steadyReactionTime(page: Page) {
+  await page.addInitScript(() => {
+    let t = Date.now();
+    Date.now = () => t;
+    document.addEventListener('click', () => (t += 800), true);
+  });
+}
+
 async function start(page: Page) {
   await page.goto('/');
   await page.getByRole('button', { name: /Letter Math/ }).click();
@@ -113,6 +126,7 @@ test('the first questions do not all share one answer letter', async ({ page }) 
 
 test('opening several questions at once shows one unlock toast, not one per question', async ({ page }) => {
   test.setTimeout(90_000);
+  await steadyReactionTime(page);
   await start(page);
   // Record every unlock toast as it appears (they fade after a few seconds).
   await page.evaluate(() => {
@@ -140,6 +154,7 @@ test('opening several questions at once shows one unlock toast, not one per ques
 });
 
 test('a perfect session earns silver, shows the Letter Math grid, and persists', async ({ page }) => {
+  await steadyReactionTime(page);
   await start(page);
   await playPerfectSession(page);
   await expect(page.locator('.summary [data-testid=letter-map] .lm-cell[data-level="silver"]').first()).toBeVisible();
@@ -156,6 +171,7 @@ test('a perfect session earns silver, shows the Letter Math grid, and persists',
 });
 
 test('Letter Math progress moves to another device in the progress code', async ({ page, browser, baseURL }) => {
+  await steadyReactionTime(page);
   await start(page);
   await playPerfectSession(page);
   await page.goto('/');
