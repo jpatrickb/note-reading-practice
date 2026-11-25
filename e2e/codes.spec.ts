@@ -29,8 +29,8 @@ const played = GOLDEN_CODES.v3Played!.expected;
 const goldOf = (s: StudentState) => Object.values(s.items).filter((i) => i.best === 2).length;
 const silverOf = (s: StudentState) => Object.values(s.items).filter((i) => i.best === 1).length;
 const importText = {
-  name: `This code has 🥇 ${goldOf(played.name)} gold and 🥈 ${silverOf(played.name)} silver keys.`,
-  letters: `Letter Math: 🥇 ${goldOf(played.letters)} gold and 🥈 ${silverOf(played.letters)} silver.`,
+  name: `Name It: 🥇 ${goldOf(played.name)} gold and 🥈 ${silverOf(played.name)} silver`,
+  letters: `Letter Math: 🥇 ${goldOf(played.letters)} gold and 🥈 ${silverOf(played.letters)} silver`,
 };
 
 test.describe('a code with gold keys', () => {

@@ -2,7 +2,8 @@ import qrcode from 'qrcode-generator';
 import { describe, expect, it } from 'vitest';
 import { decodeProfile as liveDecode, encodeProfile as liveEncode } from '../src/core/codec';
 import { BitWriter, ProgressCodeError, codeFromBase32, codeToBase32, crc16, decodeProfile, decodeProgress, encodeProfile, encodeProgress, newerFormatCode } from '../src/core/codec';
-import { type Engine, type ItemState, PARAMS, type StudentState, createEngine, dayIndex, isDusty, nameEngine, newStudent, recall } from '../src/core/engine';
+import { type Engine, type ItemState, PARAMS, type StudentState, createEngine, dayIndex, isDusty, nameEngine, newStudent, normalize, recall } from '../src/core/engine';
+import { nameEngine as liveNameEngine } from '../src/core/engine';
 import { defineItemSet } from '../src/core/itemset';
 import { letterEngine } from '../src/core/letters';
 import { CORE_MODES, type CoreMode } from '../src/core/modes';
@@ -253,6 +254,17 @@ describe('progress code v3', () => {
     expect(back.name.recentErrors).toEqual([]);
   });
 
+  it('round-trips every registered mode (CORE_MODES), whatever modes are added later', () => {
+    const now = T0 + 50 * DAY;
+    const profile = Object.fromEntries(CORE_MODES.map((m, k) => [m.id, fullyPlayed(m.engine, now, 40 + k)]));
+    const back = decodeProfile(encodeProfile(profile, now), now);
+    expect(Object.keys(back).sort()).toEqual(CORE_MODES.map((m) => m.id).sort());
+    for (const mode of CORE_MODES) expectSameBehavior(mode.engine, profile[mode.id]!, back[mode.id]!, now);
+    // A mode the kid never touched gets no section and decodes fresh.
+    const some = decodeProfile(encodeProfile({ [CORE_MODES[0]!.id]: profile[CORE_MODES[0]!.id] }, now), now);
+    for (const mode of CORE_MODES.slice(1)) expect(some[mode.id]).toEqual(mode.engine.newStudent());
+  });
+
   it('keeps precision on simulated real play: same behavior, same selection, recall within ±0.04', () => {
     const name = newStudent();
     const now = playName(name, T0, 8, 11);
@@ -318,24 +330,45 @@ describe('progress code v3', () => {
       expect(decodeProfile(signV3(crafted), now).name).toEqual(older.name);
     });
 
-    it('ignores appended record bytes and trailing section bytes from a newer build', () => {
-      const s = newStudent();
-      const t = playName(s, T0, 2, 8);
-      // Plain 5-byte records, as the build before compact gold records wrote them.
-      const plain = v3Body(frozen.encodeProgress(s, t));
-      // Rebuild the Name It section with recordLen 6 (one unknown byte per record) and 2 trailing bytes.
-      const [, , , , tag, , , ...rest] = plain;
-      const head = rest.slice(0, 2 + 3 + 2 + Math.ceil(nameEngine.set.items.length / 8)); // baseline, days, count, bitmap
-      const records = rest.slice(head.length + 1);
-      const wide: number[] = [];
-      for (let k = 0; k < records.length; k += 5) wide.push(...records.slice(k, k + 5), 0xab);
-      const section = [...head, 6, ...wide, 0xee, 0xee];
-      const crafted = [plain[0]!, plain[1]!, plain[2]!, 1, tag!, section.length >> 8, section.length & 0xff, ...section];
-      expect(decodeProfile(signV3(crafted), t).name).toEqual(decodeProfile(frozen.encodeProgress(s, t), t).name);
-      // A record shorter than this build understands means a different format.
-      const narrow = [...head, 4, ...records];
-      const bad = [plain[0]!, plain[1]!, plain[2]!, 1, tag!, narrow.length >> 8, narrow.length & 0xff, ...narrow];
-      expect(() => decodeProfile(signV3(bad), t)).toThrow(/different version/);
+    describe('ignores appended record bytes and trailing section bytes from a newer build', () => {
+      // Take a plain (5-byte record) code, rebuild its Name It section with recordLen 6 (one unknown
+      // byte per record) and 2 trailing bytes, and check it decodes exactly like the original.
+      // `items` is the item count the code was made with: it sets the bitmap size (a code made for the
+      // previous 26-item list has a 4-byte bitmap, one made for today's list a longer one).
+      const widen = (plain: number[], items: number) => {
+        const [, , , , tag, , , ...rest] = plain;
+        const head = rest.slice(0, 2 + 3 + 2 + Math.ceil(items / 8)); // baseline, days, count, bitmap
+        expect(rest[head.length], 'recordLen of the original').toBe(5);
+        const records = rest.slice(head.length + 1);
+        expect(records.length % 5).toBe(0);
+        const wide: number[] = [];
+        for (let k = 0; k < records.length; k += 5) wide.push(...records.slice(k, k + 5), 0xab);
+        const frame = (section: number[]) => [plain[0]!, plain[1]!, plain[2]!, 1, tag!, section.length >> 8, section.length & 0xff, ...section];
+        return { crafted: frame([...head, 6, ...wide, 0xee, 0xee]), bad: frame([...head, 4, ...records]), records: records.length / 5 };
+      };
+
+      it('in a code written by the previous build (26 items)', () => {
+        const s = newStudent();
+        const t = playName(s, T0, 2, 8);
+        const code = frozen.encodeProgress(s, t);
+        const { crafted, bad, records } = widen(v3Body(code), frozen.FROZEN_ITEMS.name.order.length);
+        expect(records).toBeGreaterThan(3);
+        expect(decodeProfile(signV3(crafted), t).name).toEqual(decodeProfile(code, t).name);
+        // A record shorter than this build understands means a different format.
+        expect(() => decodeProfile(signV3(bad), t)).toThrow(/different version/);
+      });
+
+      it('in a plain code written by this build over its current item list', () => {
+        const s = newStudent();
+        const t = playName(s, T0, 2, 8);
+        // Silver, not gold: a section with no compact gold stays plain 5-byte records.
+        for (const id in s.items) if (s.items[id]!.best === 2) s.items[id]!.best = 1;
+        const code = encodeProgress(s, t);
+        const { crafted, bad, records } = widen(v3Body(code), nameEngine.set.items.length);
+        expect(records).toBeGreaterThan(3);
+        expect(decodeProfile(signV3(crafted), t).name).toEqual(decodeProfile(code, t).name);
+        expect(() => decodeProfile(signV3(bad), t)).toThrow(/different version/);
+      });
     });
 
     it('keeps the first section when a tag repeats', () => {
@@ -390,16 +423,18 @@ describe('progress code v3', () => {
       expect(qrVersion(qr.getModuleCount())).toBeLessThanOrEqual(22);
     });
 
-    it('compact gold records roughly halve a profile of gold items, and never grow one without any', () => {
+    it('compact gold records shrink a profile of gold items a lot, and never grow one without any', () => {
+      // Like with like: the previous codec only knows the item lists it was built with, so both
+      // codecs get those (a live mode may have grown since).
       const withBest = (best: 0 | 2) => {
-        const p = fullProfile(CORE_MODES);
+        const p = fullProfile(PINNED);
         for (const id in p) for (const key in p[id]!.items) Object.assign(p[id]!.items[key]!, { best, silverDay: -1, n: 40, c: 38, last: now - HOUR });
         return p;
       };
       const gold = withBest(2);
       const none = withBest(0);
-      expect(encodeProfile(gold, now).length).toBeLessThan(0.7 * frozen.encodeProfile(gold, now).length);
-      expect(encodeProfile(none, now)).toBe(frozen.encodeProfile(none, now));
+      expect(encodeProfile(gold, now, PINNED).length).toBeLessThan(0.7 * frozen.encodeProfile(gold, now).length);
+      expect(encodeProfile(none, now, PINNED)).toBe(frozen.encodeProfile(none, now));
     });
 
     it('guard: every core mode fully played still fits the budget', () => {
@@ -528,10 +563,14 @@ describe('compact gold records (#60)', () => {
     it('skips a compact section of a mode it does not know, like any unknown tag', () => {
       const p = { ...allGold(), big: fullyPlayed(bigEngine, now, 3) };
       for (const id in p.big.items) p.big.items[id] = { ...p.big.items[id]!, best: 2, n: 30, c: 30 };
-      const code = encodeProfile(p, now, WITH_BIG);
+      // An older build knows PINNED's two modes; a newer one also knows tag 200. Same item lists on both
+      // sides, so only the extra mode differs.
+      const newer: readonly CoreMode[] = [...PINNED, { id: 'big', tag: 200, engine: bigEngine }];
+      const code = encodeProfile(p, now, newer);
       const older = decodeProfile(code, now);
       expect(older.big).toBeUndefined();
-      expect(older.name).toEqual(decodeProfile(code, now, WITH_BIG).name);
+      expect(older.name).toEqual(decodeProfile(code, now, newer).name);
+      expect(decodeProfile(code, now, newer).big!.items['big:299']!.best).toBe(2);
     });
   });
 
@@ -774,8 +813,10 @@ describe('compact gold records (#60)', () => {
       // Keep playing on both imported copies: the same answers lead to the same questions and levels.
       const rngA = seededRng(5);
       const rngB = seededRng(5);
-      const a = structuredClone(before);
-      const b = structuredClone(back);
+      // Play on the live engine (which may know more items than the pinned lists): both copies get the
+      // same fresh, locked items for the ones no code of that age carries.
+      const a = normalize(structuredClone(before));
+      const b = normalize(structuredClone(back));
       let at = t + DAY;
       for (let k = 0; k < 3; k++) {
         const sa = startSession(['treble', 'bass'], 30);
@@ -784,14 +825,14 @@ describe('compact gold records (#60)', () => {
           const qa = nextQuestion(sa, a, at, rngA);
           const qb = nextQuestion(sb, b, at, rngB);
           expect(qb.itemId).toBe(qa.itemId);
-          submit(sa, a, nameEngine.answerOf(qa.itemId), at + 1500);
-          submit(sb, b, nameEngine.answerOf(qb.itemId), at + 1500);
+          submit(sa, a, liveNameEngine.answerOf(qa.itemId), at + 1500);
+          submit(sb, b, liveNameEngine.answerOf(qb.itemId), at + 1500);
           at += 5000;
         }
         at += 20 * HOUR;
       }
-      for (const item of nameEngine.set.items) {
-        expect([b.items[item.id]!.unlocked, b.items[item.id]!.best]).toEqual([a.items[item.id]!.unlocked, a.items[item.id]!.best]);
+      for (const id of Object.keys(a.items)) {
+        expect([b.items[id]!.unlocked, b.items[id]!.best], id).toEqual([a.items[id]!.unlocked, a.items[id]!.best]);
       }
     });
 
