@@ -13,13 +13,16 @@ const NOTE_X = 185;
 
 export const yOf = (pos: number) => BOTTOM_Y - (pos * SP) / 2;
 
-function el<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number>) {
+/** Drawing constants, for other staff renderers (e.g. staffInput.ts) to line up with this one. */
+export const STAFF_GEOMETRY = { space: SP, bottomY: BOTTOM_Y, width: WIDTH, height: HEIGHT, noteX: NOTE_X, glyphScale: K } as const;
+
+export function el<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number>) {
   const node = document.createElementNS(SVG_NS, tag);
   for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
   return node;
 }
 
-function glyph(name: keyof typeof GLYPHS, x: number, y: number, cls: string) {
+export function glyph(name: keyof typeof GLYPHS, x: number, y: number, cls: string) {
   return el('path', { d: GLYPHS[name].path, transform: `translate(${x} ${y}) scale(${K} ${-K})`, class: cls });
 }
 
