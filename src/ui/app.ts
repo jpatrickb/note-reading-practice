@@ -541,7 +541,7 @@ export class App {
       h(
         'section',
         { class: 'card' },
-        ...(lm ? [renderLetterMap(this.letters, this.now())] : this.settings.clefs.map((c) => h('div', { class: 'piano' }, renderMasteryKeyboard(this.state, c, this.now())))),
+        ...(lm ? [renderLetterMap(this.letters, this.now())] : this.settings.clefs.map((c) => h('div', { class: 'keys-frame' }, renderMasteryKeyboard(this.state, c, this.now())))),
       ),
       h(
         'nav',
@@ -574,7 +574,7 @@ export class App {
           'section',
           { class: 'card' },
           h('h2', { class: 'map-head' }, h('span', {}, c === 'treble' ? 'Treble clef' : 'Bass clef')),
-          h('div', { class: 'piano' }, renderMasteryKeyboard(this.state, c, now)),
+          h('div', { class: 'keys-frame' }, renderMasteryKeyboard(this.state, c, now)),
         ),
       ),
       h(

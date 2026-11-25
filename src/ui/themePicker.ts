@@ -161,7 +161,7 @@ function calmSwitch(settings: Settings, save: () => void): HTMLElement {
       h(
         'p',
         { class: 'muted', id: 'calm-desc' },
-        forced ? 'Your device asks for less motion, so the game is always calm here.' : 'Less motion: a still background and smaller celebrations.',
+        forced ? 'Your device asks for less motion, so the game is always calm here.' : 'Less motion: a still background, no confetti or flying keys.',
       ),
     ),
     sw,

@@ -439,7 +439,7 @@ export const CONTRAST_CHECKS: readonly ColorCheck[] = [
   { fg: 'ink', bg: 'tip', kind: 'text', where: 'home-screen tip' },
   { fg: 'ink', bg: 'lesson', kind: 'text', where: 'mini-lessons' },
   { fg: 'muted', bg: 'bg', kind: 'text', where: 'muted text on the page' },
-  { fg: 'muted', bg: 'card', kind: 'text', where: 'muted text on cards' },
+  { fg: 'muted', bg: 'card', kind: 'text', where: 'muted text on cards, calm switch outline (off)' },
   { fg: 'primaryInk', bg: 'primary', kind: 'text', where: 'primary buttons' },
   { fg: 'primary', bg: 'tip', kind: 'text', where: 'link button in the tip' },
   { fg: 'primary', bg: 'card', kind: 'text', where: 'link buttons on cards' },
@@ -468,6 +468,9 @@ export const CONTRAST_CHECKS: readonly ColorCheck[] = [
   // Selected vs unselected controls must be told apart at a glance, not just by a faint shadow.
   { fg: 'selected', bg: 'secondary', kind: 'large', where: 'selected vs unselected segment' },
   { fg: 'selected', bg: 'card', kind: 'large', where: 'selected segment vs the card around it' },
+  // Calm switch, off: outline (muted) against the card, and the knob against the track.
+  { fg: 'muted', bg: 'card', kind: 'large', where: 'calm switch outline vs the card' },
+  { fg: 'muted', bg: 'secondary', kind: 'large', where: 'calm switch outline vs its track' },
   // Mastery keyboard: the four levels must look clearly different from each other
   { fg: 'meter', bg: 'keyWhite', kind: 'large', where: 'learning bar on a key' },
   { fg: 'keyDot', bg: 'keyWhite', kind: 'large', where: 'middle-C dot' },

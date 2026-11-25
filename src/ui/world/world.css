@@ -41,10 +41,10 @@
   vertical-align: -0.3em;
 }
 .medal__ribbon {
-  fill: #4dabf7;
+  fill: var(--silver-2);
 }
 .medal--gold .medal__ribbon {
-  fill: #ff6b6b;
+  fill: var(--gold-2);
 }
 .medal--gold .medal__disc,
 .medal--gold .medal__star {
@@ -312,6 +312,12 @@ html[data-calm='true'] .mascot,
 html[data-calm='true'] .mascot *,
 html[data-calm='true'] .summary-hero__rays {
   animation: none !important;
+}
+html[data-calm='true'] .journey__mover,
+html[data-calm='true'] .journey__fill,
+html[data-calm='true'] .switch,
+html[data-calm='true'] .switch__knob {
+  transition: none;
 }
 
 /* ───────────── mascots ───────────── */
@@ -878,7 +884,7 @@ html[data-calm='true'] .summary-hero__rays {
 .card.legend {
   padding: 14px 18px;
 }
-.piano {
+.keys-frame {
   position: relative;
   max-width: 680px;
   margin: 8px auto;
@@ -887,7 +893,7 @@ html[data-calm='true'] .summary-hero__rays {
   background: var(--key-black);
   box-shadow: inset 0 -5px 0 rgb(0 0 0 / 0.3), var(--shadow);
 }
-.piano::before {
+.keys-frame::before {
   content: '';
   position: absolute;
   top: 7px;
@@ -897,7 +903,7 @@ html[data-calm='true'] .summary-hero__rays {
   border-radius: 4px;
   background: rgb(255 255 255 / 0.22);
 }
-.piano .keys {
+.keys-frame .keys {
   margin: 0 auto;
 }
 .map-head {
@@ -982,7 +988,7 @@ html[data-calm='true'] .summary-hero__rays {
   height: 44px;
   padding: 0;
   border-radius: 99px;
-  border: 2px solid var(--key-border);
+  border: 2px solid var(--muted);
   background: var(--secondary);
   transition: background-color 0.2s;
 }

@@ -203,7 +203,7 @@ const ocean: Scene = {
       move: 'amb--bob',
       dur: 5,
       art:
-        '<path d="M8 66q-6 6 0 12M20 66q6 6 0 14M32 66q-6 6 0 12M44 66q6 6 0 12M52 66q-5 5 0 10" stroke="#f783ac" stroke-width="3" fill="none" stroke-linecap="round"/>' +
+        '<path d="M10 40q-4 9 0 18t0 18M20 41q4 9 0 19t0 17M30 42q-4 9 0 18t0 18M40 41q4 9 0 19t0 17M50 40q-4 9 0 18t0 16" stroke="#f783ac" stroke-width="3" fill="none" stroke-linecap="round"/>' +
         '<path d="M4 38C4 16 18 4 30 4S56 16 56 38Q51 44 45 39 40 45 35 39 30 45 25 39 20 45 15 39 10 44 4 38Z" fill="#f783ac"/>' +
         '<path d="M12 22Q18 10 30 9" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round" opacity=".5"/><g fill="#ffdeeb" opacity=".8"><circle cx="22" cy="28" r="3"/><circle cx="38" cy="22" r="2.5"/><circle cx="42" cy="32" r="2"/></g>',
     },

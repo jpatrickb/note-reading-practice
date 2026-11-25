@@ -272,9 +272,15 @@ function frame(t: number): void {
   if (particles.length) raf = requestAnimationFrame(frame);
   else {
     raf = 0;
-    c.setTransform(1, 0, 0, 1, 0, 0);
-    c.clearRect(0, 0, layer.width, layer.height);
+    release();
   }
+}
+
+/** Free the canvas's pixel memory (a full-screen buffer is ~12 MB on an iPad); size() regrows it. */
+function release(): void {
+  if (!layer) return;
+  layer.width = 0;
+  layer.height = 0;
 }
 
 function run(): void {
@@ -322,10 +328,7 @@ export function clearParticles(): void {
   particles = [];
   if (raf) cancelAnimationFrame(raf);
   raf = 0;
-  if (layer && ctx) {
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, layer.width, layer.height);
-  }
+  release();
   if (layer) layer.dataset.active = '0';
 }
 

@@ -33,6 +33,27 @@ async function lastReaction(page: Page) {
   };
 }
 
+/**
+ * What actually runs right now, measured from the browser, not from numbers the app records about
+ * itself: the longest finite animation (CSS animations + Web Animations, outside the ambient world) in ms from
+ * its start, how many are running, and how many particles are alive on the canvas.
+ */
+function liveReaction(page: Page) {
+  return page.evaluate(() => {
+    let longest = 0;
+    let running = 0;
+    for (const a of document.getAnimations()) {
+      const el = (a.effect as KeyframeEffect | null)?.target as Element | null;
+      if (!el || el.closest('.world') || a.playState !== 'running' || a instanceof CSSTransition) continue; // transitions: colors, progress
+      const end = a.effect!.getComputedTiming().endTime as number;
+      if (!Number.isFinite(end)) continue; // idle loops (blink, breathe) are not a reaction
+      longest = Math.max(longest, end);
+      running++;
+    }
+    return { longest, running, particles: Number(document.querySelector('.fx-layer')?.getAttribute('data-active') ?? 0) };
+  });
+}
+
 /** Running animations (CSS + Web Animations) whose element overlaps the staff card. */
 function movingOverStaff(page: Page) {
   return page.evaluate(() => {
@@ -134,29 +155,40 @@ test('a wrong answer gets a smaller, gentler reaction than a correct one', async
 
   let l = await nextNote(page);
   await page.locator(`[data-answer="${l}"]`).click();
+  const rightLive = await liveReaction(page); // measured right away, while it is still running
   await expect(fx(page)).toHaveAttribute('data-last-kind', 'correct');
   const right = await lastReaction(page);
   await expect(page.locator('.coach__mascot')).toHaveAttribute('data-mood', 'happy');
   expect(right.particles).toBeGreaterThan(0);
   expect(right.particles).toBeLessThanOrEqual(20); // small: the big show is saved for new mastery
   expect(right.ms).toBeLessThan(700); // fits inside the auto-advance
+  expect(rightLive.running).toBeGreaterThan(0);
+  expect(rightLive.longest).toBeLessThan(700);
 
   l = await nextNote(page);
   await page.locator(`[data-answer="${shift(l, 2)}"]`).click();
+  const wrongLive = await liveReaction(page);
   await expect(fx(page)).toHaveAttribute('data-last-kind', 'wrong');
   const wrong = await lastReaction(page);
   await expect(page.locator('.coach__mascot')).toHaveAttribute('data-mood', 'encourage');
   expect(wrong.particles).toBe(0);
   expect(wrong.ms).toBeGreaterThan(0);
   expect(wrong.ms).toBeLessThan(right.ms);
+  // What really runs: no particles, and nothing lasts longer than the correct reaction did.
+  expect(wrongLive.particles).toBe(0);
+  expect(wrongLive.running).toBeGreaterThan(0);
+  expect(wrongLive.longest).toBeLessThan(rightLive.longest);
 
   await page.getByTestId('continue').click();
   await nextNote(page);
   await page.locator('[data-answer="?"]').click();
+  const idkLive = await liveReaction(page);
   await expect(fx(page)).toHaveAttribute('data-last-kind', 'idk');
   const idk = await lastReaction(page);
   expect(idk.particles).toBe(0);
   expect(idk.ms).toBeLessThan(right.ms);
+  expect(idkLive.particles).toBe(0);
+  expect(idkLive.longest).toBeLessThan(rightLive.longest);
 });
 
 test('new silver mastery gets the big celebration: confetti, a flying key and a cheer', async ({ page }) => {
@@ -217,5 +249,5 @@ test('the summary celebrates, and the journey reaches its goal', async ({ page }
   await expect(page.getByTestId('score')).toHaveText('20 of 20 right', { timeout: 5000 });
   await expect(page.locator('.summary__mascot')).toHaveAttribute('data-mood', 'cheer');
   await expect(page.locator('.summary .chip--silver').first()).toBeVisible();
-  await expect(page.locator('.summary .piano svg.keys')).toBeVisible();
+  await expect(page.locator('.summary .keys-frame svg.keys')).toBeVisible();
 });

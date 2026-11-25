@@ -82,6 +82,10 @@ export function initWorld(calm: boolean): void {
     if (document.hidden) document.documentElement.dataset.hidden = 'true';
     else delete document.documentElement.dataset.hidden;
   };
+  // Rotating an iPad mid-question changes the layout: re-check what could pass behind the staff.
+  window.addEventListener('resize', () => {
+    if (host?.dataset.mode === 'play') guardStaff(document.querySelector('.staff-card, .lm-card'));
+  });
   document.addEventListener('visibilitychange', vis);
   vis();
 }
