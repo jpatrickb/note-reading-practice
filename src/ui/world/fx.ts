@@ -249,11 +249,13 @@ function draw(c: CanvasRenderingContext2D, p: Particle): void {
 function frame(t: number): void {
   const c = ctx;
   if (!c || !layer) return;
-  const dt = Math.min(0.05, (t - last) / 1000 || 0.016);
+  // Age by real time (so slow devices never stretch an effect past its budget); cap only the physics step.
+  const elapsed = Math.max(0, t - last) || 16;
+  const dt = Math.min(0.05, elapsed / 1000);
   last = t;
   c.setTransform(1, 0, 0, 1, 0, 0);
   c.clearRect(0, 0, layer.width, layer.height);
-  particles = particles.filter((p) => (p.age += dt * 1000) < p.life);
+  particles = particles.filter((p) => (p.age += elapsed) < p.life);
   for (const p of particles) {
     p.vy += p.g * dt;
     p.vx *= 0.985;
@@ -313,6 +315,18 @@ export function summaryShower(medal: 'silver' | 'gold'): number {
   const n = confetti(BURST[medal].confetti + 20, 2200, medal);
   run();
   return n;
+}
+
+/** Drop any particles still in flight (a new question is up: nothing may move over the staff). */
+export function clearParticles(): void {
+  particles = [];
+  if (raf) cancelAnimationFrame(raf);
+  raf = 0;
+  if (layer && ctx) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, layer.width, layer.height);
+  }
+  if (layer) layer.dataset.active = '0';
 }
 
 /** Stop and clear everything (on leaving a screen). */

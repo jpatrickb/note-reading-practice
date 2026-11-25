@@ -4,7 +4,7 @@
 
 import { getTheme } from '../../core/themes';
 import { h } from '../dom';
-import { BURST, type Reaction, correctBurst, flyKey, masteryBurst, nudge, pop, record } from './fx';
+import { BURST, type Reaction, clearParticles, correctBurst, flyKey, masteryBurst, nudge, pop, record } from './fx';
 import { icon, medal as medalIcon } from './icons';
 import { Journey } from './journey';
 import { MOOD_MS, renderMascot, setMood } from './mascots';
@@ -62,6 +62,7 @@ export class PlayChrome {
 
   /** A new question is up: the mascot waits quietly; make sure nothing moves behind the staff. */
   asking(done: number, card: Element | null): void {
+    clearParticles();
     this.journey.set(done);
     setMood(this.mascot, 'thinking');
     guardStaff(card);
