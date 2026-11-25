@@ -52,7 +52,7 @@ export function renderWorld(themeId: string): void {
 /** Which screen is showing: 'play' quiets the world while a question is up. */
 export function setWorldMode(mode: string): void {
   if (!host) return;
-  host.dataset.mode = mode === 'play' || mode === 'letters' ? 'play' : mode;
+  host.dataset.mode = mode;
   if (host.dataset.mode !== 'play') delete host.dataset.still;
 }
 

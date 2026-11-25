@@ -209,16 +209,32 @@ function freshItem(): ItemState {
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
-/** A saved item with every field present and well-typed; any field that is not takes the fresh value. */
+const YEAR_MS = 366 * 86_400_000;
+
+/**
+ * A saved item with every field present, well-typed and in range. A field that is missing or the
+ * wrong type takes the fresh value; one that is a number but out of range is clamped, so corrupted
+ * data can never take away a medal (`best` 3 is gold, not none) or poison the model with an
+ * absurd value. Healthy values are never touched.
+ */
 function repairItem(saved: unknown, fresh: ItemState): ItemState {
   if (!isObject(saved)) return fresh;
   const item = saved as Record<string, unknown>;
   for (const key of Object.keys(fresh) as (keyof ItemState)[]) {
     const v = item[key];
-    const ok = key === 'unlocked' ? typeof v === 'boolean' : key === 'best' ? v === 0 || v === 1 || v === 2 : isNumber(v);
+    const ok = key === 'unlocked' ? typeof v === 'boolean' : isNumber(v);
     if (!ok) item[key] = fresh[key];
   }
-  return item as unknown as ItemState;
+  const it = item as unknown as ItemState;
+  it.m = clamp(it.m, -6, 6);
+  it.s = clamp(it.s, 1, PARAMS.maxS);
+  it.n = Math.max(0, it.n);
+  it.c = clamp(it.c, 0, it.n);
+  it.rt = Math.max(0, it.rt);
+  it.last = clamp(it.last, 0, Date.now() + YEAR_MS);
+  it.best = clamp(Math.round(it.best), 0, 2) as 0 | 1 | 2;
+  it.silverDay = Math.max(-1, it.silverDay);
+  return it;
 }
 
 /** Keep the entries of a record that satisfy `ok`, in place; a non-record becomes empty. */
@@ -244,9 +260,9 @@ function repairState(state: StudentState, fresh: StudentState, items: readonly P
   if (!isNumber(s.rtBaseline) || s.rtBaseline < 0) s.rtBaseline = fresh.rtBaseline;
   s.confusions = repairRecord(s.confusions, isNumber);
   s.lessonsSeen = repairRecord(s.lessonsSeen, isNumber);
-  s.practiceDays = Array.isArray(s.practiceDays) ? s.practiceDays.filter(isNumber) : [];
+  s.practiceDays = Array.isArray(s.practiceDays) ? s.practiceDays.filter(isNumber).slice(-PARAMS.maxPracticeDays) : [];
   s.recentErrors = Array.isArray(s.recentErrors)
-    ? s.recentErrors.filter((e): e is ErrorRecord => isObject(e) && typeof e.itemId === 'string' && known.has(e.itemId) && typeof e.answer === 'string' && isNumber(e.at))
+    ? s.recentErrors.filter((e): e is ErrorRecord => isObject(e) && typeof e.itemId === 'string' && known.has(e.itemId) && typeof e.answer === 'string' && isNumber(e.at)).slice(-PARAMS.maxErrors)
     : [];
   // `runs` is optional (older saves lack it): keep what is sound, drop what is not.
   if (s.runs !== undefined) s.runs = repairRecord(s.runs, isNumber);

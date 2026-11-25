@@ -111,3 +111,13 @@
 .practice__picked {
   font-weight: 800;
 }
+
+/* The chosen card already wears a heavy outline; the keyboard ring must still show on top of it. */
+.mode-card--on:focus-visible {
+  outline-color: var(--reveal);
+  outline-offset: 3px;
+}
+/* Scrolling a focused card into view never leaves it under the sticky Start row. */
+html:has(.practice__go) {
+  scroll-padding-bottom: 170px;
+}

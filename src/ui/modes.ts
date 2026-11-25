@@ -6,6 +6,7 @@
 // "Adding a game mode", has the steps.
 
 import { nameEngine } from '../core/engine';
+import { DEFAULT_MODE } from '../core/storage';
 import { letterMathMode } from './letterMath';
 import { type UiMode, defineMode } from './mode';
 import { nameItMode } from './nameIt';
@@ -39,5 +40,5 @@ export function registeredModes(debug = false): readonly UiMode[] {
 
 /** Look a mode up by id; an unknown id (an old save, a removed mode) falls back to Name It. */
 export function modeById(modes: readonly UiMode[], id: string | undefined): UiMode {
-  return modes.find((m) => m.id === id) ?? modes.find((m) => m.id === 'name') ?? modes[0]!;
+  return modes.find((m) => m.id === id) ?? modes.find((m) => m.id === DEFAULT_MODE) ?? modes[0]!;
 }

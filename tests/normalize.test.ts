@@ -2,13 +2,13 @@
 // progress can't be bricked by an older build, a partial write or a hand edit.
 
 import { describe, expect, it } from 'vitest';
-import type { StudentState } from '../src/core/engine';
+import { PARAMS, type StudentState } from '../src/core/engine';
 import { CORE_MODES } from '../src/core/modes';
 import { isFinished, nextQuestion, startSession, submit } from '../src/core/session';
 import { type KeyValueStore, loadState, saveState, stateKey } from '../src/core/storage';
 import { LESSONS } from '../src/core/diagnose';
 import { LETTERS } from '../src/core/music';
-import { T0, seededRng } from './helpers';
+import { DAY, T0, seededRng } from './helpers';
 
 function memoryStore(): KeyValueStore & { data: Map<string, string> } {
   const data = new Map<string, string>();
@@ -107,7 +107,8 @@ describe.each(CORE_MODES.map((m) => [m.id, m] as const))('normalize (%s)', (_id,
     delete others[field];
     const fixed = engine.normalize(state).items[id] as unknown as Record<string, unknown>;
     expect(fixed[field]).toEqual((engine.newStudent().items[id] as unknown as Record<string, unknown>)[field]);
-    for (const k of Object.keys(others)) expect(fixed[k], k).toEqual(others[k]);
+    // c can never exceed n, so a lost n also takes c to 0.
+    for (const k of Object.keys(others)) if (!(field === 'n' && k === 'c')) expect(fixed[k], k).toEqual(others[k]);
     playAFewQuestions(mode, state);
   });
 
@@ -137,7 +138,7 @@ describe.each(CORE_MODES.map((m) => [m.id, m] as const))('normalize (%s)', (_id,
     expect(fixed.rtBaseline).toBe(0);
     expect(fixed.items[first]).toEqual(fresh.items[first]);
     expect(fixed.items[second]).toEqual(fresh.items[second]);
-    expect(fixed.items[third]).toMatchObject({ m: fresh.items[third]!.m, unlocked: fresh.items[third]!.unlocked, best: 0, n: 0, last: 0, silverDay: -1 });
+    expect(fixed.items[third]).toMatchObject({ m: fresh.items[third]!.m, unlocked: fresh.items[third]!.unlocked, best: 2, n: 0, c: 0, last: 0, silverDay: -1 });
     playAFewQuestions(mode, fixed);
   });
 
@@ -165,6 +166,65 @@ describe.each(CORE_MODES.map((m) => [m.id, m] as const))('normalize (%s)', (_id,
     const fixed = engine.normalize(state as unknown as StudentState) as unknown as Record<string, unknown>;
     expect((fixed.items as Record<string, unknown>)['future:item']).toEqual({ unlocked: true });
     expect(fixed.futureField).toEqual({ a: 1 });
+  });
+
+  // Numbers that are the right type but out of range are clamped, never dropped: corrupted data
+  // must not take away a medal or poison the model.
+  describe('clamps out-of-range numbers', () => {
+    const id = engine.set.items[0]!.id;
+    const fixItem = (patch: Record<string, unknown>) => {
+      const state = clone(engine.newStudent());
+      Object.assign(state.items[id]!, patch);
+      return engine.normalize(state).items[id]!;
+    };
+
+    it('best: 3 is gold, a negative is none, and a half rounds', () => {
+      expect(fixItem({ best: 3 }).best).toBe(2);
+      expect(fixItem({ best: 99 }).best).toBe(2);
+      expect(fixItem({ best: -1 }).best).toBe(0);
+      expect(fixItem({ best: 1.4 }).best).toBe(1);
+    });
+    it('m stays within [-6, 6]', () => {
+      expect(fixItem({ m: 50 }).m).toBe(6);
+      expect(fixItem({ m: -50 }).m).toBe(-6);
+      expect(fixItem({ m: 2.5 }).m).toBe(2.5);
+    });
+    it('s stays within [1, maxS]', () => {
+      expect(fixItem({ s: 0 }).s).toBe(1);
+      expect(fixItem({ s: -4 }).s).toBe(1);
+      expect(fixItem({ s: 1e12 }).s).toBe(PARAMS.maxS);
+      expect(fixItem({ s: 72 }).s).toBe(72);
+    });
+    it('n is never negative', () => {
+      expect(fixItem({ n: -3, c: 0 }).n).toBe(0);
+    });
+    it('c is within [0, n]', () => {
+      expect(fixItem({ n: 5, c: 9 }).c).toBe(5);
+      expect(fixItem({ n: 5, c: -2 }).c).toBe(0);
+      expect(fixItem({ n: 5, c: 4 }).c).toBe(4);
+    });
+    it('rt is never negative', () => {
+      expect(fixItem({ rt: -800 }).rt).toBe(0);
+      expect(fixItem({ rt: 1400 }).rt).toBe(1400);
+    });
+    it('last is never negative nor more than a year ahead', () => {
+      expect(fixItem({ last: -5 }).last).toBe(0);
+      expect(fixItem({ last: Date.now() + 1000 * DAY }).last).toBeLessThanOrEqual(Date.now() + 367 * DAY);
+      expect(fixItem({ last: T0 }).last).toBe(T0);
+    });
+    it('silverDay is never below -1', () => {
+      expect(fixItem({ silverDay: -40 }).silverDay).toBe(-1);
+    });
+    it('practiceDays and recentErrors are cut to their maximums, keeping the most recent', () => {
+      const state = clone(engine.newStudent());
+      state.practiceDays = Array.from({ length: 60 }, (_, i) => 20000 + i);
+      state.recentErrors = Array.from({ length: 70 }, (_, i) => ({ itemId: id, answer: 'A', at: i }));
+      const fixed = engine.normalize(state);
+      expect(fixed.practiceDays).toHaveLength(PARAMS.maxPracticeDays);
+      expect(fixed.practiceDays.at(-1)).toBe(20059);
+      expect(fixed.recentErrors).toHaveLength(PARAMS.maxErrors);
+      expect(fixed.recentErrors.at(-1)!.at).toBe(69);
+    });
   });
 });
 

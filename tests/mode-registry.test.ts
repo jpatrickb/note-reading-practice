@@ -390,11 +390,11 @@ describe('the home mode chooser', () => {
     expect(card('letters').textContent).toContain('Next letter, skips and intervals');
   });
 
-  it('marks the chosen card with aria-pressed and a check, not by color alone', () => {
+  it('marks the chosen card with aria-checked and a check, not by color alone', () => {
     render(MODES, 'letters');
-    expect(card('letters').getAttribute('aria-pressed')).toBe('true');
+    expect(card('letters').getAttribute('aria-checked')).toBe('true');
     expect(card('letters').querySelector('.icon--check')).not.toBeNull();
-    expect(card('name').getAttribute('aria-pressed')).toBe('false');
+    expect(card('name').getAttribute('aria-checked')).toBe('false');
     expect(card('name').querySelector('.icon--check')).toBeNull();
   });
 
@@ -402,6 +402,28 @@ describe('the home mode chooser', () => {
     const { onSelect } = render(MODES, 'name');
     card('letters').click();
     expect(onSelect).toHaveBeenCalledWith('letters');
+  });
+
+  it('is one radio group with a single tab stop, and arrow keys move through the open cards', () => {
+    const { el, onSelect } = render([...MODES, sample('lock', 'music', true)], 'name');
+    expect(el.getAttribute('role')).toBe('radiogroup');
+    expect(el.getAttribute('aria-label')).toBe('Game');
+    expect(document.querySelectorAll('.mode-card[role="radio"]')).toHaveLength(3);
+    expect([...document.querySelectorAll('.mode-card')].filter((c) => c.getAttribute('tabindex') === '0').map((c) => (c as HTMLElement).dataset.mode)).toEqual(['name']);
+
+    const press = (key: string) => card('name').dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    card('name').focus();
+    press('ArrowRight');
+    expect(onSelect).toHaveBeenLastCalledWith('letters');
+    press('ArrowLeft'); // wraps past the locked card back to the last open one
+    expect(onSelect).toHaveBeenLastCalledWith('letters');
+    press('ArrowDown');
+    expect(onSelect).toHaveBeenLastCalledWith('letters');
+    press('ArrowUp');
+    expect(onSelect).toHaveBeenLastCalledWith('letters');
+    onSelect.mockClear();
+    press('a');
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it('a locked mode stays visible with its reason, is announced as disabled, and cannot be chosen', () => {
@@ -428,6 +450,6 @@ describe('the home mode chooser', () => {
     expect(document.querySelectorAll('.mode-group')).toHaveLength(MODE_GROUPS.length);
     expect(document.querySelectorAll('.mode-card--locked').length).toBeGreaterThan(0);
     // Exactly one card is chosen.
-    expect(document.querySelectorAll('.mode-card[aria-pressed="true"]')).toHaveLength(1);
+    expect(document.querySelectorAll('.mode-card[aria-checked="true"]')).toHaveLength(1);
   });
 });

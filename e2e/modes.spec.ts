@@ -37,22 +37,41 @@ test('home shows a card per mode, grouped under headings, with the chosen one ma
   await expect(card(page, 'name')).toContainText('Read the note, tap its name');
   await expect(card(page, 'letters')).toContainText('Next letter, skips and intervals');
   // Name It is chosen by default, and says so without relying on color.
-  await expect(card(page, 'name')).toHaveAttribute('aria-pressed', 'true');
+  await expect(card(page, 'name')).toHaveAttribute('aria-checked', 'true');
   await expect(card(page, 'name').locator('.icon--check')).toBeVisible();
-  await expect(card(page, 'letters')).toHaveAttribute('aria-pressed', 'false');
+  await expect(card(page, 'letters')).toHaveAttribute('aria-checked', 'false');
 });
 
 test('the chosen mode persists across a reload, and only clef modes show the clef picker', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('group', { name: 'Clef' })).toBeVisible();
   await card(page, 'letters').click();
-  await expect(card(page, 'letters')).toHaveAttribute('aria-pressed', 'true');
+  await expect(card(page, 'letters')).toHaveAttribute('aria-checked', 'true');
   await expect(page.getByRole('group', { name: 'Clef' })).toHaveCount(0);
   await page.reload();
-  await expect(card(page, 'letters')).toHaveAttribute('aria-pressed', 'true');
+  await expect(card(page, 'letters')).toHaveAttribute('aria-checked', 'true');
   await expect(page.getByRole('group', { name: 'Clef' })).toHaveCount(0);
   await card(page, 'name').click();
   await expect(page.getByRole('group', { name: 'Clef' })).toBeVisible();
+});
+
+test('the keyboard focus ring shows on the chosen card, and arrow keys move the choice', async ({ page, isMobile }) => {
+  test.skip(!!isMobile, 'keyboard navigation is a desktop feature');
+  await page.goto('/');
+  const name = card(page, 'name');
+  // Tab to the chosen card (the group's one tab stop).
+  for (let i = 0; i < 12 && !(await name.evaluate((el) => el === document.activeElement)); i++) await page.keyboard.press('Tab');
+  await expect(name).toBeFocused();
+  // The ring is the theme's focus color (Sunny: reveal #1c7ed6), not the card's own outline.
+  await expect(name).toHaveCSS('outline-color', 'rgb(28, 126, 214)');
+  await expect(name).toHaveCSS('outline-style', 'solid');
+  // Arrow keys choose the next mode and keep focus on it.
+  await page.keyboard.press('ArrowRight');
+  await expect(card(page, 'letters')).toHaveAttribute('aria-checked', 'true');
+  await expect(card(page, 'letters')).toBeFocused();
+  await expect(page.getByRole('group', { name: 'Clef' })).toHaveCount(0);
+  await page.keyboard.press('ArrowLeft');
+  await expect(card(page, 'name')).toHaveAttribute('aria-checked', 'true');
 });
 
 test('the clef choice is remembered for Name It', async ({ page }) => {
@@ -68,7 +87,7 @@ test('the clef choice is remembered for Name It', async ({ page }) => {
 test('an unknown saved mode falls back to Name It', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('nrp:v1:settings', JSON.stringify({ clefs: ['treble'], muted: true, mode: 'from-the-future' })));
   await page.goto('/');
-  await expect(card(page, 'name')).toHaveAttribute('aria-pressed', 'true');
+  await expect(card(page, 'name')).toHaveAttribute('aria-checked', 'true');
 });
 
 test('a locked mode is shown with its reason and cannot be chosen', async ({ page }) => {
@@ -78,8 +97,8 @@ test('a locked mode is shown with its reason and cannot be chosen', async ({ pag
   await expect(locked).toContainText('Learn 7 notes in Name It first!');
   await expect(locked).toHaveAttribute('aria-disabled', 'true');
   await locked.click({ force: true }); // aria-disabled: Playwright would wait forever for it to be "enabled"
-  await expect(locked).toHaveAttribute('aria-pressed', 'false');
-  await expect(card(page, 'name')).toHaveAttribute('aria-pressed', 'true');
+  await expect(locked).toHaveAttribute('aria-checked', 'false');
+  await expect(card(page, 'name')).toHaveAttribute('aria-checked', 'true');
   // Without ?debug the demo is not there.
   await page.goto('/');
   await expect(card(page, 'demo-locked')).toHaveCount(0);

@@ -5,6 +5,7 @@ import { type MasteryEvent, WEEKLY_GOAL, daysThisWeek, isDusty, level, recall } 
 import type { Clef } from '../core/music';
 import { type Session, startSession, summarize } from '../core/session';
 import {
+  DEFAULT_MODE,
   type Settings,
   clearProfile,
   lanesFor,
@@ -82,7 +83,7 @@ export class App {
   /** The mode the home screen has chosen: the saved one if it is known and open, else Name It. */
   private chosenMode(): UiMode {
     const mode = modeById(this.modes, this.settings.mode);
-    return mode.availability(this.profile).ok ? mode : modeById(this.modes, 'name');
+    return mode.availability(this.profile).ok ? mode : modeById(this.modes, DEFAULT_MODE);
   }
 
   /** Gold and silver across every mode with progress. */
