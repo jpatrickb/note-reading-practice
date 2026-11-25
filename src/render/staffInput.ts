@@ -41,9 +41,13 @@ export interface StaffInput {
 const NOTE_X = 150; // further left than renderStaff's, to leave room for a revealed answer beside the kid's note
 const HEAD_W = GLYPHS.noteheadWhole.bounds[2] * G.glyphScale;
 const LEDGER_OVERHANG = 8;
+/** Where the clef ends; the ghost band starts here so it never tints the clef. */
+const CLEF_END = Math.ceil(22 + Math.max(GLYPHS.gClef.bounds[2], GLYPHS.fClef.bounds[2]) * G.glyphScale) + 4;
+const GUTTER_X = CLEF_END + 10;
+const PIP_R = 6;
 const REVEAL_X = NOTE_X + HEAD_W * 2.4;
 /** Pointer slack (CSS px) outside the staff before a slide counts as "slid off" (cancel). */
-const SLIDE_OFF_SLACK = 16;
+const SLIDE_OFF_SLACK = 36;
 /** Smallest height of one position band on screen (CSS px); the staff never renders smaller. */
 const MIN_BAND_PX = 16;
 
@@ -78,10 +82,13 @@ export function createStaffInput(opts: StaffInputOptions): StaffInput {
   const { top, bottom } = verticalBox(clef, low, high);
   const vb = { x: 0, y: top, width: G.width, height: bottom - top };
 
+  // The slider has presentational children for assistive tech, so the live region is its sibling.
+  const wrap = document.createElement('div');
+  wrap.className = 'staff-input';
+  wrap.dataset.clef = clef;
   const root = document.createElement('div');
-  root.className = 'staff-input';
+  root.className = 'staff-input__slider';
   root.tabIndex = 0;
-  root.dataset.clef = clef;
   root.setAttribute('role', 'slider');
   root.setAttribute('aria-orientation', 'vertical');
   root.setAttribute('aria-valuemin', String(low));
@@ -104,6 +111,9 @@ export function createStaffInput(opts: StaffInputOptions): StaffInput {
   // Never let the staff get so small that one position band is under MIN_BAND_PX tall.
   svg.style.setProperty('--staff-input-min-h', `${Math.ceil((vb.height * MIN_BAND_PX) / (G.space / 2))}px`);
 
+  // The band goes first so it never tints the lines or the clef.
+  const highlight = el('rect', { x: CLEF_END, width: G.width - CLEF_END - 10, height: G.space / 2, class: 'staff-input__band', visibility: 'hidden' });
+  svg.append(highlight);
   for (let line = 0; line <= 8; line += 2) {
     svg.append(el('line', { x1: 10, x2: G.width - 10, y1: yOf(line), y2: yOf(line), class: 'staff__line' }));
   }
@@ -111,11 +121,10 @@ export function createStaffInput(opts: StaffInputOptions): StaffInput {
   const c = CLEF_GLYPH[clef];
   svg.append(glyph(c.name, 22, yOf(c.pos), 'staff__clef'));
 
-  const highlight = el('rect', { x: 10, width: G.width - 20, height: G.space / 2, class: 'staff-input__band', visibility: 'hidden' });
   const notes = el('g', { class: 'staff-input__notes' });
   const ghostLayer = el('g', { class: 'staff-input__ghost-layer' });
   const hits = el('g', { class: 'staff-input__hits' });
-  svg.append(highlight, notes, ghostLayer, hits);
+  svg.append(notes, ghostLayer, hits);
 
   // One transparent hit band per position spanning the whole width (so e2e can tap an exact
   // position). The outermost bands reach the drawing's edges. Snapping, not the band, decides.
@@ -142,7 +151,8 @@ export function createStaffInput(opts: StaffInputOptions): StaffInput {
   status.setAttribute('role', 'status');
   status.setAttribute('aria-live', 'polite');
 
-  root.append(svg, status);
+  root.append(svg);
+  wrap.append(root, status);
 
   // ----- drawing -----
   function head(x: number, pos: number, cls: string) {
@@ -218,7 +228,7 @@ export function createStaffInput(opts: StaffInputOptions): StaffInput {
         notes.append(t);
       }
     }
-    root.dataset.placed = placed.join(',');
+    wrap.dataset.placed = placed.join(',');
   }
 
   function setGhost(pos: number | null) {
@@ -227,7 +237,7 @@ export function createStaffInput(opts: StaffInputOptions): StaffInput {
     ghostLayer.replaceChildren();
     if (pos === null) {
       highlight.setAttribute('visibility', 'hidden');
-      delete root.dataset.ghost;
+      delete wrap.dataset.ghost;
       root.removeAttribute('aria-valuenow');
       root.setAttribute('aria-valuetext', 'no note chosen');
       return;
@@ -235,7 +245,11 @@ export function createStaffInput(opts: StaffInputOptions): StaffInput {
     highlight.setAttribute('y', String(yOf(pos) - G.space / 4));
     highlight.setAttribute('visibility', 'visible');
     ghostLayer.append(head(NOTE_X, pos, 'staff-input__ghost'));
-    root.dataset.ghost = String(pos);
+    // Pips at both gutters: a finger can cover the middle ghost but not both edges.
+    for (const x of [GUTTER_X, G.width - GUTTER_X]) {
+      ghostLayer.append(el('circle', { cx: x, cy: yOf(pos), r: PIP_R, class: 'staff-input__pip' }));
+    }
+    wrap.dataset.ghost = String(pos);
     root.setAttribute('aria-valuenow', String(pos));
     root.setAttribute('aria-valuetext', spokenPosition(pos));
   }
@@ -318,7 +332,16 @@ export function createStaffInput(opts: StaffInputOptions): StaffInput {
 
   // ----- keyboard -----
   root.addEventListener('keydown', (e) => {
-    if (!enabled || activePointer !== null) return;
+    if (!enabled) return;
+    if (activePointer !== null) {
+      if (e.key === 'Escape') {
+        endPointer();
+        setGhost(null);
+        say('Cancelled.');
+        e.preventDefault();
+      }
+      return;
+    }
     switch (e.key) {
       case 'ArrowUp':
       case 'ArrowRight':
@@ -366,7 +389,7 @@ export function createStaffInput(opts: StaffInputOptions): StaffInput {
   render();
 
   return {
-    el: root,
+    el: wrap,
     get placed() {
       return placed;
     },

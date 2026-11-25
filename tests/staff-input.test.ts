@@ -28,7 +28,7 @@ const clientY = (pos: number) => (yOf(pos) - vbTop) * SCALE;
 type Ptr = { type?: string; id?: number; x?: number; button?: number };
 function pointer(kind: string, pos: number | { y: number }, { type = 'touch', id = 1, x = 300, button = 0 }: Ptr = {}) {
   const y = typeof pos === 'number' ? clientY(pos) : pos.y;
-  staff.el.dispatchEvent(
+  slider().dispatchEvent(
     new PointerEvent(kind, { bubbles: true, cancelable: true, pointerId: id, pointerType: type, clientX: x, clientY: y, button, isPrimary: id === 1 }),
   );
 }
@@ -37,7 +37,8 @@ const tap = (pos: number, p: Ptr = {}) => {
   pointer('pointerup', pos, p);
 };
 const key = (k: string, repeat = false) =>
-  staff.el.dispatchEvent(new KeyboardEvent('keydown', { key: k, repeat, bubbles: true, cancelable: true }));
+  slider().dispatchEvent(new KeyboardEvent('keydown', { key: k, repeat, bubbles: true, cancelable: true }));
+const slider = () => staff.el.querySelector<HTMLElement>('[role="slider"]')!;
 const ghost = () => (staff.el.dataset.ghost === undefined ? null : Number(staff.el.dataset.ghost));
 
 beforeEach(() => vi.useFakeTimers());
@@ -145,13 +146,13 @@ describe('press, slide, lift', () => {
     }
     expect(onAnswer).not.toHaveBeenCalled();
     pointer('pointerup', 4, { type });
-    staff.el.dispatchEvent(new MouseEvent('click', { bubbles: true })); // the click that follows a tap
+    slider().dispatchEvent(new MouseEvent('click', { bubbles: true })); // the click that follows a tap
     vi.advanceTimersByTime(2000);
     expect(onAnswer).toHaveBeenCalledExactlyOnceWith([4]);
     // Input locks after the answer: further taps do nothing until reset().
     tap(6, { type });
     expect(onAnswer).toHaveBeenCalledTimes(1);
-    expect(staff.el.getAttribute('aria-disabled')).toBe('true');
+    expect(slider().getAttribute('aria-disabled')).toBe('true');
   });
 
   it('pointercancel and lost capture cancel without answering', () => {
@@ -180,6 +181,81 @@ describe('press, slide, lift', () => {
     expect(staff.el.querySelector('.staff-input__status')!.textContent).toBe('No note placed.');
     tap(3); // still enabled
     expect(onAnswer).toHaveBeenCalledExactlyOnceWith([3]);
+  });
+
+  it('keeps the live region outside the slider', () => {
+    mount();
+    const status = staff.el.querySelector('[role="status"]')!;
+    expect(slider().contains(status)).toBe(false);
+    expect(status.parentElement).toBe(staff.el);
+  });
+
+  it('draws a pip at both gutters, clear of the clef, and keeps the band off the clef', () => {
+    mount();
+    expect(staff.el.querySelectorAll('.staff-input__pip')).toHaveLength(0);
+    pointer('pointerdown', 4);
+    const pips = [...staff.el.querySelectorAll('.staff-input__pip')];
+    expect(pips).toHaveLength(2);
+    const xs = pips.map((n) => Number(n.getAttribute('cx')));
+    const y = yOf(4);
+    for (const n of pips) expect(Number(n.getAttribute('cy'))).toBe(y);
+    expect(xs[0]).toBeLessThan(150 - 30);
+    expect(xs[1]).toBeGreaterThan(150 + 30);
+    const band = staff.el.querySelector('.staff-input__band')!;
+    expect(Number(band.getAttribute('x'))).toBeGreaterThan(40); // right of the clef
+    expect(xs[0]).toBeGreaterThan(Number(band.getAttribute('x')));
+    // The band sits under the lines and clef in paint order.
+    const svg = staff.el.querySelector('svg')!;
+    expect(svg.firstElementChild).toBe(band);
+    pointer('pointercancel', 4);
+    expect(staff.el.querySelectorAll('.staff-input__pip')).toHaveLength(0);
+  });
+
+  it('forgives overshooting the top and bottom by 30px, but not beyond the slide-off slack', () => {
+    mount();
+    const top = 0; // y of the drawing's top edge
+    const bottom = (staff.el.querySelector('svg')!.getAttribute('viewBox')!.split(' ').map(Number)[3] as number) * SCALE;
+    pointer('pointerdown', 3);
+    pointer('pointermove', { y: top - 30 });
+    expect(ghost()).toBe(11);
+    pointer('pointerup', { y: top - 30 });
+    expect(onAnswer).toHaveBeenLastCalledWith([11]);
+    staff.reset();
+    pointer('pointerdown', 3);
+    pointer('pointermove', { y: bottom + 30 });
+    expect(ghost()).toBe(-3);
+    pointer('pointerup', { y: bottom + 30 });
+    expect(onAnswer).toHaveBeenLastCalledWith([-3]);
+    staff.reset();
+    for (const y of [top - 40, bottom + 40]) {
+      pointer('pointerdown', 3);
+      pointer('pointermove', { y });
+      expect(ghost()).toBeNull();
+      pointer('pointerup', { y });
+    }
+    expect(onAnswer).toHaveBeenCalledTimes(2);
+  });
+
+  it('Esc cancels an active press', () => {
+    mount();
+    pointer('pointerdown', 3);
+    key('Escape');
+    expect(ghost()).toBeNull();
+    expect(staff.el.querySelector('.staff-input__status')!.textContent).toBe('Cancelled.');
+    pointer('pointerup', 3);
+    expect(onAnswer).not.toHaveBeenCalled();
+    tap(3); // a fresh press still works
+    expect(onAnswer).toHaveBeenCalledExactlyOnceWith([3]);
+  });
+
+  it('lostpointercapture after pointerup answers once and leaves the staff clean', () => {
+    mount();
+    pointer('pointerdown', 3);
+    pointer('pointerup', 3);
+    pointer('lostpointercapture', 3);
+    expect(onAnswer).toHaveBeenCalledExactlyOnceWith([3]);
+    expect(ghost()).toBeNull();
+    expect(staff.placed).toEqual([3]);
   });
 
   it('ignores a second finger, other mouse buttons and events while disabled', () => {
@@ -218,7 +294,7 @@ describe('press, slide, lift', () => {
   it('blocks the long-press context menu', () => {
     mount();
     const e = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
-    staff.el.dispatchEvent(e);
+    slider().dispatchEvent(e);
     expect(e.defaultPrevented).toBe(true);
   });
 });
@@ -293,14 +369,14 @@ describe('keyboard', () => {
     mount();
     key('ArrowDown');
     const esc = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
-    staff.el.dispatchEvent(esc);
+    slider().dispatchEvent(esc);
     expect(esc.defaultPrevented).toBe(true);
     expect(ghost()).toBeNull();
     key('Enter');
     expect(onAnswer).not.toHaveBeenCalled();
     // With no ghost, Esc is left for the page.
     const esc2 = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
-    staff.el.dispatchEvent(esc2);
+    slider().dispatchEvent(esc2);
     expect(esc2.defaultPrevented).toBe(false);
   });
 
@@ -320,10 +396,10 @@ describe('keyboard', () => {
   it('leaves other keys alone and drops the ghost on blur', () => {
     mount();
     const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
-    staff.el.dispatchEvent(tab);
+    slider().dispatchEvent(tab);
     expect(tab.defaultPrevented).toBe(false);
     key('ArrowUp');
-    staff.el.dispatchEvent(new FocusEvent('blur'));
+    slider().dispatchEvent(new FocusEvent('blur'));
     expect(ghost()).toBeNull();
   });
 
@@ -377,7 +453,7 @@ describe('marks, reveal, reset', () => {
     staff.reset();
     expect(staff.placed).toEqual([]);
     expect(staff.el.querySelectorAll('[data-placed], [data-reveal], .staff-input__reveal-label')).toHaveLength(0);
-    expect(staff.el.getAttribute('aria-disabled')).toBe('false');
+    expect(slider().getAttribute('aria-disabled')).toBe('false');
     tap(5);
     expect(onAnswer).toHaveBeenLastCalledWith([5]);
     expect(onAnswer).toHaveBeenCalledTimes(2);
@@ -387,7 +463,7 @@ describe('marks, reveal, reset', () => {
 describe('accessibility', () => {
   it('is one focusable slider that announces the ghost position', () => {
     mount();
-    const el = staff.el;
+    const el = slider();
     expect(el.tabIndex).toBe(0);
     expect(el.getAttribute('role')).toBe('slider');
     expect(el.getAttribute('aria-valuetext')).toBe('no note chosen');
@@ -398,15 +474,15 @@ describe('accessibility', () => {
     expect(el.getAttribute('aria-valuetext')).toBe('2nd line');
     expect(el.getAttribute('aria-valuenow')).toBe('2');
     key('Enter');
-    expect(el.querySelector('[role="status"]')!.textContent).toBe('Placed on the 2nd line.');
+    expect(staff.el.querySelector('[role="status"]')!.textContent).toBe('Placed on the 2nd line.');
   });
 
   it('never names a note before the reveal (no answer leaks)', () => {
     const letter = new RegExp(`\\b(${LETTERS.join('|')})(\\b|[#b♯♭]|\\d)`);
     for (const clef of ['treble', 'bass'] as const) {
       mount({ clef, maxPlaced: 2, fixed: [parseNote('C4')] });
-      const spoken = () => [staff.el.getAttribute('aria-label'), staff.el.getAttribute('aria-valuetext'), staff.el.textContent].join(' | ');
-      expect(staff.el.getAttribute('aria-label')).toContain('Already on it: a note on the');
+      const spoken = () => [slider().getAttribute('aria-label'), slider().getAttribute('aria-valuetext'), staff.el.textContent].join(' | ');
+      expect(slider().getAttribute('aria-label')).toContain('Already on it: a note on the');
       for (let p = -3; p <= 11; p++) {
         pointer('pointerdown', p);
         expect(spoken(), `${clef} ${p}`).not.toMatch(letter);
@@ -445,7 +521,7 @@ describe('staff input colors in every theme', () => {
     });
 
     it(`${theme.id}: the ghost band highlight keeps the ghost, lines and notes readable`, () => {
-      const band = blend(theme.colors.reveal, theme.colors.card, 0.14); // .staff-input__band opacity
+      const band = blend(theme.colors.reveal, theme.colors.card, 0.25); // .staff-input__band opacity
       for (const fg of ['reveal', 'line', 'ink'] as const) {
         expect(contrast(theme.colors[fg], band), fg).toBeGreaterThanOrEqual(MIN.large);
       }
@@ -455,7 +531,7 @@ describe('staff input colors in every theme', () => {
   it('the band opacity in the test matches the stylesheet', async () => {
     const { readFileSync } = await import('node:fs');
     const css = readFileSync(`${process.cwd()}/src/ui/staffInput.css`, 'utf8');
-    expect(/\.staff-input__band\s*\{[^}]*opacity:\s*([\d.]+)/.exec(css)![1]).toBe('0.14');
+    expect(/\.staff-input__band\s*\{[^}]*opacity:\s*([\d.]+)/.exec(css)![1]).toBe('0.25');
     expect(css).not.toMatch(/#[0-9a-f]{3,8}\b|rgb\(|hsl\(/i); // theme variables only
   });
 });
