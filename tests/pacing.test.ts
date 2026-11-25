@@ -70,9 +70,11 @@ describe('pacing: a kid who already knows it flies', () => {
     for (const [i, r] of ni.entries()) expect(r.sessions[0]!.silver, `seed ${SEEDS[i]}`).toBeGreaterThan(0);
   });
 
-  it('Name It: all 13 treble notes open within 2 sessions', () => {
+  it('Name It: all 17 treble notes open within 3 sessions (median 2)', () => {
     const sessions = treble(NAME_IT_MODE, knower(0.97, 1200), 3).map((r) => allOpen(r, trebleIds));
-    expect(Math.max(...sessions), sessions.join(',')).toBeLessThanOrEqual(2);
+    // 17 notes (the 4 two-ledger ones included) can take a session more than the original 13 did.
+    expect(Math.max(...sessions), sessions.join(',')).toBeLessThanOrEqual(3);
+    expect(median(sessions), sessions.join(',')).toBeLessThanOrEqual(2);
     const before = treble(STRICT_NAME_IT, knower(0.97, 1200), 4).map((r) => allOpen(r, trebleIds));
     expect(before.every((s) => s > 4)).toBe(true);
   });
