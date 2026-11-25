@@ -9,7 +9,7 @@ for (const key of ['v1Played', 'v2Played', 'v2Full'] as const) {
     const gold = Object.values(g.expected.name.items).filter((i) => i.best === 2).length;
     const silver = Object.values(g.expected.name.items).filter((i) => i.best === 1).length;
     await page.goto(`/#import=${g.code}`);
-    await expect(page.getByText(`This code has 🥇 ${gold} gold and 🥈 ${silver} silver keys.`)).toBeVisible();
+    await expect(page.getByText(`Name It: 🥇 ${gold} gold and 🥈 ${silver} silver`)).toBeVisible();
     await expect(page.getByTestId('import-error')).toHaveCount(0);
     await page.getByTestId('confirm-import').click();
     await expect(page.getByRole('button', { name: /Start/ })).toBeVisible();

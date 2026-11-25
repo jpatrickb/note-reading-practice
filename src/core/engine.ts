@@ -206,6 +206,69 @@ function freshItem(): ItemState {
   return { unlocked: false, m: 0, s: PARAMS.initialS, n: 0, c: 0, last: 0, rt: 0, best: 0, silverDay: -1 };
 }
 
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+const YEAR_MS = 366 * 86_400_000;
+
+/**
+ * A saved item with every field present, well-typed and in range. A field that is missing or the
+ * wrong type takes the fresh value; one that is a number but out of range is clamped, so corrupted
+ * data can never take away a medal (`best` 3 is gold, not none) or poison the model with an
+ * absurd value. Healthy values are never touched.
+ */
+function repairItem(saved: unknown, fresh: ItemState): ItemState {
+  if (!isObject(saved)) return fresh;
+  const item = saved as Record<string, unknown>;
+  for (const key of Object.keys(fresh) as (keyof ItemState)[]) {
+    const v = item[key];
+    const ok = key === 'unlocked' ? typeof v === 'boolean' : isNumber(v);
+    if (!ok) item[key] = fresh[key];
+  }
+  const it = item as unknown as ItemState;
+  it.m = clamp(it.m, -6, 6);
+  it.s = clamp(it.s, 1, PARAMS.maxS);
+  it.n = Math.max(0, it.n);
+  it.c = clamp(it.c, 0, it.n);
+  it.rt = Math.max(0, it.rt);
+  it.last = clamp(it.last, 0, Date.now() + YEAR_MS);
+  it.best = clamp(Math.round(it.best), 0, 2) as 0 | 1 | 2;
+  it.silverDay = Math.max(-1, it.silverDay);
+  return it;
+}
+
+/** Keep the entries of a record that satisfy `ok`, in place; a non-record becomes empty. */
+function repairRecord<T>(saved: unknown, ok: (v: unknown) => v is T): Record<string, T> {
+  if (!isObject(saved)) return {};
+  for (const key of Object.keys(saved)) if (!ok(saved[key])) delete saved[key];
+  return saved as Record<string, T>;
+}
+
+/**
+ * Make a saved state safe to play (issue #72): every top-level field and every item field exists
+ * with the right type, taking the fresh learner's value for anything missing or malformed (an older
+ * build, a partial write, a hand edit). Fields that are fine are left exactly as they are, so a
+ * healthy state is unchanged. Mutates and returns `state`.
+ */
+function repairState(state: StudentState, fresh: StudentState, items: readonly PracticeItem[]): StudentState {
+  const s = state as unknown as Record<string, unknown>;
+  s.version = 1;
+  if (!isObject(s.items)) s.items = {};
+  const saved = s.items as Record<string, unknown>;
+  const known = new Set(items.map((i) => i.id));
+  for (const { id } of items) saved[id] = repairItem(saved[id], fresh.items[id]!);
+  if (!isNumber(s.rtBaseline) || s.rtBaseline < 0) s.rtBaseline = fresh.rtBaseline;
+  s.confusions = repairRecord(s.confusions, isNumber);
+  s.lessonsSeen = repairRecord(s.lessonsSeen, isNumber);
+  s.practiceDays = Array.isArray(s.practiceDays) ? s.practiceDays.filter(isNumber).slice(-PARAMS.maxPracticeDays) : [];
+  s.recentErrors = Array.isArray(s.recentErrors)
+    ? s.recentErrors.filter((e): e is ErrorRecord => isObject(e) && typeof e.itemId === 'string' && known.has(e.itemId) && typeof e.answer === 'string' && isNumber(e.at)).slice(-PARAMS.maxErrors)
+    : [];
+  // `runs` is optional (older saves lack it): keep what is sound, drop what is not.
+  if (s.runs !== undefined) s.runs = repairRecord(s.runs, isNumber);
+  return state;
+}
+
 export function recall(it: ItemState, now: number): number {
   if (it.last === 0) return sigmoid(it.m);
   const elapsedH = Math.max(0, now - it.last) / HOUR;
@@ -397,9 +460,7 @@ export function createEngine<I extends PracticeItem, A extends string = Letter>(
   }
 
   function normalize(state: StudentState): StudentState {
-    const fresh = newStudent();
-    for (const item of set.items) state.items[item.id] ??= fresh.items[item.id]!;
-    return state;
+    return repairState(state, newStudent(), set.items);
   }
 
   /**

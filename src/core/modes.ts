@@ -18,3 +18,10 @@ export const CORE_MODES: readonly CoreMode[] = [
   { id: 'name', tag: 1, engine: nameEngine },
   { id: 'letters', tag: 2, engine: letterEngine },
 ];
+
+/** A registered mode by id; throws on an unknown id (for a mode file looking up its own entry). */
+export function coreMode(id: string): CoreMode {
+  const mode = CORE_MODES.find((m) => m.id === id);
+  if (!mode) throw new Error(`Unknown mode: ${id}`);
+  return mode;
+}

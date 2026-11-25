@@ -29,7 +29,7 @@ async function tap(page: Page, answer: string) {
 
 async function start(page: Page) {
   await page.goto('/');
-  await page.getByRole('button', { name: /Letter Math/ }).click();
+  await page.getByRole('radio', { name: /Letter Math/ }).click();
   await page.getByRole('button', { name: /Start/ }).click();
 }
 
@@ -44,12 +44,12 @@ async function playPerfectSession(page: Page) {
 
 test('the home screen offers Letter Math and remembers the choice', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('button', { name: /Name It/ })).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: /Letter Math/ }).click();
+  await expect(page.getByRole('radio', { name: /Name It/ })).toHaveAttribute('aria-checked', 'true');
+  await page.getByRole('radio', { name: /Letter Math/ }).click();
   await expect(page.getByRole('button', { name: 'Treble', exact: true })).toHaveCount(0);
   await page.reload();
-  await expect(page.getByRole('button', { name: /Letter Math/ })).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: /Name It/ }).click();
+  await expect(page.getByRole('radio', { name: /Letter Math/ })).toHaveAttribute('aria-checked', 'true');
+  await page.getByRole('radio', { name: /Name It/ }).click();
   await expect(page.getByRole('button', { name: 'Treble', exact: true })).toBeVisible();
 });
 
@@ -147,7 +147,7 @@ test('a perfect session earns silver, shows the Letter Math grid, and persists',
   await expect(page.getByTestId('weekly-goal')).toContainText('1 of 4 days');
 
   await page.reload();
-  await page.getByRole('button', { name: /My keyboard/ }).click();
+  await page.getByRole('button', { name: /My progress/ }).click();
   const map = page.getByTestId('letter-map');
   await expect(map).toContainText('Next letter up');
   expect(await map.locator('.lm-cell[data-level="silver"]').count()).toBeGreaterThan(0);
@@ -169,9 +169,9 @@ test('Letter Math progress moves to another device in the progress code', async 
   const other = await browser.newContext();
   const page2 = await other.newPage();
   await page2.goto(`${baseURL}/#import=${code}`);
-  await expect(page2.getByText(`Letter Math: 🥇 0 gold and 🥈 ${silver} silver.`)).toBeVisible();
+  await expect(page2.getByText(`Letter Math: 🥇 0 gold and 🥈 ${silver} silver`)).toBeVisible();
   await page2.getByTestId('confirm-import').click();
-  await page2.getByRole('button', { name: /My keyboard/ }).click();
+  await page2.getByRole('button', { name: /My progress/ }).click();
   await expect(page2.locator('[data-testid=letter-map] .lm-cell[data-level="silver"]')).toHaveCount(silver);
   await other.close();
 });
