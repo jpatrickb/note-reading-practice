@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PARAMS, type StudentState, daysThisWeek, level, newStudent, recall, recordAnswer } from '../src/core/engine';
+import { PARAMS, type StudentState, daysThisWeek, level, newStudent, recordAnswer } from '../src/core/engine';
 import { defineItemSet } from '../src/core/itemset';
 import {
   LADDER,
@@ -26,6 +26,7 @@ import {
 import { LETTERS, type Letter, midi } from '../src/core/music';
 import { isFinished, nextQuestion, startSession, submit, summarize } from '../src/core/session';
 import { DAY, T0, seededRng } from './helpers';
+import { honestLearner, masher, randomGuesser, simulate } from './sim';
 
 const item = (rung: Rung, start: Letter) => letterItem(`lm:${rung}:${start}`);
 const ans = (rung: Rung, start: Letter) => letterAnswer(item(rung, start));
@@ -241,56 +242,27 @@ describe('item sets', () => {
 
 describe('Letter Math with the shared engine', () => {
   it('a random guesser never earns mastery', () => {
-    const s = letterEngine.newStudent();
-    const rng = seededRng(11);
-    const events = [];
-    let now = T0;
-    for (let i = 0; i < 600; i++) {
-      const id = letterEngine.selectItem(s, [LETTER_GROUP], now, rng);
-      const guess = LETTERS[Math.floor(rng() * 7)] as Letter;
-      const outcome = guess === letterEngine.answerOf(id) ? 'correct' : 'wrong';
-      events.push(...letterEngine.recordAnswer(s, id, outcome, guess, 250, now).events);
-      now += 2000;
-    }
-    expect(events.filter((e) => e.kind === 'silver' || e.kind === 'gold')).toHaveLength(0);
-    const open = LETTER_ITEMS.filter((i) => s.items[i.id]!.unlocked);
-    expect(open.reduce((a, i) => a + recall(s.items[i.id]!, now), 0) / open.length).toBeLessThan(0.5);
+    const r = simulate({ engine: letterEngine, groups: [LETTER_GROUP], policy: randomGuesser(), sessions: 30, seed: 11 });
+    expect(r.silver + r.gold).toBe(0);
+    expect(r.meanRecall).toBeLessThan(0.5);
   });
 
   it('pressing one button every time stays stuck: mostly wrong, nothing unlocks', () => {
     for (const button of LETTERS) {
-      const s = letterEngine.newStudent();
-      const rng = seededRng(12);
-      let now = T0;
-      let right = 0;
-      const events = [];
-      for (let i = 0; i < 200; i++) {
-        const id = letterEngine.selectItem(s, [LETTER_GROUP], now, rng);
-        const outcome = button === letterEngine.answerOf(id) ? 'correct' : 'wrong';
-        if (outcome === 'correct') right++;
-        events.push(...letterEngine.recordAnswer(s, id, outcome, button, 300, now).events);
-        now += 2000;
-      }
+      const r = simulate({ engine: letterEngine, groups: [LETTER_GROUP], policy: masher(button), sessions: 10, seed: 12 });
+      const right = r.answers.filter((a, i) => a !== null && letterEngine.isCorrect(r.picks[i]!, a)).length;
       expect(right / 200, button).toBeLessThan(0.5);
-      expect(events.filter((e) => e.kind === 'unlocked'), button).toHaveLength(0);
+      expect(r.unlocked, button).toBe(0);
       // At most the one starter item whose answer really is that letter can shine.
-      expect(events.filter((e) => e.kind === 'silver').length, button).toBeLessThanOrEqual(1);
+      expect(r.silver, button).toBeLessThanOrEqual(1);
     }
   });
 
   it('an honest learner who knows the alphabet earns silver and unlocks new questions', () => {
-    const s = letterEngine.newStudent();
-    const rng = seededRng(13);
-    const events = [];
-    let now = T0;
-    for (let i = 0; i < 60; i++) {
-      const id = letterEngine.selectItem(s, [LETTER_GROUP], now, rng);
-      events.push(...correct(s, id, now, 1800).events);
-      now += 4000;
-    }
-    expect(events.filter((e) => e.kind === 'silver').length).toBeGreaterThanOrEqual(3);
-    expect(events.filter((e) => e.kind === 'unlocked').length).toBeGreaterThanOrEqual(3);
-    expect(s.items['lm:after:G']!.unlocked).toBe(true);
+    const r = simulate({ engine: letterEngine, groups: [LETTER_GROUP], policy: honestLearner({ learnAfter: 0 }), sessions: 3, seed: 13 });
+    expect(r.silver).toBeGreaterThanOrEqual(3);
+    expect(r.unlocked).toBeGreaterThanOrEqual(3);
+    expect(r.state.items['lm:after:G']!.unlocked).toBe(true);
   });
 
   it('a kid who practices most days climbs the ladder to skips and intervals, earning gold', () => {

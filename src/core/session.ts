@@ -1,16 +1,18 @@
 // A practice session: a short run of questions that always ends on easy wins.
-// Works for any mode: the session carries the mode's engine (and optional misconception detector).
+// Works for any mode: the session carries the mode's engine (and optional misconception detector),
+// and is generic over the mode's answer type `A` (a Letter unless the mode says otherwise).
 
 import { type LessonId, diagnose } from './diagnose';
 import { type Engine, type MasteryEvent, type Outcome, type Rng, type StudentState, nameEngine } from './engine';
+import type { PracticeItem } from './itemset';
 import type { Letter } from './music';
 
 export const SESSION_LENGTH = 20;
 const FINISH_EASY = 3;
 
 /** What a session needs from a game mode. */
-export interface SessionMode {
-  engine: Engine;
+export interface SessionMode<A extends string = Letter> {
+  engine: Engine<PracticeItem, A>;
   /** Spot a misconception after a wrong answer and suggest a mini-lesson (optional). */
   diagnose?: (state: StudentState, now: number) => LessonId | null;
 }
@@ -22,8 +24,8 @@ export interface Question {
   shownAt: number;
 }
 
-export interface Session {
-  mode: SessionMode;
+export interface Session<A extends string = Letter> {
+  mode: SessionMode<A>;
   /** Unlock lanes to practice (Name It: the chosen clefs). */
   groups: string[];
   length: number;
@@ -32,15 +34,18 @@ export interface Session {
   current: Question | null;
 }
 
-export function startSession(groups: string[], length = SESSION_LENGTH, mode: SessionMode = NAME_IT_MODE): Session {
+/** Start a session. With no mode it is Name It; any other mode passes its own. */
+export function startSession(groups: string[], length?: number): Session;
+export function startSession<A extends string>(groups: string[], length: number | undefined, mode: SessionMode<A>): Session<A>;
+export function startSession(groups: string[], length = SESSION_LENGTH, mode: SessionMode<string> = NAME_IT_MODE): Session<string> {
   return { mode, groups, length, results: [], events: [], current: null };
 }
 
-export function isFinished(session: Session): boolean {
+export function isFinished(session: Session<string>): boolean {
   return session.results.length >= session.length;
 }
 
-export function nextQuestion(session: Session, state: StudentState, now: number, rng: Rng): Question {
+export function nextQuestion(session: Session<string>, state: StudentState, now: number, rng: Rng): Question {
   const remaining = session.length - session.results.length;
   const pick = remaining <= FINISH_EASY ? 'finish' : 'normal';
   const recent = session.results.map((r) => ({ itemId: r.itemId, correct: r.outcome === 'correct' }));
@@ -55,12 +60,11 @@ export interface SubmitResult {
 }
 
 /** Submit an answer to the current question. `answer = null` means "I don't know". */
-export function submit(session: Session, state: StudentState, answer: Letter | null, now: number): SubmitResult {
+export function submit<A extends string>(session: Session<A>, state: StudentState, answer: NoInfer<A> | null, now: number): SubmitResult {
   const q = session.current;
   if (!q) throw new Error('No current question');
   const { engine } = session.mode;
-  const target = engine.answerOf(q.itemId);
-  const outcome: Outcome = answer === null ? 'idk' : answer === target ? 'correct' : 'wrong';
+  const outcome: Outcome = answer === null ? 'idk' : engine.isCorrect(q.itemId, answer) ? 'correct' : 'wrong';
   const rtMs = now - q.shownAt;
   const { events } = engine.recordAnswer(state, q.itemId, outcome, answer, rtMs, now);
   session.results.push({ itemId: q.itemId, outcome, rtMs });
@@ -80,7 +84,7 @@ export interface Summary {
   unlocked: string[];
 }
 
-export function summarize(session: Session): Summary {
+export function summarize(session: Session<string>): Summary {
   const ids = (kind: MasteryEvent['kind']) => session.events.filter((e) => e.kind === kind).map((e) => e.itemId);
   return {
     total: session.results.length,
