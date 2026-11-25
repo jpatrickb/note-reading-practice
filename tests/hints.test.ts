@@ -24,7 +24,9 @@ describe('hints', () => {
 
   it('counts from the nearest guide note', () => {
     expect(hintFor(parseNote('A4'), 'treble').landmark).toContain('Count up from Treble G');
-    expect(hintFor(parseNote('B4'), 'treble').landmark).toContain('Count down from Treble C');
+    // Treble C (C5) is taught after B4, so B4 counts from the guide the kid already knows.
+    expect(hintFor(parseNote('B4'), 'treble').landmark).toContain('Count up from Treble G');
+    expect(hintFor(parseNote('D5'), 'treble').landmark).toContain('Count up from Treble C');
     expect(hintFor(parseNote('E4'), 'treble').landmark).toContain('C → D → E');
     expect(hintFor(parseNote('E3'), 'bass').landmark).toContain('Count down from Bass F');
     expect(hintFor(parseNote('G4'), 'treble').landmark).toContain('This is a guide note: Treble G');

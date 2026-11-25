@@ -22,9 +22,10 @@ describe('the two-ledger-line items', () => {
     expect(ITEMS.slice(26).map((i) => i.id)).toEqual(NEW_IDS);
   });
 
-  it('are taught after the 13 in-staff notes, alternating above and below, guide C first', () => {
-    expect(TEACHING_ORDER.treble.slice(13)).toEqual(NEW_TREBLE);
-    expect(TEACHING_ORDER.bass.slice(13)).toEqual(NEW_BASS);
+  it('are taught after the 13 in-staff notes, guide C first, no letter twice in a row', () => {
+    // The guide C is taught first (so hints can count from it), then the neighbour, then the far side.
+    expect(TEACHING_ORDER.treble.slice(13)).toEqual(['C6', 'B5', 'A3', 'B3']);
+    expect(TEACHING_ORDER.bass.slice(13)).toEqual(['D4', 'E4', 'C2', 'D2']);
     for (const clef of ['treble', 'bass'] as const) {
       const rest = TEACHING_ORDER[clef].slice(13).map((n) => parseNote(n));
       // No letter twice in a row.
@@ -74,7 +75,7 @@ describe('hints for the new notes', () => {
 describe('an honest learner reaches the ledger notes last', () => {
   const SEEDS = [1, 2, 3, 4, 5];
   for (const [name, policy] of [['a kid who knows the notes', knower(0.97, 1500)], ['a beginner', nameBeginner]] as const) {
-    it(`${name}: none in session 1, and never before the in-staff notes have opened`, () => {
+    it(`${name}: no new ledger notes in session 1, and never before the in-staff notes have opened`, () => {
       for (const seed of SEEDS) {
         const r = simulate({ mode: NAME_IT_MODE, groups: ['treble', 'bass'], policy, sessions: 6, seed });
         for (const clef of ['treble', 'bass'] as const) {

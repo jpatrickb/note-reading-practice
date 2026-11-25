@@ -22,8 +22,8 @@ export interface Item {
  *  - Octave repeats and ledger notes come after the alphabet is complete.
  */
 export const TEACHING_ORDER: Record<Clef, string[]> = {
-  treble: ['G4', 'C4', 'A4', 'F4', 'E4', 'B4', 'D4', 'C5', 'D5', 'E5', 'F5', 'G5', 'A5', 'B5', 'C6', 'B3', 'A3'],
-  bass: ['F3', 'G3', 'E3', 'A3', 'D3', 'C3', 'B2', 'G2', 'A2', 'C4', 'B3', 'F2', 'E2', 'D4', 'E4', 'D2', 'C2'],
+  treble: ['G4', 'C4', 'A4', 'F4', 'E4', 'B4', 'D4', 'C5', 'D5', 'E5', 'F5', 'G5', 'A5', 'C6', 'B5', 'A3', 'B3'],
+  bass: ['F3', 'G3', 'E3', 'A3', 'D3', 'C3', 'B2', 'G2', 'A2', 'C4', 'B3', 'F2', 'E2', 'D4', 'E4', 'C2', 'D2'],
 };
 
 /**

@@ -1,12 +1,14 @@
 // Feedback hints: position + mnemonic + landmark ("guide note").
 // The teacher uses Faber + mnemonics; landmarks are added alongside (decision D15).
 
+import { TEACHING_ORDER } from './items';
 import {
   type Clef,
   type Note,
   describePosition,
   diatonic,
   letterWalk,
+  noteId,
   parseNote,
   staffPosition,
 } from './music';
@@ -56,6 +58,24 @@ export function isLandmark(note: Note, clef: Clef): boolean {
   return nearestLandmark(note, clef).distance === 0;
 }
 
+/**
+ * The guide note a hint counts from: the nearest one among those taught at or before this note in
+ * the teaching order, so a hint never points at a guide note the kid has not met. A note outside the
+ * lane (not taught) may use any.
+ */
+export function anchorFor(note: Note, clef: Clef): { landmark: Landmark; distance: number } {
+  const order = TEACHING_ORDER[clef];
+  const at = order.indexOf(noteId(note));
+  if (at < 0) return nearestLandmark(note, clef);
+  const known = LANDMARKS[clef].filter((l) => order.indexOf(noteId(l.note)) <= at);
+  let best: { landmark: Landmark; distance: number } | undefined;
+  for (const landmark of known) {
+    const distance = diatonic(note) - diatonic(landmark.note);
+    if (!best || Math.abs(distance) < Math.abs(best.distance)) best = { landmark, distance };
+  }
+  return best ?? nearestLandmark(note, clef);
+}
+
 export function hintFor(note: Note, clef: Clef): Hint {
   const pos = staffPosition(note, clef);
   const position = `This note is on ${describePosition(pos)}.`;
@@ -69,7 +89,7 @@ export function hintFor(note: Note, clef: Clef): Hint {
     mnemonic = `${kind}, bottom to top: ${phrase}. Number ${idx + 1} is ${note.letter}.`;
   }
 
-  const { landmark, distance } = nearestLandmark(note, clef);
+  const { landmark, distance } = anchorFor(note, clef);
   let landmarkText: string;
   if (distance === 0) {
     landmarkText = `This is a guide note: ${landmark.name}, ${landmark.why}.`;
