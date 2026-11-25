@@ -151,8 +151,6 @@ export interface Pacing {
    */
   cleanMinCorrect: number;
   cleanRun: number;
-  /** In the closing easy wins, never-answered items get this weight factor. */
-  finishUnseenWeight: number;
 }
 
 export const PACING: Pacing = {
@@ -169,7 +167,6 @@ export const PACING: Pacing = {
   cruiseNewBoost: 12,
   cleanMinCorrect: 2,
   cleanRun: 3,
-  finishUnseenWeight: 0.05,
 };
 
 /** The original pacing (one item at a time, each seen twice). Kept for comparisons in tests. */
@@ -187,7 +184,6 @@ export const STRICT_PACING: Pacing = {
   cruiseNewBoost: 1,
   cleanMinCorrect: 3,
   cleanRun: Infinity,
-  finishUnseenWeight: 1,
 };
 
 const HOUR = 3_600_000;
@@ -483,8 +479,6 @@ export function createEngine<I extends PracticeItem>(set: ItemSet<I>, pacing: Pa
       let w: number;
       if (mode === 'finish') {
         w = p ** 4 + 0.01;
-        // Easy wins are items the kid has answered, not ones the model only expects them to know.
-        if (it.n === 0) w *= pacing.finishUnseenWeight;
       } else {
         w = 0.12 + (1 - p);
         if (it.n === 0) w += 0.5;

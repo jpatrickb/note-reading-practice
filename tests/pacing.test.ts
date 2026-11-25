@@ -82,7 +82,7 @@ describe('pacing: a true beginner keeps a comfortable pace', () => {
   const fast = letters(LETTER_MATH_MODE, lmBeginner, 12);
   const strict = letters(STRICT_LETTERS, lmBeginner, 12);
 
-  // Bounds are what this engine measures (strict: struggling 3, worst session 0.65). At ~82% success a
+  // Bounds are what this engine measures (strict: struggling 3, worst session 0.70). At ~82% success a
   // 20-question session has a spread of about ±9%, so the worst of ~110 sessions lands near 0.6
   // from chance alone; a bound much above that would test the dice, not the pacing.
   it('Letter Math: ~80% success, no rough sessions, never many items they can’t answer yet', () => {
