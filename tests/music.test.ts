@@ -88,12 +88,13 @@ describe('music primitives', () => {
     expect(describePosition(11)).toBe('over ledger line 1 above the staff');
   });
 
-  it('defines the v0 ranges', () => {
+  it('defines the ranges (two ledger lines either side, #24)', () => {
     expect(notesInRange('treble').map(noteId)).toEqual(
-      ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5', 'D5', 'E5', 'F5', 'G5', 'A5'],
+      ['A3', 'B3', 'C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5', 'D5', 'E5', 'F5', 'G5', 'A5', 'B5', 'C6'],
     );
-    expect(notesInRange('bass').map(noteId).at(0)).toBe('E2');
-    expect(notesInRange('bass').map(noteId).at(-1)).toBe('C4');
+    expect(notesInRange('bass').map(noteId).at(0)).toBe('C2');
+    expect(notesInRange('bass').map(noteId).at(-1)).toBe('E4');
+    expect(notesInRange('bass')).toHaveLength(17);
   });
 });
 

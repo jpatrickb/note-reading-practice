@@ -22,11 +22,13 @@ export const LANDMARKS: Record<Clef, Landmark[]> = {
     { note: parseNote('C4'), name: 'Middle C', why: 'on its own little line below the treble staff' },
     { note: parseNote('G4'), name: 'Treble G', why: 'the line the treble clef curls around' },
     { note: parseNote('C5'), name: 'Treble C', why: 'the 3rd space' },
+    { note: parseNote('C6'), name: 'High C', why: 'two ledger lines above the treble staff' },
   ],
   bass: [
     { note: parseNote('C4'), name: 'Middle C', why: 'on its own little line above the bass staff' },
     { note: parseNote('F3'), name: 'Bass F', why: "the line between the bass clef's two dots" },
     { note: parseNote('C3'), name: 'Bass C', why: 'the 2nd space' },
+    { note: parseNote('C2'), name: 'Low C', why: 'two ledger lines below the bass staff' },
   ],
 };
 

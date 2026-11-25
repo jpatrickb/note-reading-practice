@@ -166,8 +166,8 @@ export function describePosition(pos: number): string {
 
 /** Note ranges practiced in v0, one per clef (low → high). */
 export const RANGES: Record<Clef, { low: Note; high: Note }> = {
-  treble: { low: { letter: 'C', octave: 4 }, high: { letter: 'A', octave: 5 } },
-  bass: { low: { letter: 'E', octave: 2 }, high: { letter: 'C', octave: 4 } },
+  treble: { low: { letter: 'A', octave: 3 }, high: { letter: 'C', octave: 6 } },
+  bass: { low: { letter: 'C', octave: 2 }, high: { letter: 'E', octave: 4 } },
 };
 
 export function notesInRange(clef: Clef): Note[] {
