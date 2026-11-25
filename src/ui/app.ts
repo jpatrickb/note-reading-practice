@@ -1,7 +1,7 @@
-import qrcode from 'qrcode-generator';
 import { Synth } from '../audio/synth';
 import { type Profile, ProgressCodeError, decodeProfile, encodeProfile } from '../core/codec';
 import { type MasteryEvent, WEEKLY_GOAL, daysThisWeek, isDusty, level, recall } from '../core/engine';
+import { codeFromHash, codeFromPasted, progressQr } from '../core/progress-qr';
 import type { Clef } from '../core/music';
 import { type Session, startSession, summarize } from '../core/session';
 import {
@@ -63,9 +63,9 @@ export class App {
     document.addEventListener('pointerdown', () => this.synth.unlock(), { capture: true });
     void requestPersistence();
 
-    const m = /^#import=([A-Za-z0-9_-]+)$/.exec(location.hash);
-    if (m) {
-      this.importCode = m[1]!;
+    const linkedCode = codeFromHash(location.hash);
+    if (linkedCode) {
+      this.importCode = linkedCode;
       history.replaceState(null, '', location.pathname + location.search);
       this.go('import');
     } else this.go('home');
@@ -422,10 +422,7 @@ export class App {
 
   private renderSave(): HTMLElement {
     const code = encodeProfile(this.profile, this.now());
-    const url = `${location.origin}${location.pathname}#import=${code}`;
-    const qr = qrcode(0, 'L');
-    qr.addData(url);
-    qr.make();
+    const qr = progressQr(`${location.origin}${location.pathname}`, code);
     const qrHost = h('div', { class: 'qr', 'aria-label': 'QR code with your progress' });
     qrHost.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
 
@@ -471,7 +468,7 @@ export class App {
           {
             class: 'secondary',
             onClick: () => {
-              this.importCode = input.value.trim();
+              this.importCode = codeFromPasted(input.value);
               if (this.importCode) this.go('import');
             },
           },
