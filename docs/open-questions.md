@@ -22,9 +22,8 @@
 - **Audio on iPhone:** the ring/silent switch mutes Web Audio. Is the HTML-audio unlock trick needed?
   (iPads mostly lack the switch.)
 
-- **Letter Math pacing (important):** with the strict unlock rule, simulations show about 1 new item per
-  session. The 126-item ladder would take months, and kids who already know the alphabet would grind.
-  Likely fix: a placement round or a per-rung "test out" fast track. Needs a teacher decision.
+- ~~**Letter Math pacing (important)**~~ **Resolved by #55** (D60–D66): kids who know the material clear
+  next-letter in session 1 and reach intervals within a few sessions.
 - **Letter Math 2nds/3rds:** these repeat next-letter/skip answers under interval names (28 items). Keep
   them to teach the names, or drop them?
 - **Space theme:** the selected segment on home (mode/clef) is only subtly different from unselected.
