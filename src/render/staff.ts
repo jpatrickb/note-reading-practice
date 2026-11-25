@@ -84,3 +84,7 @@ export function renderStaff(note: Note, clef: Clef, opts: StaffOptions = {}): SV
   }
   return svg;
 }
+
+// Multi-note staves live in staffSequence.ts (which imports this file); re-exported here so callers have one entry point.
+export { renderStaffSequence } from './staffSequence';
+export type { NoteState, SequenceOptions, StaffEvent } from './staffSequence';
