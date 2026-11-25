@@ -8,7 +8,7 @@ import { LETTER_GROUP, LETTER_MATH_MODE } from '../src/core/letters';
 import { LETTERS } from '../src/core/music';
 import { NAME_IT_MODE, type SessionMode } from '../src/core/session';
 import {
-  type Persona,
+  type Policy,
   STRICT_LETTERS,
   STRICT_NAME_IT,
   type SimResult,
@@ -29,10 +29,10 @@ import {
 } from './sim';
 
 const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-const letters = (mode: SessionMode, persona: Persona, sessions: number) =>
-  SEEDS.map((seed) => simulate({ mode, groups: [LETTER_GROUP], persona, sessions, seed }));
-const treble = (mode: SessionMode, persona: Persona, sessions: number) =>
-  SEEDS.map((seed) => simulate({ mode, groups: ['treble'], persona, sessions, seed }));
+const letters = (mode: SessionMode, policy: Policy, sessions: number) =>
+  SEEDS.map((seed) => simulate({ mode, groups: [LETTER_GROUP], policy, sessions, seed }));
+const treble = (mode: SessionMode, policy: Policy, sessions: number) =>
+  SEEDS.map((seed) => simulate({ mode, groups: ['treble'], policy, sessions, seed }));
 const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]!;
 const nextLetter = [...rungIds('after'), ...rungIds('before')];
 const trebleIds = ITEMS_BY_CLEF.treble.map((i) => i.id);
@@ -142,7 +142,7 @@ describe('pacing: knows next letter and skips, not intervals', () => {
 });
 
 describe('pacing: guessing gains nothing', () => {
-  const play = (persona: Persona, seeds: number[]) => {
+  const play = (policy: Policy, seeds: number[]) => {
     const [fast, strict] = (['fast', 'strict'] as const).map((engine) => {
       let unlocked = 0;
       let mastered = 0;
@@ -152,7 +152,7 @@ describe('pacing: guessing gains nothing', () => {
           [engine === 'fast' ? LETTER_MATH_MODE : STRICT_LETTERS, [LETTER_GROUP]],
           [engine === 'fast' ? NAME_IT_MODE : STRICT_NAME_IT, ['treble', 'bass']],
         ] as const) {
-          const r = simulate({ mode, groups: [...groups], persona, sessions: 30, seed });
+          const r = simulate({ mode, groups: [...groups], policy, sessions: 30, seed });
           unlocked += total(r, 'unlocked');
           mastered += total(r, 'silver') + total(r, 'gold');
           maxSilver = Math.max(maxSilver, total(r, 'silver'));
