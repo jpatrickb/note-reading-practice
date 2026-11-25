@@ -66,7 +66,7 @@ test('a perfect session ends on the summary, earns silver, and persists', async 
   await expect(page.getByTestId('weekly-goal')).toContainText('1 of 4 days');
 
   await page.reload();
-  await page.getByRole('button', { name: /My keyboard/ }).click();
+  await page.getByRole('button', { name: /My progress/ }).click();
   expect(await page.locator('.key[data-level="silver"]').count()).toBeGreaterThan(0);
 });
 
@@ -139,7 +139,7 @@ test('progress moves to another device with a progress code link', async ({ page
   await page2.goto(`${baseURL}/#import=${code}`);
   await expect(page2.getByText(`🥈 ${silver} silver`)).toBeVisible();
   await page2.getByTestId('confirm-import').click();
-  await page2.getByRole('button', { name: /My keyboard/ }).click();
+  await page2.getByRole('button', { name: /My progress/ }).click();
   await expect(page2.locator('.key[data-level="silver"]')).toHaveCount(silver);
   await other.close();
 });

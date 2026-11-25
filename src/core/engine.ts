@@ -206,6 +206,53 @@ function freshItem(): ItemState {
   return { unlocked: false, m: 0, s: PARAMS.initialS, n: 0, c: 0, last: 0, rt: 0, best: 0, silverDay: -1 };
 }
 
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/** A saved item with every field present and well-typed; any field that is not takes the fresh value. */
+function repairItem(saved: unknown, fresh: ItemState): ItemState {
+  if (!isObject(saved)) return fresh;
+  const item = saved as Record<string, unknown>;
+  for (const key of Object.keys(fresh) as (keyof ItemState)[]) {
+    const v = item[key];
+    const ok = key === 'unlocked' ? typeof v === 'boolean' : key === 'best' ? v === 0 || v === 1 || v === 2 : isNumber(v);
+    if (!ok) item[key] = fresh[key];
+  }
+  return item as unknown as ItemState;
+}
+
+/** Keep the entries of a record that satisfy `ok`, in place; a non-record becomes empty. */
+function repairRecord<T>(saved: unknown, ok: (v: unknown) => v is T): Record<string, T> {
+  if (!isObject(saved)) return {};
+  for (const key of Object.keys(saved)) if (!ok(saved[key])) delete saved[key];
+  return saved as Record<string, T>;
+}
+
+/**
+ * Make a saved state safe to play (issue #72): every top-level field and every item field exists
+ * with the right type, taking the fresh learner's value for anything missing or malformed (an older
+ * build, a partial write, a hand edit). Fields that are fine are left exactly as they are, so a
+ * healthy state is unchanged. Mutates and returns `state`.
+ */
+function repairState(state: StudentState, fresh: StudentState, items: readonly PracticeItem[]): StudentState {
+  const s = state as unknown as Record<string, unknown>;
+  s.version = 1;
+  if (!isObject(s.items)) s.items = {};
+  const saved = s.items as Record<string, unknown>;
+  const known = new Set(items.map((i) => i.id));
+  for (const { id } of items) saved[id] = repairItem(saved[id], fresh.items[id]!);
+  if (!isNumber(s.rtBaseline) || s.rtBaseline < 0) s.rtBaseline = fresh.rtBaseline;
+  s.confusions = repairRecord(s.confusions, isNumber);
+  s.lessonsSeen = repairRecord(s.lessonsSeen, isNumber);
+  s.practiceDays = Array.isArray(s.practiceDays) ? s.practiceDays.filter(isNumber) : [];
+  s.recentErrors = Array.isArray(s.recentErrors)
+    ? s.recentErrors.filter((e): e is ErrorRecord => isObject(e) && typeof e.itemId === 'string' && known.has(e.itemId) && typeof e.answer === 'string' && isNumber(e.at))
+    : [];
+  // `runs` is optional (older saves lack it): keep what is sound, drop what is not.
+  if (s.runs !== undefined) s.runs = repairRecord(s.runs, isNumber);
+  return state;
+}
+
 export function recall(it: ItemState, now: number): number {
   if (it.last === 0) return sigmoid(it.m);
   const elapsedH = Math.max(0, now - it.last) / HOUR;
@@ -387,9 +434,7 @@ export function createEngine<I extends PracticeItem, A extends string = Letter>(
   }
 
   function normalize(state: StudentState): StudentState {
-    const fresh = newStudent();
-    for (const item of set.items) state.items[item.id] ??= fresh.items[item.id]!;
-    return state;
+    return repairState(state, newStudent(), set.items);
   }
 
   /**
