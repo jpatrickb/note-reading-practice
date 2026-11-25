@@ -93,6 +93,7 @@ test('calm mode: the toggle persists and turns ambient motion and effects off', 
 
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-calm', 'true');
+  await page.getByRole('button', { name: /Theme/ }).click();
   await expect(page.getByRole('switch', { name: 'Calm mode' })).toHaveAttribute('aria-checked', 'true');
   await page.getByRole('button', { name: 'Done' }).click();
   expect(await runningIn(page, '.world')).toBe(0);
@@ -150,7 +151,7 @@ test('a wrong answer gets a smaller, gentler reaction than a correct one', async
   expect(wrong.ms).toBeLessThan(right.ms);
 
   await page.getByTestId('continue').click();
-  l = await nextNote(page);
+  await nextNote(page);
   await page.locator('[data-answer="?"]').click();
   await expect(fx(page)).toHaveAttribute('data-last-kind', 'idk');
   const idk = await lastReaction(page);
@@ -190,12 +191,12 @@ test('nothing moves over or behind the staff while a question is up (every theme
     await page.evaluate((t) => localStorage.setItem('nrp:v1:settings', JSON.stringify({ clefs: ['treble'], muted: true, theme: t })), theme);
     await page.reload();
     await page.getByRole('button', { name: /Start/ }).click();
-    let l = await nextNote(page);
+    const l = await nextNote(page);
     await page.waitForTimeout(500);
     expect(await movingOverStaff(page), theme).toEqual({ hits: [], particles: 0 });
     // Also after a correct answer's reaction: it has to be over before the next question appears.
     await page.locator(`[data-answer="${l}"]`).click();
-    l = await nextNote(page);
+    await nextNote(page);
     await page.waitForTimeout(100);
     expect(await movingOverStaff(page), `${theme} after an answer`).toEqual({ hits: [], particles: 0 });
     // The mascot waits quietly during the question.

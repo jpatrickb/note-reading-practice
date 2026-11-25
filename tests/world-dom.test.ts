@@ -69,8 +69,8 @@ describe('world', () => {
     expect(world.dataset.mode).toBe('play');
     const card = document.createElement('div');
     // jsdom has no layout: every rect is 0×0 at the origin, i.e. "overlapping" → still.
-    const rect = { top: -10, bottom: 300, left: 0, right: 500 } as DOMRect;
-    card.getBoundingClientRect = () => rect;
+    const rect = { top: -10, bottom: 300, left: 0, right: 500 };
+    card.getBoundingClientRect = () => rect as DOMRect;
     guardStaff(card);
     expect(world.dataset.still).toBe('true');
     rect.top = 5000;
