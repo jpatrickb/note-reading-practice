@@ -184,22 +184,35 @@ describe('progress code v3', () => {
     expect(new Set(CORE_MODES.map((m) => m.tag)).size).toBe(CORE_MODES.length);
   });
 
+  /**
+   * The golden fixtures predate later Name It items (appended per CANONICAL_ORDER): decoding them
+   * must give the fixture's state for every item it knew, and a fresh, locked, unseen record for each
+   * item added since. `withNewItems` adds those fresh records to the frozen expectation.
+   */
+  const withNewItems = (s: StudentState): StudentState => {
+    const fresh = newStudent();
+    const items = { ...s.items };
+    for (const id of Object.keys(fresh.items)) if (!(id in items)) items[id] = fresh.items[id]!;
+    return { ...s, items };
+  };
+
   describe('golden v1/v2 codes from the previous build', () => {
     for (const [key, g] of Object.entries(GOLDEN_CODES)) {
       it(`${key}: ${g.about}`, () => {
         const back = decodeProfile(g.code, g.decodeAt);
-        expect(back.name).toEqual(g.expected.name);
+        expect(back.name).toEqual(withNewItems(g.expected.name));
         expect(back.letters).toEqual(g.expected.letters);
-        expect(decodeProgress(g.code, g.decodeAt)).toEqual(g.expected.name);
+        expect(decodeProgress(g.code, g.decodeAt)).toEqual(withNewItems(g.expected.name));
       });
     }
 
     it('re-saving a golden code in v3 keeps the engine behaving the same', { timeout: 30_000 }, () => {
       for (const [key, g] of Object.entries(GOLDEN_CODES)) {
         const now = g.decodeAt;
-        const v3 = decodeProfile(encodeProfile(g.expected, now), now);
+        const expected = { name: withNewItems(g.expected.name), letters: g.expected.letters };
+        const v3 = decodeProfile(encodeProfile(expected, now), now);
         for (const mode of CORE_MODES) {
-          const a = g.expected[mode.id as 'name' | 'letters'];
+          const a = expected[mode.id as 'name' | 'letters'];
           const b = v3[mode.id]!;
           expectSameBehavior(mode.engine, a, b, now);
           expect(selectionAgreement(mode.engine, a, b, now), key).toBeGreaterThanOrEqual(0.95);
@@ -312,7 +325,7 @@ describe('progress code v3', () => {
       const plain = v3Body(frozen.encodeProgress(s, t));
       // Rebuild the Name It section with recordLen 6 (one unknown byte per record) and 2 trailing bytes.
       const [, , , , tag, , , ...rest] = plain;
-      const head = rest.slice(0, 2 + 3 + 2 + 4); // baseline, days, count, bitmap (26 items)
+      const head = rest.slice(0, 2 + 3 + 2 + Math.ceil(nameEngine.set.items.length / 8)); // baseline, days, count, bitmap
       const records = rest.slice(head.length + 1);
       const wide: number[] = [];
       for (let k = 0; k < records.length; k += 5) wide.push(...records.slice(k, k + 5), 0xab);

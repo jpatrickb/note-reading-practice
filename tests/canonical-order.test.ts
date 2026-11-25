@@ -12,7 +12,7 @@ import { LETTER_MATH } from '../src/core/letters';
 import type { CoreMode } from '../src/core/modes';
 import { T0 } from './helpers';
 
-/** Name It: index 0..25 (treble in teaching order, then bass). */
+/** Name It: index 0..33 (the original 26, then the #24 ledger notes). */
 const NAME_IT_GOLDEN = [
   'name:treble:G4', 'name:treble:C4', 'name:treble:A4', 'name:treble:F4',
   'name:treble:E4', 'name:treble:B4', 'name:treble:D4', 'name:treble:C5',
@@ -21,6 +21,9 @@ const NAME_IT_GOLDEN = [
   'name:bass:A3', 'name:bass:D3', 'name:bass:C3', 'name:bass:B2',
   'name:bass:G2', 'name:bass:A2', 'name:bass:C4', 'name:bass:B3',
   'name:bass:F2', 'name:bass:E2',
+  // appended by #24 (two ledger lines)
+  'name:treble:B5', 'name:treble:C6', 'name:treble:B3', 'name:treble:A3',
+  'name:bass:D4', 'name:bass:E4', 'name:bass:D2', 'name:bass:C2',
 ];
 
 /** Letter Math: index 0..125 (18 rungs of 7). */
@@ -59,7 +62,7 @@ describe('canonical item order is pinned', () => {
   it('the canonical order is independent of the teaching order', () => {
     // Teaching order is per lane and editable; the canonical list is its own thing.
     expect(NAME_IT.groups.treble!.map((i) => i.id.split(':')[2])).toEqual(TEACHING_ORDER.treble);
-    expect(NAME_IT.items.slice(0, 13).map((i) => i.id)).toEqual(NAME_IT.groups.treble!.map((i) => i.id));
+    expect(NAME_IT.items.slice(0, 13).map((i) => i.id)).toEqual(NAME_IT.groups.treble!.slice(0, 13).map((i) => i.id));
   });
 });
 
