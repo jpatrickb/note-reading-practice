@@ -10,11 +10,16 @@
 // Anti-gaming (decision D10): no speed limits or guess detection. A wrong answer moves the
 // estimate more than a right one, so random guessing drives mastery DOWN.
 //
+// New items unlock as fast as the evidence justifies (the "fast track", see PACING): a kid who
+// shows they already know the material flies through it, a kid who is learning keeps the steady
+// one-at-a-time pace, and every shortcut needs a run of correct answers, so guessing gains nothing.
+//
 // The engine is shared by every game mode. A mode supplies an ItemSet (its items, teaching order
-// per unlock lane, and the correct letter for each item) and gets a bound engine from
-// `createEngine(set)`. Each mode keeps its own StudentState, so speed baselines and confusions
-// never mix across modes. The Name It bindings (`newStudent`, `recordAnswer`, …) are exported at
-// the bottom for existing callers.
+// per unlock lane, and the answer for each item: a letter, a key, "step"/"skip"… any string) and
+// gets a bound engine from `createEngine(set)`. Each mode keeps its own StudentState, so speed
+// baselines and confusions never mix across modes. Answers are graded by `engine.grade` (see
+// `session.submit`), never by the mode. The Name It bindings (`newStudent`, `recordAnswer`, …) are
+// exported at the bottom for existing callers.
 
 import type { ItemSet, PracticeItem } from './itemset';
 import { NAME_IT } from './items';
@@ -43,7 +48,8 @@ export interface ItemState {
 
 export interface ErrorRecord {
   itemId: string;
-  answer: Letter;
+  /** What the kid answered (any mode's answer type, stored as its string). */
+  answer: string;
   at: number;
 }
 
@@ -52,13 +58,19 @@ export interface StudentState {
   items: Record<string, ItemState>;
   /** The kid's own typical response time (ms), 0 = unknown. */
   rtBaseline: number;
-  /** Confusion matrix: `${itemId}>${answer}` → count. */
+  /** Confusion matrix: `${itemId}>${answer}` → count (the format is the same for every mode). */
   confusions: Record<string, number>;
   recentErrors: ErrorRecord[];
   /** Day indices with any practice (most recent last, trimmed). */
   practiceDays: number[];
   /** lessonId → epoch ms last shown. */
   lessonsSeen: Record<string, number>;
+  /**
+   * Unlock lane → correct answers in a row (reset by a miss or "?"). Drives the fast track.
+   * Saved with the state, so a run carries over to the next day (a day off doesn't end it; a miss
+   * does). Optional (older saves lack it) and not in the progress code.
+   */
+  runs?: Record<string, number>;
 }
 
 export type MasteryEvent =
@@ -87,6 +99,94 @@ export const PARAMS = {
   maxErrors: 20,
   maxPracticeDays: 21,
 } as const;
+
+/**
+ * How fast new items open (the "fast track"). Progress should be as fast as the evidence
+ * justifies: a kid who already knows the material flies; a kid who is learning keeps the
+ * comfortable one-at-a-time pace; guessing earns nothing (a lucky guess is 1 in 7, so every
+ * shortcut needs a run of correct answers first).
+ *
+ *  1. First-try credit: a correct, fluent answer the very first time an item is seen, during a run
+ *     of correct answers, is evidence the kid knew it already. The item jumps to `firstTryP` with
+ *     `firstTryS` hours of stability, so it counts as solid after one sighting.
+ *  2. Transfer: a newly opened item starts as well-known as the items of the same skill the kid
+ *     has already answered (shrunk toward 50/50 by `transferK0` pseudo-items); never lower than a
+ *     brand-new item.
+ *  3. Cruising: on a run of `cruiseRun` correct answers, an unseen item the model already expects
+ *     the kid to know (prior >= unlockP, via transfer) doesn't hold up unlocking, so a whole rung
+ *     can open at once ("test out by performance"). One miss ends the run and pauses this.
+ *
+ * Weak items still block unlocking (decision D34), and never more than `maxWeak` of them.
+ */
+export interface Pacing {
+  /** Recall after first-try credit (0 = off). */
+  firstTryP: number;
+  /** Stability (hours) after first-try credit. */
+  firstTryS: number;
+  /** Correct answers in a row needed BEFORE a first try for it to earn credit. */
+  firstTryRun: number;
+  /** Pseudo-items at 50% mixed into the transfer prior (Infinity = no transfer). */
+  transferK0: number;
+  /** Correct answers in a row to be cruising (Infinity = never). */
+  cruiseRun: number;
+  /** An open item must have been answered this many times to count as solid (first-try credit: once). */
+  minSeen: number;
+  /** Cap on weak open items when unlocking (on top of 1 per `weakAllowancePer`). */
+  maxWeak: number;
+  /** Most items opened by one answer. */
+  maxUnlocks: number;
+  /** A correct answer after a break counts at least as much as with no break (see applyAnswer). */
+  gapFloor: boolean;
+  /**
+   * An item that has faded below this (with time, not misses) counts as weak. At unlockP, any
+   * fading blocks; at dustyP, only an item that needs a polish does.
+   */
+  fadeP: number;
+  /**
+   * When the kid is cruising, brand-new items the model can't vouch for yet (no transfer) are this
+   * many times likelier to be asked: they're what holds up the next unlock.
+   */
+  cruiseNewBoost: number;
+  /**
+   * Silver needs this many correct answers if the item was never missed and the kid is on a run of
+   * at least `cleanRun` correct answers in the lane, counting this one (else silverMinCorrect).
+   */
+  cleanMinCorrect: number;
+  cleanRun: number;
+}
+
+export const PACING: Pacing = {
+  firstTryP: 0.9,
+  firstTryS: 72,
+  firstTryRun: 2,
+  transferK0: 1.5,
+  cruiseRun: 4,
+  minSeen: 2,
+  maxWeak: 2,
+  maxUnlocks: 3,
+  gapFloor: true,
+  fadeP: PARAMS.dustyP,
+  cruiseNewBoost: 12,
+  cleanMinCorrect: 2,
+  cleanRun: 3,
+};
+
+/** The original pacing (one item at a time, each seen twice). Kept for comparisons in tests. */
+export const STRICT_PACING: Pacing = {
+  firstTryP: 0,
+  firstTryS: 0,
+  firstTryRun: Infinity,
+  transferK0: Infinity,
+  cruiseRun: Infinity,
+  minSeen: 2,
+  maxWeak: Infinity,
+  maxUnlocks: 1,
+  gapFloor: false,
+  fadeP: PARAMS.unlockP,
+  cruiseNewBoost: 1,
+  cleanMinCorrect: 3,
+  cleanRun: Infinity,
+};
 
 const HOUR = 3_600_000;
 
@@ -123,10 +223,13 @@ export function fluency(rtMs: number, baselineMs: number): number {
   return Math.max(0.6, 1 - (ratio - PARAMS.fluentRatio) * 0.15);
 }
 
-function meetsSilver(it: ItemState, state: StudentState): boolean {
+function meetsSilver(it: ItemState, state: StudentState, pacing: Pacing, run: number): boolean {
+  // Never missed, during a run, counts as reliable sooner: `cleanMinCorrect` answers will do.
+  const clean = it.c === it.n && run >= pacing.cleanRun;
+  const minCorrect = clean ? Math.min(pacing.cleanMinCorrect, PARAMS.silverMinCorrect) : PARAMS.silverMinCorrect;
   return (
     sigmoid(it.m) >= PARAMS.silverP &&
-    it.c >= PARAMS.silverMinCorrect &&
+    it.c >= minCorrect &&
     it.rt > 0 &&
     it.rt <= PARAMS.fluentRatio * baseline(state)
   );
@@ -152,9 +255,12 @@ function applyAnswer(
   state: StudentState,
   itemId: string,
   outcome: Outcome,
-  answer: Letter | null,
+  answer: string | null,
   rtMs: number,
   now: number,
+  pacing: Pacing,
+  /** Correct answers in a row in this lane, counting this answer. */
+  run: number,
 ): MasteryEvent[] {
   const it = state.items[itemId];
   if (!it) throw new Error(`Unknown item: ${itemId}`);
@@ -167,7 +273,10 @@ function applyAnswer(
 
   if (outcome === 'correct') {
     const y = fluency(rt, baseline(state));
-    it.m = clamp(logit(p) + PARAMS.kCorrect * (y - p), -6, 6);
+    let m = logit(p) + PARAMS.kCorrect * (y - p);
+    // Remembering after a break never counts for less than answering with no break at all.
+    if (pacing.gapFloor && it.last > 0) m = Math.max(m, it.m + PARAMS.kCorrect * (y - sigmoid(it.m)));
+    it.m = clamp(m, -6, 6);
     // Stability grows in proportion to how spaced the review was: cramming barely helps.
     it.s = Math.min(PARAMS.maxS, it.s * (1 + 1.2 * Math.min(1, elapsedH / it.s)));
     it.c++;
@@ -191,7 +300,7 @@ function applyAnswer(
     if (state.practiceDays.length > PARAMS.maxPracticeDays) state.practiceDays.shift();
   }
 
-  if (outcome === 'correct' && meetsSilver(it, state)) {
+  if (outcome === 'correct' && meetsSilver(it, state, pacing, run)) {
     if (it.best === 0) {
       it.best = 1;
       it.silverDay = today;
@@ -214,20 +323,32 @@ export interface RecentAnswer {
   correct: boolean;
 }
 
-/** The adaptive engine bound to one mode's item set. */
-export interface Engine<I extends PracticeItem = PracticeItem> {
-  readonly set: ItemSet<I>;
+/**
+ * The adaptive engine bound to one mode's item set. `A` is the mode's answer type; a bare `Engine`
+ * is an engine of any mode (what lists of modes and the codec hold), and `createEngine` infers the
+ * exact type (Letter for Name It and Letter Math).
+ */
+export interface Engine<I extends PracticeItem = PracticeItem, A extends string = string> {
+  readonly set: ItemSet<I, A>;
   /** A brand-new learner: the first few items of each lane are open. */
   newStudent(): StudentState;
   /** Fill in any items missing from an older saved state. */
   normalize(state: StudentState): StudentState;
-  /** The letter that answers an item. */
-  answerOf(itemId: string): Letter;
+  /** The answer an item is taught with (also its answer key for the "not twice in a row" rule). */
+  answerOf(itemId: string): A;
+  /** Is `answer` right for this item? (More than one answer can be valid; see ItemSet.isCorrect.) */
+  isCorrect(itemId: string, answer: A): boolean;
+  /** Grade an answer (null = "?"): `isCorrect`, which defaults to `answer === answerOf`. */
+  grade(itemId: string, answer: A | null): Outcome;
+  /**
+   * Update the learner model. `outcome` must come from `grade` (which `session.submit` calls): modes
+   * never decide or pass an outcome themselves, so every mode is scored the same way.
+   */
   recordAnswer(
     state: StudentState,
     itemId: string,
     outcome: Outcome,
-    answer: Letter | null,
+    answer: A | null,
     rtMs: number,
     now: number,
   ): AnswerResult;
@@ -242,9 +363,19 @@ export interface Engine<I extends PracticeItem = PracticeItem> {
   ): string;
 }
 
-export function createEngine<I extends PracticeItem>(set: ItemSet<I>): Engine<I> {
+export function createEngine<I extends PracticeItem, A extends string = Letter>(
+  set: ItemSet<I, A>,
+  pacing: Pacing = { ...PACING, ...set.pacing },
+): Engine<I, A> {
   const initialUnlock = set.initialUnlock ?? PARAMS.initialUnlock;
   const answerOf = (itemId: string) => set.answerOf(set.get(itemId));
+  const isCorrect = (itemId: string, answer: A) => {
+    const item = set.get(itemId);
+    return set.isCorrect ? set.isCorrect(item, answer) : answer === set.answerOf(item);
+  };
+  const grade = (itemId: string, answer: A | null): Outcome =>
+    answer === null ? 'idk' : isCorrect(itemId, answer) ? 'correct' : 'wrong';
+  const skillOf = (item: I) => set.skillOf?.(item) ?? item.id;
 
   function newStudent(): StudentState {
     const items: Record<string, ItemState> = {};
@@ -262,21 +393,47 @@ export function createEngine<I extends PracticeItem>(set: ItemSet<I>): Engine<I>
   }
 
   /**
-   * Unlock the next item in a lane once the items already open are solid: each seen at least twice
-   * with recall >= unlockP. Larger sets may carry 1 weak item per `weakAllowancePer`, so one
-   * stubborn item can't block progress forever, but weak items never pile up (decision D34).
+   * Transfer: how well the kid is expected to know `item` before seeing it, from the items of the
+   * same skill they have answered, shrunk toward 50/50.
+   */
+  function transferPrior(state: StudentState, item: I, now: number): number {
+    const skill = skillOf(item);
+    const seen = set.items.filter((i) => i !== item && skillOf(i) === skill && state.items[i.id]!.n > 0);
+    // A sibling the kid had to drill (misses along the way) predicts less than one known cold.
+    const sum = seen.reduce((a, i) => {
+      const it = state.items[i.id]!;
+      return a + Math.min(recall(it, now), it.c / it.n);
+    }, 0);
+    return (sum + 0.5 * pacing.transferK0) / (seen.length + pacing.transferK0);
+  }
+
+  /**
+   * Unlock the next item in a lane once the items already open are solid: each answered at least
+   * `minSeen` times with recall >= unlockP. Larger sets may carry 1 weak item per
+   * `weakAllowancePer` (at most `maxWeak`), so one stubborn item can't block progress forever, but
+   * weak items never pile up (decision D34). While cruising, an unseen item the model already
+   * expects the kid to know doesn't count as weak (see PACING).
    */
   function maybeUnlock(state: StudentState, group: string, now: number): string | null {
     const items = set.groups[group] ?? [];
     const open = items.filter((i) => state.items[i.id]!.unlocked);
     const next = items.find((i) => !state.items[i.id]!.unlocked);
     if (!next) return null;
+    const cruising = (state.runs?.[group] ?? 0) >= pacing.cruiseRun;
     const weak = open.filter((i) => {
       const it = state.items[i.id]!;
-      return it.n < 2 || recall(it, now) < PARAMS.unlockP;
+      if (sigmoid(it.m) < PARAMS.unlockP || recall(it, now) < pacing.fadeP) return true;
+      // An item that earned first-try credit is solid after one answer (it.s only reaches
+      // firstTryS after a single answer through that credit).
+      const credited = it.n === 1 && it.c === 1 && pacing.firstTryS > 0 && it.s >= pacing.firstTryS;
+      return it.n < pacing.minSeen && !credited && !(it.n === 0 && cruising);
     });
-    if (weak.length > Math.floor(open.length / PARAMS.weakAllowancePer)) return null;
-    state.items[next.id]!.unlocked = true;
+    if (weak.length > Math.min(pacing.maxWeak, Math.floor(open.length / PARAMS.weakAllowancePer))) return null;
+    const it = state.items[next.id]!;
+    it.unlocked = true;
+    if (it.n === 0 && Number.isFinite(pacing.transferK0)) {
+      it.m = Math.max(it.m, logit(transferPrior(state, next, now)));
+    }
     return next.id;
   }
 
@@ -284,13 +441,28 @@ export function createEngine<I extends PracticeItem>(set: ItemSet<I>): Engine<I>
     state: StudentState,
     itemId: string,
     outcome: Outcome,
-    answer: Letter | null,
+    answer: A | null,
     rtMs: number,
     now: number,
   ): AnswerResult {
-    const events = applyAnswer(state, itemId, outcome, answer, rtMs, now);
-    const unlocked = maybeUnlock(state, set.groupOf(set.get(itemId)), now);
-    if (unlocked) events.push({ kind: 'unlocked', itemId: unlocked });
+    const group = set.groupOf(set.get(itemId));
+    const it = state.items[itemId];
+    const runBefore = state.runs?.[group] ?? 0;
+    const firstTry = it?.n === 0;
+    const fluent = fluency(Math.min(Math.max(rtMs, 0), PARAMS.rtCap), baseline(state)) === 1;
+    const run = outcome === 'correct' ? runBefore + 1 : 0;
+    const events = applyAnswer(state, itemId, outcome, answer, rtMs, now, pacing, run);
+    state.runs = { ...state.runs, [group]: run };
+    // First-try credit: known before we ever asked (see PACING).
+    if (firstTry && outcome === 'correct' && fluent && runBefore >= pacing.firstTryRun) {
+      it!.m = Math.max(it!.m, logit(pacing.firstTryP));
+      it!.s = Math.max(it!.s, pacing.firstTryS);
+    }
+    for (let k = 0; k < pacing.maxUnlocks; k++) {
+      const unlocked = maybeUnlock(state, group, now);
+      if (!unlocked) break;
+      events.push({ kind: 'unlocked', itemId: unlocked });
+    }
     return { correct: outcome === 'correct', events };
   }
 
@@ -301,7 +473,7 @@ export function createEngine<I extends PracticeItem>(set: ItemSet<I>): Engine<I>
    * items still come back for review, and a bonus for brand-new and faded items. Weak items are
    * never abandoned. A controller keeps the kid's actual success near the target: on a rough patch
    * it leans on items they know; when they're cruising it leans on harder ones. Repeating the
-   * previous answer letter is discouraged so one button can't carry a streak. With several lanes
+   * previous answer is discouraged so one button can't carry a streak. With several lanes
    * (e.g. both clefs), attention is split by lane first (weaker lane gets more), so a lane with
    * fewer unlocked items isn't crowded out.
    *
@@ -322,7 +494,7 @@ export function createEngine<I extends PracticeItem>(set: ItemSet<I>): Engine<I>
 
     const window = recent.slice(-6);
     const accuracy = window.length >= 3 ? window.filter((r) => r.correct).length / window.length : PARAMS.targetP;
-    const prevLetter = recent.length ? answerOf(recent.at(-1)!.itemId) : null;
+    const prevAnswer = recent.length ? answerOf(recent.at(-1)!.itemId) : null;
 
     const scored = candidates.map((i) => {
       const it = state.items[i.id]!;
@@ -335,9 +507,13 @@ export function createEngine<I extends PracticeItem>(set: ItemSet<I>): Engine<I>
         if (it.n === 0) w += 0.5;
         if (isDusty(it, now)) w += 0.3;
         if (accuracy < PARAMS.targetP - 0.15) w *= 0.2 + p;
-        else if (accuracy > PARAMS.targetP + 0.1) w *= 0.2 + (1 - p);
+        else if (accuracy > PARAMS.targetP + 0.1) {
+          // Cruising: lean on harder items, above all new ones nothing vouches for yet.
+          w *= 0.2 + (1 - p);
+          if (it.n === 0 && p < PARAMS.unlockP) w *= pacing.cruiseNewBoost;
+        }
       }
-      if (set.answerOf(i) === prevLetter) w *= 0.15;
+      if (set.answerOf(i) === prevAnswer) w *= 0.15;
       return { id: i.id, group: set.groupOf(i), p, w };
     });
 
@@ -361,7 +537,7 @@ export function createEngine<I extends PracticeItem>(set: ItemSet<I>): Engine<I>
     return scored.at(-1)!.id;
   }
 
-  return { set, newStudent, normalize, answerOf, recordAnswer, maybeUnlock, selectItem };
+  return { set, newStudent, normalize, answerOf, isCorrect, grade, recordAnswer, maybeUnlock, selectItem };
 }
 
 /** Days practiced in the current Monday-start week, across one or more modes' learner models. */

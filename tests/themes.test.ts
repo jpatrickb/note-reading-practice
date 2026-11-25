@@ -74,6 +74,17 @@ describe('themes', () => {
     expect(checkTheme(THEMES[0]).every((r) => r.ok)).toBe(true);
   });
 
+  it('every theme has a named mascot and a greeting', () => {
+    for (const t of THEMES as readonly Theme[]) {
+      expect(t.mascot, t.id).toMatch(/^[A-Z]\w+ the \w+$/);
+      expect(t.greeting.length, t.id).toBeGreaterThan(5);
+    }
+  });
+
+  it('a selected segment stands out from unselected ones in every theme (Space used to be too subtle)', () => {
+    for (const t of THEMES) expect(contrast(t.colors.selected, t.colors.secondary), t.id).toBeGreaterThanOrEqual(3);
+  });
+
   it('falls back to the default for unknown ids', () => {
     expect(getTheme('space').id).toBe('space');
     expect(getTheme('glitter').id).toBe('sunny');
@@ -89,7 +100,8 @@ describe('themes', () => {
     const vars = themeVars(getTheme('space'));
     expect(vars['--bg']).toBe('#0f1226');
     expect(vars['--key-white']).toBe('#e8ebf8');
-    expect(vars['--mascot']).toBe('"🚀"');
+    expect(vars['--sky']).toBe('#1d2250');
+    expect(vars['--selected-ink']).toBe('#0f1226');
     expect(Object.keys(vars)).toEqual(expect.arrayContaining(['--font', '--radius', '--shadow', '--backdrop']));
   });
 
@@ -98,7 +110,7 @@ describe('themes', () => {
     const root = /:root\s*\{([^}]*)\}/.exec(css)![1]!;
     const declared = Object.fromEntries([...root.matchAll(/(--[\w-]+):\s*([^;]+);/g)].map((m) => [m[1], m[2]!.trim()]));
     expect(declared).toEqual(themeVars(getTheme('sunny')));
-    const users = css + THEMES.map((t) => t.backdrop).join(); // --pattern is used by the backdrops
+    const users = css + THEMES.map((t) => t.backdrop).join(); // --sky is used by the backdrops
     for (const name of Object.keys(declared)) expect(users, name).toContain(`var(${name})`);
   });
 });
@@ -116,5 +128,14 @@ describe('theme setting', () => {
     expect(loadSettings(store).theme).toBe('forest');
     store.setItem('nrp:v1:settings', JSON.stringify({ clefs: ['bass'], muted: false, theme: 'retired-theme' }));
     expect(loadSettings(store)).toEqual({ clefs: ['bass'], muted: false });
+  });
+
+  it('persists calm mode and ignores junk values', () => {
+    const store = memoryStore();
+    expect(loadSettings(store).calm).toBeUndefined();
+    saveSettings(store, { ...DEFAULT_SETTINGS, calm: true });
+    expect(loadSettings(store).calm).toBe(true);
+    store.setItem('nrp:v1:settings', JSON.stringify({ clefs: ['bass'], muted: false, calm: 'yes' }));
+    expect(loadSettings(store).calm).toBeUndefined();
   });
 });

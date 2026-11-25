@@ -3,6 +3,7 @@
 
 import { type KeyValueStore, loadSettings } from '../core/storage';
 import { type Theme, getTheme, themeVars } from '../core/themes';
+import { THEME_EVENT } from './world/world';
 
 export function applyTheme(theme: Theme, doc: Document = document): void {
   const root = doc.documentElement;
@@ -17,6 +18,7 @@ export function applyTheme(theme: Theme, doc: Document = document): void {
     doc.head.append(meta);
   }
   meta.content = theme.colors.bg;
+  doc.dispatchEvent(new CustomEvent(THEME_EVENT, { detail: theme.id }));
 }
 
 /** Apply the saved theme. Called first thing in main.ts, before the app renders anything. */

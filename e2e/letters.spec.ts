@@ -111,6 +111,34 @@ test('the first questions do not all share one answer letter', async ({ page }) 
   expect(most, answers.join('')).toBeLessThanOrEqual(4);
 });
 
+test('opening several questions at once shows one unlock toast, not one per question', async ({ page }) => {
+  test.setTimeout(90_000);
+  await start(page);
+  // Record every unlock toast as it appears (they fade after a few seconds).
+  await page.evaluate(() => {
+    const w = window as unknown as { unlockToasts: string[] };
+    w.unlockToasts = [];
+    new MutationObserver((records) => {
+      for (const r of records) {
+        for (const n of r.addedNodes) {
+          if (n instanceof HTMLElement && n.classList.contains('toast--unlock')) w.unlockToasts.push(n.textContent ?? '');
+        }
+      }
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+  const toasts = () => page.evaluate(() => (window as unknown as { unlockToasts: string[] }).unlockToasts.length);
+  for (let i = 0; i < 20; i++) {
+    const { answer } = await nextQuestion(page);
+    const before = await toasts();
+    await tap(page, answer);
+    if (i < 19) await nextQuestion(page);
+    expect((await toasts()) - before, `answer ${i + 1}`).toBeLessThanOrEqual(1);
+  }
+  const texts = await page.evaluate(() => (window as unknown as { unlockToasts: string[] }).unlockToasts);
+  // A perfect first session opens a whole rung at once at least once.
+  expect(texts.some((t) => /^[2-9] new questions are coming up!/.test(t)), texts.join(' | ')).toBe(true);
+});
+
 test('a perfect session earns silver, shows the Letter Math grid, and persists', async ({ page }) => {
   await start(page);
   await playPerfectSession(page);

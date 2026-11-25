@@ -76,7 +76,9 @@ test('the picker works with the keyboard alone', async ({ page, isMobile }) => {
   await page.keyboard.press('ArrowLeft');
   await expect(page.getByRole('radio', { name: 'Studio' })).toHaveAttribute('aria-checked', 'true');
 
-  // Only the chosen theme is a Tab stop; Tab moves on to Done.
+  // Only the chosen theme is a Tab stop; Tab moves on to the Calm mode switch, then Done.
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('switch', { name: 'Calm mode' })).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(page.getByRole('button', { name: 'Done' })).toBeFocused();
   await page.keyboard.press('Enter');
