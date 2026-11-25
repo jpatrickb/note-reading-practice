@@ -66,6 +66,7 @@ describe('the core mode registry', () => {
     expect(CORE_MODES.map((m) => [m.id, m.tag])).toEqual([
       ['name', 1],
       ['letters', 2],
+      ['words', 7],
     ]);
   });
 
@@ -81,7 +82,7 @@ describe('profile storage', () => {
     const profile = loadProfile(store, [...CORE_MODES, MOVES_CORE]);
     for (const m of [...CORE_MODES, MOVES_CORE]) play(m, profile[m.id]!, T0, 20);
     saveProfile(store, profile, [...CORE_MODES, MOVES_CORE]);
-    expect([...store.data.keys()].sort()).toEqual(['nrp:v1:state', 'nrp:v1:state:letters', 'nrp:v1:state:moves']);
+    expect([...store.data.keys()].sort()).toEqual(['nrp:v1:state', 'nrp:v1:state:letters', 'nrp:v1:state:moves', 'nrp:v1:state:words']);
 
     const back = loadProfile(store, [...CORE_MODES, MOVES_CORE]);
     for (const m of [...CORE_MODES, MOVES_CORE]) expect(back[m.id], m.id).toEqual(profile[m.id]);
@@ -98,7 +99,7 @@ describe('profile storage', () => {
     saveProfile(store, { name: CORE_MODES[0]!.engine.newStudent() });
     expect([...store.data.keys()]).toEqual(['nrp:v1:state']);
     saveProfile(store, loadProfile(store));
-    expect(store.data.size).toBe(2);
+    expect(store.data.size).toBe(CORE_MODES.length);
     clearProfile(store);
     expect(store.data.size).toBe(0);
   });
@@ -114,10 +115,11 @@ describe('profile storage', () => {
     expect(back.letters).toEqual(CORE_MODES[1]!.engine.newStudent());
   });
 
-  it('a profile exported after playing two modes imports with both restored (the code round trip)', () => {
+  it('a profile exported after playing every mode imports with both restored (the code round trip)', () => {
     const profile = loadProfile(memoryStore());
     let now = play(coreMode('name'), profile.name, T0 - 3 * DAY, 30);
     now = play(coreMode('letters'), profile.letters, now, 30);
+    now = play(coreMode('words'), profile.words!, now, 30);
     const code = encodeProfile(profile, now);
 
     const restored = decodeProfile(code, now);
@@ -160,7 +162,8 @@ describe('migration from today\'s storage keys and settings', () => {
     // Saving again writes the same keys and nothing else.
     const keys = new Set(store.data.keys());
     saveProfile(store, profile);
-    expect(new Set(store.data.keys())).toEqual(keys);
+    // Only modes added since get a key of their own.
+    expect(new Set(store.data.keys())).toEqual(new Set([...keys, 'nrp:v1:state:words']));
     expect(JSON.parse(store.data.get('nrp:v1:state')!)).toEqual(name);
   });
 
@@ -260,8 +263,8 @@ describe('legacy saves of a mode still load when read through loadState', () => 
 describe('the UI mode registry', () => {
   const profile = () => loadProfile(memoryStore());
 
-  it('registers Name It and Letter Math first, both backed by a core mode', () => {
-    expect(MODES.map((m) => m.id)).toEqual(['name', 'letters']);
+  it('registers Name It, Letter Math and Word Decoder, each backed by a core mode', () => {
+    expect(MODES.map((m) => m.id)).toEqual(['name', 'letters', 'words']);
     for (const m of MODES) {
       expect(m.core, m.id).toBe(coreMode(m.id));
       expect(m.session.engine, m.id).toBe(m.core.engine);
@@ -279,7 +282,8 @@ describe('the UI mode registry', () => {
     expect(m.blurb.split(/\s+/).length, `"${m.blurb}" is more than 8 words`).toBeLessThanOrEqual(8);
     expect(MODE_GROUPS.map((g) => g.id)).toContain(m.group);
     const state = m.core.engine.newStudent();
-    expect(m.availability(profile())).toEqual({ ok: true });
+    // Open from the start, except a mode that builds on another (Word Decoder needs Name It notes).
+    expect(m.availability(profile())).toEqual(m.id === 'words' ? { ok: false, reason: 'Learn a few more notes in Name It first!' } : { ok: true });
     expect(m.counts(state)).toEqual({ gold: 0, silver: 0 });
     for (const item of m.core.engine.set.items.slice(0, 40)) expect(m.itemLabel(item.id).length, item.id).toBeGreaterThan(0);
     expect(m.groups(['treble']).length).toBeGreaterThan(0);
@@ -322,8 +326,8 @@ describe('the UI mode registry', () => {
   });
 
   it('the test-only locked mode exists only behind debug, and is locked with a reason', () => {
-    expect(registeredModes().map((m) => m.id)).toEqual(['name', 'letters']);
-    expect(registeredModes(true).map((m) => m.id)).toEqual(['name', 'letters', 'demo-locked']);
+    expect(registeredModes().map((m) => m.id)).toEqual(['name', 'letters', 'words']);
+    expect(registeredModes(true).map((m) => m.id)).toEqual(['name', 'letters', 'words', 'demo-locked']);
     expect(lockedDemoMode.availability(profile())).toEqual({ ok: false, reason: 'Learn 7 notes in Name It first!' });
     expect(() => lockedDemoMode.createPlay({} as never, {} as never)).toThrow();
     // Its model is not a registered one: nothing about it is saved or put in a code.
@@ -405,7 +409,7 @@ describe('the home mode chooser', () => {
   });
 
   it('is one radio group with a single tab stop, and arrow keys move through the open cards', () => {
-    const { el, onSelect } = render([...MODES, sample('lock', 'music', true)], 'name');
+    const { el, onSelect } = render([...MODES.slice(0, 2), sample('lock', 'music', true)], 'name');
     expect(el.getAttribute('role')).toBe('radiogroup');
     expect(el.getAttribute('aria-label')).toBe('Game');
     expect(document.querySelectorAll('.mode-card[role="radio"]')).toHaveLength(3);

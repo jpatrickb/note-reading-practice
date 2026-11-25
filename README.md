@@ -17,6 +17,10 @@ up and down, skips, then 2nd–8th intervals. It uses the same adaptive engine: 
 an item set (`src/core/itemset.ts`) and gets its own engine from `createEngine` in
 `src/core/engine.ts`. The Letter Math ladder lives in `src/core/letters.ts` for teacher review.
 
+**Word Decoder** shows a phrase of notes that spells a word (ACE, BADGE, CABBAGE); the student names each
+note in turn. It unlocks once a clef has a few silver notes in Name It. The word lists live in
+`src/core/words.ts` for teacher review.
+
 ## Quick start
 
 ```bash

@@ -19,12 +19,12 @@ iPad (served over a tunnel during early work).
 
 ## Phase 1: Core game (in progress)
 
-Done 2026-11-24: Letter Math; generic multi-mode engine; 6 themes; installable offline PWA; CI/CD +
+Done 2026-11-24: Letter Math; Word Decoder; generic multi-mode engine; 6 themes; installable offline PWA; CI/CD +
 Terraform (staging live).
 
 Remaining:
 
-- Place It, Note Catcher, Find All, Word Decoder
+- Place It, Note Catcher, Find All
 - Placement round
 - Ledger lines, then accidentals and enharmonics
 - **Placement / fast track** (needed: Letter Math pacing, see open questions)

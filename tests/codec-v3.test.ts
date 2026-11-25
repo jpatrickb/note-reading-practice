@@ -4,6 +4,7 @@ import { ProgressCodeError, crc16, decodeProfile, decodeProgress, encodeProfile,
 import { type Engine, type ItemState, PARAMS, type StudentState, createEngine, dayIndex, isDusty, nameEngine, newStudent, recall } from '../src/core/engine';
 import { defineItemSet } from '../src/core/itemset';
 import { letterEngine } from '../src/core/letters';
+import { wordEngine } from '../src/core/wordDecoder';
 import { CORE_MODES, type CoreMode } from '../src/core/modes';
 import { isFinished, nextQuestion, startSession, submit } from '../src/core/session';
 import { GOLDEN_CODES } from './fixtures/codes';
@@ -149,6 +150,7 @@ describe('progress code v3', () => {
     expect(CORE_MODES.map((m) => [m.id, m.tag])).toEqual([
       ['name', 1],
       ['letters', 2],
+      ['words', 7],
     ]);
     expect(new Set(CORE_MODES.map((m) => m.tag)).size).toBe(CORE_MODES.length);
   });
@@ -182,6 +184,7 @@ describe('progress code v3', () => {
         const v3 = decodeProfile(encodeProfile(expected, now), now);
         for (const mode of CORE_MODES) {
           const a = expected[mode.id as 'name' | 'letters'];
+          if (!a) continue; // modes added after the golden codes were made
           const b = v3[mode.id]!;
           expectSameBehavior(mode.engine, a, b, now);
           expect(selectionAgreement(mode.engine, a, b, now), key).toBeGreaterThanOrEqual(0.95);
@@ -208,12 +211,13 @@ describe('progress code v3', () => {
     const profile = {
       name: fullyPlayed(nameEngine, now, 1),
       letters: fullyPlayed(letterEngine, now, 2),
+      words: fullyPlayed(wordEngine, now, 4),
       big: fullyPlayed(bigEngine, now, 3),
     };
     // A locked, unplayed item is left out of the code (bitmap only).
     profile.big.items['big:150'] = { ...bigEngine.newStudent().items['big:150']!, unlocked: false };
     const back = decodeProfile(encodeProfile(profile, now, WITH_BIG), now, WITH_BIG);
-    expect(Object.keys(back).sort()).toEqual(['big', 'letters', 'name']);
+    expect(Object.keys(back).sort()).toEqual(['big', 'letters', 'name', 'words']);
     for (const mode of WITH_BIG) expectSameBehavior(mode.engine, profile[mode.id as keyof typeof profile], back[mode.id]!, now);
     expect(back.big!.items['big:299']!.n).toBe(15);
     expect(back.big!.items['big:150']).toEqual({ ...bigEngine.newStudent().items['big:150']!, unlocked: false });

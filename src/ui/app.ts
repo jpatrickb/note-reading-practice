@@ -308,7 +308,7 @@ export class App {
     this.synth.unlock();
     const clefs = lanesFor(this.settings, mode.id);
     this.active = { mode, clefs };
-    this.session = startSession(mode.groups(clefs), undefined, mode.session);
+    this.session = startSession(mode.groups(clefs, this.profile), undefined, mode.session);
     this.go('play');
   }
 
@@ -325,7 +325,7 @@ export class App {
       finish: () => this.go('summary'),
       stopSound: () => this.synth.stopAll(),
     };
-    this.play = mode.createPlay(host, { synth: this.synth });
+    this.play = mode.createPlay(host, { synth: this.synth, profile: this.profile });
     return this.play.render();
   }
 

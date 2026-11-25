@@ -8,6 +8,8 @@ import { LETTER_GROUP, LETTER_MATH_MODE } from '../src/core/letters';
 import { LETTERS } from '../src/core/music';
 import { PARAMS, recall } from '../src/core/engine';
 import { CORE_MODES } from '../src/core/modes';
+import { WORD_MODE } from '../src/core/wordDecoder';
+import { WORD_LISTS } from '../src/core/words';
 import { MOVES, MOVE_MODE } from './fixtures/moves';
 import { T0 } from './helpers';
 import { type Policy, honestLearner, knower, masher, randomGuesser, sandbagger, simulate } from './sim';
@@ -29,6 +31,9 @@ interface Case {
 const CASES: Case[] = [
   { name: 'Name It', mode: NAME_IT_MODE, groups: ['treble', 'bass'], space: LETTERS, luckySilver: 0 },
   { name: 'Letter Math', mode: LETTER_MATH_MODE, groups: [LETTER_GROUP], space: LETTERS, luckySilver: 0 },
+  // The answer is the whole typed word, so a guess is almost never right. Per-note guessing and mashing
+  // (what a kid's thumbs do) are proven against the real note flow in tests/word-decoder.test.ts.
+  { name: 'Word Decoder', mode: WORD_MODE, groups: ['treble', 'bass'], space: [...new Set([...WORD_LISTS.treble, ...WORD_LISTS.bass])], luckySilver: 0 },
   { name: 'a mode with three answers', mode: MOVE_MODE, groups: ['a', 'b'], space: MOVES, luckySilver: 1 },
 ];
 const SEEDS = [1, 2, 3, 4, 5];

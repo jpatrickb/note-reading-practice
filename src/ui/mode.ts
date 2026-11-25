@@ -30,6 +30,8 @@ export type Availability = { ok: true } | { ok: false; reason: string };
 /** Things the app hands every mode when it builds a play screen. */
 export interface ModeEnv {
   synth: Synth;
+  /** The kid's learner models, for a mode that reads another mode's progress (Word Decoder reads Name It). */
+  profile?: Profile;
 }
 
 /** The mode's kid-facing nouns, for toasts and the summary. */
@@ -67,7 +69,7 @@ export interface UiMode {
   readonly lanes: 'clefs' | null;
   readonly words: ModeWords;
   /** The unlock lanes a session practices, given the chosen clefs (ignored without `lanes`). */
-  groups(clefs: readonly Clef[]): string[];
+  groups(clefs: readonly Clef[], profile?: Profile): string[];
   /** Build the play screen; its prompt, input and hints are the mode's own, the flow is the shell's. */
   createPlay(host: PlayHost<string>, env: ModeEnv): PlayShell<string>;
   /** This mode's progress map (My progress, and the summary after a session). */
@@ -95,7 +97,7 @@ export interface ModeSpec<A extends string> {
   /** Default: no lanes. */
   lanes?: 'clefs' | null;
   /** Default: the clefs chosen, or every lane of the item set if the mode has no clef lanes. */
-  groups?(clefs: readonly Clef[]): string[];
+  groups?(clefs: readonly Clef[], profile?: Profile): string[];
   /** Default: gold and silver items. */
   counts?(state: StudentState): { gold: number; silver: number };
   /** Default: the item id. */

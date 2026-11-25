@@ -41,6 +41,12 @@ export interface ItemSet<I extends PracticeItem = PracticeItem, A extends string
   readonly pacing?: Partial<Pacing>;
   groupOf(item: I): string;
   /**
+   * An outside condition on opening an item (its turn in the lane has come, but is the kid ready?):
+   * Word Decoder opens a word only once every letter is a silver Name It note. Return false to hold
+   * it (and so the rest of the lane) closed. Default: no condition. Must be cheap and pure.
+   */
+  canUnlock?(item: I): boolean;
+  /**
    * The answer this item is taught with. It is also the item's "answer key": the engine discourages
    * asking two items with the same one in a row, so one button can't carry a streak.
    */
@@ -67,6 +73,7 @@ export interface ItemSetSpec<I extends PracticeItem, A extends string = Letter> 
   skillOf?(item: I): string;
   pacing?: Partial<Pacing>;
   groupOf(item: I): string;
+  canUnlock?(item: I): boolean;
   answerOf(item: I): A;
   isCorrect?(item: I, answer: A): boolean;
 }
@@ -94,6 +101,7 @@ export function defineItemSet<I extends PracticeItem, A extends string = Letter>
     skillOf: spec.skillOf,
     pacing: spec.pacing,
     groupOf: spec.groupOf,
+    canUnlock: spec.canUnlock,
     answerOf: spec.answerOf,
     isCorrect: spec.isCorrect,
     get(id: string): I {
