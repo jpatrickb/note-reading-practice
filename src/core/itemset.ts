@@ -2,6 +2,7 @@
 // taught in, and the letter that answers each one. The engine (learner model, selection, unlocking,
 // rewards) is shared by every mode; see `createEngine` in engine.ts.
 
+import type { Pacing } from './engine';
 import type { Letter } from './music';
 
 export interface PracticeItem {
@@ -20,6 +21,13 @@ export interface ItemSet<I extends PracticeItem = PracticeItem> {
   readonly groups: Readonly<Record<string, readonly I[]>>;
   /** Items open from the start in each lane. Defaults to PARAMS.initialUnlock. */
   readonly initialUnlock?: number;
+  /**
+   * Items with the same skill predict each other (knowing "after C" and "after E" predicts
+   * "after D"), so a new item's starting estimate is transferred from them. Default: none.
+   */
+  skillOf?(item: I): string;
+  /** Per-set tuning of the fast track (see PACING). */
+  readonly pacing?: Partial<Pacing>;
   groupOf(item: I): string;
   /** The letter that answers this item (what the A–G pad should receive). */
   answerOf(item: I): Letter;
@@ -31,6 +39,8 @@ export interface ItemSetSpec<I extends PracticeItem> {
   id: string;
   groups: Record<string, I[]>;
   initialUnlock?: number;
+  skillOf?(item: I): string;
+  pacing?: Partial<Pacing>;
   groupOf(item: I): string;
   answerOf(item: I): Letter;
 }
@@ -45,6 +55,8 @@ export function defineItemSet<I extends PracticeItem>(spec: ItemSetSpec<I>): Ite
     items,
     groups: spec.groups,
     initialUnlock: spec.initialUnlock,
+    skillOf: spec.skillOf,
+    pacing: spec.pacing,
     groupOf: spec.groupOf,
     answerOf: spec.answerOf,
     get(id: string): I {
