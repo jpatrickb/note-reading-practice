@@ -1,35 +1,27 @@
 import { Synth } from '../audio/synth';
-import { type Profile, ProgressCodeError, decodeProfile, encodeProgress } from '../core/codec';
+import { type Profile, ProgressCodeError, decodeProfile, encodeProfile } from '../core/codec';
+import { type MasteryEvent, WEEKLY_GOAL, daysThisWeek, isDusty, level, recall } from '../core/engine';
 import { codeFromHash, codeFromPasted, progressQr } from '../core/progress-qr';
-import {
-  type MasteryEvent,
-  type StudentState,
-  WEEKLY_GOAL,
-  daysThisWeek,
-  isDusty,
-  level,
-  newStudent,
-  recall,
-} from '../core/engine';
-import { ITEMS, itemById } from '../core/items';
-import { LETTER_GROUP, LETTER_ITEMS, LETTER_MATH_MODE, isLetterItemId, letterEngine, letterLabel } from '../core/letters';
-import { type Clef, noteId } from '../core/music';
+import type { Clef } from '../core/music';
 import { type Session, startSession, summarize } from '../core/session';
 import {
-  type ModeId,
+  DEFAULT_MODE,
   type Settings,
-  clearState,
+  clearProfile,
+  lanesFor,
+  loadProfile,
   loadSettings,
-  loadState,
   requestPersistence,
+  saveProfile,
   saveSettings,
   saveState,
+  setLanes,
 } from '../core/storage';
-import { masteryCounts, renderMasteryKeyboard } from '../render/keyboard';
 import { clear, h } from './dom';
-import { letterCounts, letterMathPlay, renderLetterMap } from './letterMath';
-import { nameItPlay } from './nameIt';
-import type { PlayShell } from './playShell';
+import { hasProgress, modeIcon, type UiMode } from './mode';
+import { renderModeChooser } from './modeChooser';
+import { modeById, registeredModes } from './modes';
+import type { PlayHost, PlayShell } from './playShell';
 import { renderThemePicker } from './themePicker';
 import { durabilityCard, homeBanners } from './pwa';
 import { getTheme } from '../core/themes';
@@ -39,38 +31,34 @@ import { renderMascot, setMood } from './world/mascots';
 import type { Medal } from './world/playChrome';
 import { setCalm, setWorldMode } from './world/world';
 
-type Screen = 'home' | 'play' | 'letters' | 'summary' | 'map' | 'save' | 'import' | 'debug' | 'theme';
+type Screen = 'home' | 'play' | 'summary' | 'map' | 'save' | 'import' | 'debug' | 'theme';
 type ClefChoice = 'treble' | 'bass' | 'both';
 
 const OFFSET_KEY = 'nrp:debug:clockOffset';
 
 const clefsFor = (c: ClefChoice): Clef[] => (c === 'both' ? ['treble', 'bass'] : [c]);
-const choiceOf = (clefs: Clef[]): ClefChoice => (clefs.length === 2 ? 'both' : clefs[0]!);
-const itemLabel = (id: string) => {
-  if (isLetterItemId(id)) return letterLabel(id);
-  const item = itemById(id);
-  return `${item.note.letter} (${item.clef} clef)`;
-};
+const choiceOf = (clefs: readonly Clef[]): ClefChoice => (clefs.length === 2 ? 'both' : clefs[0]!);
 
 export class App {
-  private state: StudentState;
-  /** Letter Math has its own learner model (see src/core/letters.ts). */
-  private letters: StudentState;
+  /** Every mode's learner model, by mode id (see CORE_MODES). */
+  private profile: Profile;
+  private readonly modes: readonly UiMode[];
+  /** The mode being played (or just played, for the summary) and the clefs it was started with. */
+  private active: { mode: UiMode; clefs: Clef[] } | null = null;
   private play: PlayShell | null = null;
   private settings: Settings;
   private synth = new Synth();
-  private session: Session | null = null;
-  private screen: Screen = 'home';
+  private session: Session<string> | null = null;
   private importCode = '';
   private readonly debug: boolean;
 
   constructor(private root: HTMLElement) {
-    this.state = loadState(localStorage);
-    this.letters = loadState(localStorage, letterEngine);
+    this.profile = loadProfile(localStorage);
     this.settings = loadSettings(localStorage);
     this.synth.muted = this.settings.muted;
     setCalm(!!this.settings.calm);
     this.debug = new URLSearchParams(location.search).has('debug');
+    this.modes = registeredModes(this.debug);
     document.addEventListener('keydown', (e) => this.onKey(e));
     document.addEventListener('pointerdown', () => this.synth.unlock(), { capture: true });
     void requestPersistence();
@@ -87,23 +75,41 @@ export class App {
     return Date.now() + Number(localStorage.getItem(OFFSET_KEY) ?? 0);
   }
 
-  private save(): void {
-    saveState(localStorage, this.state);
-    saveState(localStorage, this.letters, letterEngine);
+  /** Save one mode's learner model (a play screen saves after every answer; only its own mode changed). */
+  private saveMode(mode: UiMode): void {
+    saveState(localStorage, this.profile[mode.core.id]!, mode.core.engine);
+  }
+
+  /** The mode the home screen has chosen: the saved one if it is known and open, else Name It. */
+  private chosenMode(): UiMode {
+    const mode = modeById(this.modes, this.settings.mode);
+    return mode.availability(this.profile).ok ? mode : modeById(this.modes, DEFAULT_MODE);
+  }
+
+  /** Gold and silver across every mode with progress. */
+  private totalCounts(): { gold: number; silver: number } {
+    const total = { gold: 0, silver: 0 };
+    for (const m of this.modes) {
+      const state = this.profile[m.core.id];
+      if (!state) continue;
+      const c = m.counts(state);
+      total.gold += c.gold;
+      total.silver += c.silver;
+    }
+    return total;
   }
 
   private go(screen: Screen): void {
     this.play?.dispose();
     this.play = null;
+    this.synth.stopAll(); // nothing keeps sounding on another screen, whatever the screen was
     clearFx();
-    this.screen = screen;
     clear(this.root);
     this.root.dataset.screen = screen;
     setWorldMode(screen);
     const render = {
       home: () => this.renderHome(),
       play: () => this.renderPlay(),
-      letters: () => this.renderPlay(),
       summary: () => this.renderSummary(),
       map: () => this.renderMap(),
       save: () => this.renderSave(),
@@ -151,7 +157,7 @@ export class App {
   }
 
   private weeklyGoal(): HTMLElement {
-    const days = daysThisWeek([this.state, this.letters], this.now());
+    const days = daysThisWeek(Object.values(this.profile), this.now());
     const dots = Array.from({ length: WEEKLY_GOAL }, (_, i) =>
       h('span', { class: `dot ${i < days ? 'dot--on' : ''}`, 'aria-hidden': 'true' }),
     );
@@ -175,10 +181,10 @@ export class App {
   }
 
   private announce(events: MasteryEvent[]): void {
+    const { mode } = this.active!;
+    const key = mode.words.medal ? ` ${mode.words.medal}` : '';
     for (const e of events) {
-      const label = itemLabel(e.itemId);
-      const lm = isLetterItemId(e.itemId);
-      const key = lm ? '' : ' key';
+      const label = mode.itemLabel(e.itemId);
       if (e.kind === 'silver') this.toast(`Silver${key}: ${label}!`, 'silver');
       if (e.kind === 'gold') this.toast(`Gold${key}: ${label}! You remembered it on a new day.`, 'gold');
       if (e.kind === 'polished') this.toast(`Polished: ${label}`, 'polish');
@@ -186,7 +192,7 @@ export class App {
     // One answer can open several items (the fast track): one toast, one screen-reader announcement.
     const unlocked = events.filter((e) => e.kind === 'unlocked');
     if (unlocked.length > 0) {
-      const noun = isLetterItemId(unlocked[0]!.itemId) ? 'question' : 'note';
+      const noun = mode.words.item;
       this.toast(
         unlocked.length === 1 ? `A new ${noun} is coming up!` : `${unlocked.length} new ${noun}s are coming up!`,
         'unlock',
@@ -199,23 +205,7 @@ export class App {
   // ───────────────────────── home ─────────────────────────
 
   private renderHome(): HTMLElement {
-    const choice = choiceOf(this.settings.clefs);
-    const clefBtn = (c: ClefChoice, label: string) =>
-      h(
-        'button',
-        {
-          class: `seg ${choice === c ? 'seg--on' : ''}`,
-          'aria-pressed': String(choice === c),
-          onClick: () => {
-            this.settings.clefs = clefsFor(c);
-            saveSettings(localStorage, this.settings);
-            this.go('home');
-          },
-        },
-        label,
-      );
-
-    const counts = masteryCounts(this.state);
+    const totals = this.totalCounts();
     const theme = getTheme(document.documentElement.dataset.theme);
     const navBtn = (name: IconName, label: string, onClick: () => void, ...extra: (Node | false)[]) =>
       h('button', { class: 'secondary', onClick }, icon(name, 'btn-icon'), h('span', {}, label), ...extra);
@@ -224,7 +214,7 @@ export class App {
       'main',
       { class: 'screen home' },
       h('header', { class: 'topbar' }, h('h1', { class: 'title title--brand' }, h('span', { class: 'logo' }, icon('note')), 'Note Reader'), this.muteButton()),
-      homeBanners({ hasProgress: [this.state, this.letters].some((s) => Object.values(s.items).some((i) => i.n > 0)), onLoadCode: () => this.go('save') }),
+      homeBanners({ hasProgress: Object.values(this.profile).some((s) => hasProgress(s)), onLoadCode: () => this.go('save') }),
       h(
         'div',
         { class: 'home-main' },
@@ -234,27 +224,71 @@ export class App {
           h('p', { class: 'bubble' }, theme.greeting),
           renderMascot(theme.id, { mood: 'idle', alive: true, label: theme.mascot, cls: 'hero__mascot' }),
         ),
-        h(
-          'section',
-          { class: 'card practice' },
-          this.weeklyGoal(),
-          h('h2', {}, 'What do you want to practice?'),
-          this.modePicker(),
-          this.settings.mode === 'letters'
-            ? h('p', { class: 'muted' }, 'Next letter, skips, and intervals. No staff needed!')
-            : h('div', { class: 'segmented', role: 'group', 'aria-label': 'Clef' }, clefBtn('treble', 'Treble'), clefBtn('bass', 'Bass'), clefBtn('both', 'Both')),
-          h('button', { class: 'primary big start', 'data-autofocus': true, onClick: () => this.startPlay() }, h('span', {}, 'Start'), icon('play', 'btn-icon')),
-        ),
+        this.renderPractice(),
       ),
       h(
         'nav',
         { class: 'home-nav' },
-        navBtn('keyboard', 'My keyboard', () => this.go('map'), this.medalPill(counts.gold, counts.silver)),
+        navBtn('star', 'My progress', () => this.go('map'), this.medalPill(totals.gold, totals.silver)),
         navBtn('save', 'Save / load progress', () => this.go('save')),
         navBtn('palette', 'Theme', () => this.go('theme')),
         this.debug && navBtn('wrench', 'Debug', () => this.go('debug')),
       ),
     );
+  }
+
+  /**
+   * The "what do you want to practice?" card: the mode chooser, the clef picker for modes that have
+   * clef lanes, and Start. Choosing redraws only this card (so a long list keeps its scroll place).
+   */
+  private renderPractice(): HTMLElement {
+    const mode = this.chosenMode();
+    const choice = choiceOf(lanesFor(this.settings, mode.id));
+    const refresh = (focus: string) => {
+      const next = this.renderPractice();
+      practice.replaceWith(next);
+      next.querySelector<HTMLElement>(focus)?.focus();
+    };
+    const clefBtn = (c: ClefChoice, label: string) =>
+      h(
+        'button',
+        {
+          class: `seg ${choice === c ? 'seg--on' : ''}`,
+          'aria-pressed': String(choice === c),
+          'data-clef': c,
+          onClick: () => {
+            setLanes(this.settings, mode.id, clefsFor(c));
+            saveSettings(localStorage, this.settings);
+            refresh(`[data-clef="${c}"]`);
+          },
+        },
+        label,
+      );
+
+    const practice = h(
+      'section',
+      { class: 'card practice' },
+      this.weeklyGoal(),
+      h('h2', {}, 'What do you want to practice?'),
+      renderModeChooser({
+        modes: this.modes,
+        profile: this.profile,
+        selected: mode.id,
+        onSelect: (id) => {
+          this.settings.mode = id;
+          saveSettings(localStorage, this.settings);
+          refresh(`[data-mode="${id}"]`);
+        },
+      }),
+      h(
+        'div',
+        { class: 'practice__go' },
+        h('span', { class: 'practice__picked' }, mode.title),
+        mode.lanes === 'clefs' && h('div', { class: 'segmented', role: 'group', 'aria-label': 'Clef' }, clefBtn('treble', 'Treble'), clefBtn('bass', 'Bass'), clefBtn('both', 'Both')),
+        h('button', { class: 'primary big start', 'data-autofocus': true, onClick: () => this.startPlay(mode) }, h('span', {}, 'Start'), icon('play', 'btn-icon')),
+      ),
+    );
+    return practice;
   }
 
   private medalPill(gold: number, silver: number): HTMLElement {
@@ -268,53 +302,30 @@ export class App {
     );
   }
 
-  /** Game mode choice (Name It / Letter Math), remembered in Settings. */
-  private modePicker(): HTMLElement {
-    const mode = this.settings.mode ?? 'name';
-    const btn = (m: ModeId, label: string) =>
-      h(
-        'button',
-        {
-          class: `seg ${mode === m ? 'seg--on' : ''}`,
-          'aria-pressed': String(mode === m),
-          onClick: () => {
-            this.settings.mode = m;
-            saveSettings(localStorage, this.settings);
-            this.go('home');
-          },
-        },
-        icon(m === 'name' ? 'note' : 'letters', 'seg__icon'),
-        label,
-      );
-    return h('div', { class: 'segmented', role: 'group', 'aria-label': 'Game' }, btn('name', 'Name It'), btn('letters', 'Letter Math'));
-  }
-
   // ───────────────────────── play ─────────────────────────
 
-  private startPlay(): void {
+  private startPlay(mode: UiMode): void {
     this.synth.unlock();
-    if (this.settings.mode === 'letters') {
-      this.session = startSession([LETTER_GROUP], undefined, LETTER_MATH_MODE);
-      return this.go('letters');
-    }
-    this.session = startSession(this.settings.clefs);
+    const clefs = lanesFor(this.settings, mode.id);
+    this.active = { mode, clefs };
+    this.session = startSession(mode.groups(clefs), undefined, mode.session);
     this.go('play');
   }
 
   private renderPlay(): HTMLElement {
-    const lm = this.screen === 'letters';
-    const host = {
+    const { mode } = this.active!;
+    const host: PlayHost = {
       session: this.session!,
-      state: lm ? this.letters : this.state,
+      state: this.profile[mode.core.id]!,
       now: () => this.now(),
-      save: () => this.save(),
+      save: () => this.saveMode(mode),
       announce: (events: MasteryEvent[]) => this.announce(events),
       muteButton: () => this.muteButton(),
       quit: () => this.go('home'),
       finish: () => this.go('summary'),
       stopSound: () => this.synth.stopAll(),
     };
-    this.play = lm ? letterMathPlay(host, this.synth) : nameItPlay(host, this.synth);
+    this.play = mode.createPlay(host, { synth: this.synth });
     return this.play.render();
   }
 
@@ -332,12 +343,12 @@ export class App {
         'div',
         { class: `achv achv--${kind}` },
         h('h3', {}, kind === 'polish' ? icon('sparkle', 'achv__icon') : medal(kind, 'achv__icon'), title),
-        h('ul', { class: 'chips' }, ...[...new Set(ids)].map((id) => h('li', { class: `chip chip--${kind}` }, itemLabel(id)))),
+        h('ul', { class: 'chips' }, ...[...new Set(ids)].map((id) => h('li', { class: `chip chip--${kind}` }, mode.itemLabel(id)))),
       );
     const anything = s.newGold.length + s.newSilver.length + s.polished.length > 0;
     const big: Medal = s.newGold.length ? 'gold' : s.newSilver.length ? 'silver' : null;
-    const lm = this.session!.mode === LETTER_MATH_MODE;
-    const keys = lm ? '' : ' keys';
+    const { mode, clefs } = this.active!;
+    const keys = mode.words.medal ? ` ${mode.words.medal}s` : '';
     const theme = getTheme(document.documentElement.dataset.theme);
     const mascot = renderMascot(theme.id, { mood: 'happy', alive: true, cls: 'summary__mascot' });
     // Celebrate in proportion to real progress: confetti and a cheer only for new silver/gold (D12).
@@ -362,39 +373,28 @@ export class App {
           h('p', { class: 'big-stat', 'data-testid': 'score' }, `${s.correct} of ${s.total} right`),
           anything
             ? h('div', { class: 'achvs' }, list(`New gold${keys}`, s.newGold, 'gold'), list(`New silver${keys}`, s.newSilver, 'silver'), list('Polished', s.polished, 'polish'))
-            : h(
-              'p',
-              { class: 'muted' },
-              lm
-                ? 'Every practice makes your musical alphabet stronger. Squares turn silver when you know them well, and gold when you still know them on another day!'
-                  : 'Every practice makes your notes stronger. Keys turn silver when you know them well, and gold when you still know them on another day!',
-              ),
+            : h('p', { class: 'muted' }, mode.words.encourage),
           s.unlocked.length > 0 &&
-            h('p', { class: 'unlocked' }, icon('lock', 'unlocked__icon'), `You unlocked ${s.unlocked.length} new ${lm ? 'question' : 'note'}${s.unlocked.length > 1 ? 's' : ''}.`),
+            h('p', { class: 'unlocked' }, icon('lock', 'unlocked__icon'), `You unlocked ${s.unlocked.length} new ${mode.words.item}${s.unlocked.length > 1 ? 's' : ''}.`),
         ),
       ),
       h('section', { class: 'card card--slim' }, this.weeklyGoal()),
-      h(
-        'section',
-        { class: 'card' },
-        ...(lm ? [renderLetterMap(this.letters, this.now())] : this.settings.clefs.map((c) => h('div', { class: 'keys-frame' }, renderMasteryKeyboard(this.state, c, this.now())))),
-      ),
+      h('section', { class: 'card' }, mode.renderMap(this.profile[mode.core.id]!, this.now(), { lanes: mode.lanes ? clefs : undefined })),
       h(
         'nav',
         { class: 'row' },
-        h('button', { class: 'primary big', 'data-autofocus': true, onClick: () => this.startPlay() }, 'Play again'),
+        h('button', { class: 'primary big', 'data-autofocus': true, onClick: () => this.startPlay(mode) }, 'Play again'),
         h('button', { class: 'secondary', onClick: () => this.go('home') }, 'Home'),
       ),
     );
   }
 
-  // ───────────────────────── mastery map ─────────────────────────
+  // ───────────────────────── my progress ─────────────────────────
 
+  /** One section per mode the kid has played, each drawing that mode's own map. */
   private renderMap(): HTMLElement {
     const now = this.now();
-    const counts = masteryCounts(this.state);
-    const dusty = ITEMS.filter((i) => isDusty(this.state.items[i.id]!, now)).length;
-    const lmCounts = letterCounts(this.letters);
+    const played = this.modes.filter((m) => hasProgress(this.profile[m.core.id]));
     return h(
       'main',
       { class: 'screen map' },
@@ -402,39 +402,26 @@ export class App {
         'header',
         { class: 'topbar' },
         this.backButton(),
-        h('h1', { class: 'title' }, icon('keyboard', 'title__icon'), 'My keyboard'),
+        h('h1', { class: 'title' }, icon('star', 'title__icon'), 'My progress'),
         renderMascot(getTheme(document.documentElement.dataset.theme).id, { mood: 'happy', alive: true, cls: 'topbar__mascot' }),
       ),
-      ...(['treble', 'bass'] as Clef[]).map((c) =>
-        h(
+      ...played.map((m) => {
+        const c = m.counts(this.profile[m.core.id]!);
+        return h(
           'section',
-          { class: 'card' },
-          h('h2', { class: 'map-head' }, h('span', {}, c === 'treble' ? 'Treble clef' : 'Bass clef')),
-          h('div', { class: 'keys-frame' }, renderMasteryKeyboard(this.state, c, now)),
-        ),
-      ),
-      h(
-        'section',
-        { class: 'card legend' },
-        h('span', {}, h('i', { class: 'sw sw--gold' }), `Gold ${counts.gold}: you still knew it on another day`),
-        h('span', {}, h('i', { class: 'sw sw--silver' }), `Silver ${counts.silver}: you know it fast`),
-        h('span', {}, h('i', { class: 'sw sw--learning' }), `Learning ${counts.learning}: the bar grows as you learn`),
-        h('span', {}, h('i', { class: 'sw sw--locked' }), `Coming soon ${counts.locked}`),
-        dusty > 0 && h('span', {}, icon('sparkle', 'legend__icon'), `${dusty} key${dusty > 1 ? 's' : ''} could use a polish. Practice to make ${dusty > 1 ? 'them' : 'it'} shine again!`),
-      ),
-      h(
-        'section',
-        { class: 'card' },
-        h('h2', { class: 'map-head' }, icon('letters', 'title__icon'), h('span', {}, 'Letter Math'), this.medalPill(lmCounts.gold, lmCounts.silver)),
-        renderLetterMap(this.letters, now),
-      ),
+          { class: 'card', 'data-mode': m.id },
+          h('h2', { class: 'map-head' }, modeIcon(m, 'title__icon'), h('span', {}, m.title), this.medalPill(c.gold, c.silver)),
+          m.renderMap(this.profile[m.core.id]!, now, { legend: true }),
+        );
+      }),
+      played.length === 0 && h('section', { class: 'card' }, h('p', { class: 'muted' }, 'Play a game and your progress will show up here!')),
     );
   }
 
   // ───────────────────────── save / load ─────────────────────────
 
   private renderSave(): HTMLElement {
-    const code = encodeProgress(this.state, this.now(), this.letters);
+    const code = encodeProfile(this.profile, this.now());
     const qr = progressQr(`${location.origin}${location.pathname}`, code);
     const qrHost = h('div', { class: 'qr', 'aria-label': 'QR code with your progress' });
     qrHost.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
@@ -499,8 +486,8 @@ export class App {
     } catch (e) {
       error = e instanceof ProgressCodeError ? e.message : 'That code didn’t work.';
     }
-    const counts = incoming ? masteryCounts(incoming.name) : null;
-    const lmCounts = incoming ? letterCounts(incoming.letters) : null;
+    // The modes this code carries progress for (a mode the kid never played has no section).
+    const inCode = incoming ? this.modes.filter((m) => hasProgress(incoming![m.core.id])) : [];
     return h(
       'main',
       { class: 'screen import' },
@@ -512,9 +499,15 @@ export class App {
           ? h(
               'div',
               {},
-              h('p', {}, `This code has 🥇 ${counts!.gold} gold and 🥈 ${counts!.silver} silver keys.`),
-              lmCounts!.gold + lmCounts!.silver > 0 &&
-                h('p', {}, `Letter Math: 🥇 ${lmCounts!.gold} gold and 🥈 ${lmCounts!.silver} silver.`),
+              h('p', {}, inCode.length > 0 ? 'This code has progress in:' : 'This code has no progress in it yet.'),
+              h(
+                'ul',
+                { class: 'import-modes', 'data-testid': 'import-modes' },
+                ...inCode.map((m) => {
+                  const c = m.counts(incoming![m.core.id]!);
+                  return h('li', { 'data-mode': m.id }, `${m.title}: 🥇 ${c.gold} gold and 🥈 ${c.silver} silver`);
+                }),
+              ),
               h('p', { class: 'warn' }, 'Loading it will replace the progress on this device.'),
               h(
                 'div',
@@ -525,10 +518,9 @@ export class App {
                     class: 'primary',
                     'data-testid': 'confirm-import',
                     onClick: () => {
-                      this.state = incoming!.name;
-                      this.letters = incoming!.letters;
-                      this.save();
-                      this.toast('Progress loaded!', 'unlock');
+                      this.profile = incoming!;
+                      saveProfile(localStorage, this.profile);
+                      this.toast(inCode.length > 0 ? `Progress loaded: ${inCode.map((m) => m.title).join(', ')}` : 'Progress loaded!', 'unlock');
                       this.go('home');
                     },
                   },
@@ -547,10 +539,8 @@ export class App {
   private renderDebug(): HTMLElement {
     const now = this.now();
     const offsetDays = Number(localStorage.getItem(OFFSET_KEY) ?? 0) / 86_400_000;
-    const entries = [
-      ...ITEMS.map((i) => [`${i.clef[0]!.toUpperCase()} ${noteId(i.note)}`, this.state.items[i.id]!] as const),
-      ...LETTER_ITEMS.map((i) => [`LM ${letterLabel(i.id)}`, this.letters.items[i.id]!] as const),
-    ];
+    const played = this.modes.filter((m) => this.profile[m.core.id]);
+    const entries = played.flatMap((m) => m.core.engine.set.items.map((i) => [i.id, this.profile[m.core.id]!.items[i.id]!] as const));
     const rows = entries.map(([label, it]) => {
       return h(
         'tr',
@@ -565,12 +555,13 @@ export class App {
         h('td', {}, isDusty(it, now) ? 'dusty' : ''),
       );
     });
-    const confusions = Object.entries(this.state.confusions)
-      .sort((a, b) => b[1] - a[1])
+    const confusions = played
+      .flatMap((m) => Object.entries(this.profile[m.core.id]!.confusions).map(([k, v]) => [m, k, v] as const))
+      .sort((a, b) => b[2] - a[2])
       .slice(0, 12)
-      .map(([k, v]) => {
+      .map(([m, k, v]) => {
         const [id, ans] = k.split('>');
-        return `${itemLabel(id!)} → answered ${ans} ×${v}`;
+        return `${m.itemLabel(id!)} → answered ${ans} ×${v}`;
       });
     const shift = (days: number) => () => {
       localStorage.setItem(OFFSET_KEY, String((offsetDays + days) * 86_400_000));
@@ -583,7 +574,7 @@ export class App {
       h(
         'section',
         { class: 'card' },
-        h('p', {}, `Personal speed baseline: Name It ${Math.round(this.state.rtBaseline)} ms, Letter Math ${Math.round(this.letters.rtBaseline)} ms · Clock offset: ${offsetDays} day(s)`),
+        h('p', {}, `Personal speed baseline: ${played.map((m) => `${m.title} ${Math.round(this.profile[m.core.id]!.rtBaseline)} ms`).join(', ')} · Clock offset: ${offsetDays} day(s)`),
         h(
           'div',
           { class: 'row' },
@@ -595,10 +586,8 @@ export class App {
             {
               class: 'secondary danger',
               onClick: () => {
-                clearState(localStorage);
-                clearState(localStorage, letterEngine);
-                this.state = newStudent();
-                this.letters = letterEngine.newStudent();
+                clearProfile(localStorage);
+                this.profile = loadProfile(localStorage);
                 this.go('debug');
               },
             },

@@ -4,17 +4,21 @@
 import type { Synth } from '../audio/synth';
 import { type StudentState, isDusty, level, recall } from '../core/engine';
 import {
+  LETTER_MATH_MODE,
   answerSentence,
   letterHint,
   letterItem,
+  letterLabel,
   letterNotes,
   prompt,
   rungRows,
   rungTitle,
 } from '../core/letters';
+import { coreMode } from '../core/modes';
 import { type Letter, frequency } from '../core/music';
 import { clear, h } from './dom';
 import { letterPad } from './letterPad';
+import { defineMode, medalCounts } from './mode';
 import { type PlayHost, PlayShell } from './playShell';
 import { icon } from './world/icons';
 import './letterMath.css';
@@ -31,7 +35,7 @@ export function letterMathPlay(host: PlayHost<Letter>, synth: Synth): PlayShell<
     correctMs: 1000,
     praiseTarget: true,
     mastered: (state) => {
-      const c = letterCounts(state);
+      const c = medalCounts(state);
       return c.gold + c.silver;
     },
     renderPrompt: (id) => {
@@ -80,15 +84,25 @@ export function letterMathPlay(host: PlayHost<Letter>, synth: Synth): PlayShell<
   });
 }
 
-/** Gold/silver counts for Letter Math. */
-export function letterCounts(state: StudentState): { gold: number; silver: number } {
-  const counts = { gold: 0, silver: 0 };
-  for (const it of Object.values(state.items)) {
-    const l = level(it);
-    if (l === 'gold' || l === 'silver') counts[l]++;
-  }
-  return counts;
-}
+/** Letter Math's registration: its home card, and everything the app needs to play it and show its progress. */
+export const letterMathMode = defineMode<Letter>({
+  id: 'letters',
+  title: 'Letter Math',
+  icon: 'letters',
+  blurb: 'Next letter, skips and intervals',
+  group: 'alphabet',
+  core: coreMode('letters'),
+  session: LETTER_MATH_MODE,
+  words: {
+    item: 'question',
+    medal: '',
+    encourage:
+      'Every practice makes your musical alphabet stronger. Squares turn silver when you know them well, and gold when you still know them on another day!',
+  },
+  createPlay: (host, env) => letterMathPlay(host, env.synth),
+  renderMap: (state, now) => renderLetterMap(state, now),
+  itemLabel: letterLabel,
+});
 
 /**
  * The Letter Math mastery map: one row of 7 squares (start letters A–G) per skill that has opened.
