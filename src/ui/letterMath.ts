@@ -16,6 +16,8 @@ import {
 import { LETTERS, type Letter, frequency } from '../core/music';
 import { type Session, isFinished, nextQuestion, submit } from '../core/session';
 import { clear, h } from './dom';
+import { icon } from './world/icons';
+import { type Medal, PlayChrome, praise } from './world/playChrome';
 import './letterMath.css';
 
 export interface LetterPlayHost {
@@ -35,6 +37,7 @@ export class LetterMathPlay {
   private timer = 0;
   private isNew = false;
   private el!: HTMLElement;
+  private chrome!: PlayChrome;
 
   constructor(private readonly host: LetterPlayHost) {}
 
@@ -48,18 +51,20 @@ export class LetterMathPlay {
       ),
       h('button', { class: 'pad__key pad__idk', 'data-answer': '?', 'aria-label': "I don't know", onClick: () => this.answer(null) }, '?'),
     );
+    const counts = letterCounts(this.host.state);
+    this.chrome = new PlayChrome({
+      length: session.length,
+      mastered: counts.gold + counts.silver,
+      onQuit: () => this.host.quit(),
+      mute: this.host.muteButton(),
+      unit: 'skills',
+    });
     this.el = h(
       'main',
       { class: 'screen play letter-math' },
-      h(
-        'header',
-        { class: 'topbar' },
-        h('button', { class: 'icon-btn', 'aria-label': 'Stop and go home', onClick: () => this.host.quit() }, '✕'),
-        h('div', { class: 'progress', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': session.length }, h('div', { class: 'progress__fill' })),
-        this.host.muteButton(),
-      ),
+      this.chrome.topbar,
       h('div', { class: 'staff-card lm-card' }, h('div', { class: 'banner' }), h('div', { class: 'lm-question', 'data-testid': 'lm-question' })),
-      h('div', { class: 'feedback', 'aria-live': 'polite' }),
+      this.chrome.coach,
       pad,
     );
     queueMicrotask(() => this.ask());
@@ -78,12 +83,6 @@ export class LetterMathPlay {
     return this.el.isConnected;
   }
 
-  private updateProgress(): void {
-    const s = this.host.session;
-    this.q('.progress').setAttribute('aria-valuenow', String(s.results.length));
-    this.q('.progress__fill').style.width = `${(100 * s.results.length) / s.length}%`;
-  }
-
   private setPadEnabled(enabled: boolean): void {
     this.el.querySelectorAll<HTMLButtonElement>('.pad__key').forEach((b) => {
       b.disabled = !enabled;
@@ -94,7 +93,6 @@ export class LetterMathPlay {
   private ask(): void {
     if (!this.active()) return;
     const { session, state } = this.host;
-    this.updateProgress();
     const qn = nextQuestion(session, state, this.host.now(), Math.random);
     const item = letterItem(qn.itemId);
     clear(this.q('.feedback'));
@@ -110,6 +108,7 @@ export class LetterMathPlay {
     host.append(h('p', { class: 'lm-prompt' }, `${p.lead} `, h('strong', { class: 'lm-letter' }, p.letter), p.tail));
     this.phase = 'asking';
     this.setPadEnabled(true);
+    this.chrome.asking(session.results.length, this.q('.lm-card'));
   }
 
   /** Relative-pitch ear training for free: the start note, then the answer note. */
@@ -126,19 +125,21 @@ export class LetterMathPlay {
     const res = submit(session, state, letter, this.host.now());
     this.host.save();
     this.phase = 'feedback';
-    this.updateProgress();
     this.setPadEnabled(false);
 
     const target = letterAnswer(item);
-    this.q(`[data-answer="${target}"]`).classList.add('pad__key--right');
-    if (res.outcome === 'wrong') this.q(`[data-answer="${letter}"]`).classList.add('pad__key--wrong');
+    const targetBtn = this.q(`[data-answer="${target}"]`);
+    targetBtn.classList.add('pad__key--right');
+    const wrongBtn = res.outcome === 'wrong' ? this.q(`[data-answer="${letter}"]`) : null;
+    wrongBtn?.classList.add('pad__key--wrong');
     this.play(item.id);
     this.host.announce(res.events);
+    const medal: Medal = res.events.some((e) => e.kind === 'gold') ? 'gold' : res.events.some((e) => e.kind === 'silver') ? 'silver' : null;
+    this.chrome.react(res.outcome, session.results.length, targetBtn, wrongBtn, medal, target);
 
     if (res.outcome === 'correct') {
-      const big = res.events.some((e) => e.kind === 'silver' || e.kind === 'gold');
-      this.q('.feedback').append(h('p', { class: 'praise' }, big ? '🎉' : `✓ ${target}`));
-      this.timer = window.setTimeout(() => this.advance(), big ? 1600 : 1000);
+      this.q('.feedback').append(praise(medal, target));
+      this.timer = window.setTimeout(() => this.advance(), medal ? 1600 : 1000);
       return;
     }
 
@@ -254,6 +255,6 @@ export function renderLetterMap(state: StudentState, now: number): HTMLElement {
         ),
       ),
     ),
-    later > 0 && h('p', { class: 'muted lm-map__later' }, `🔒 ${later} more skill${later > 1 ? 's' : ''} to unlock as you go.`),
+    later > 0 && h('p', { class: 'muted lm-map__later' }, icon('lock', 'lm-map__lock'), `${later} more skill${later > 1 ? 's' : ''} to unlock as you go.`),
   );
 }

@@ -29,12 +29,13 @@
   --tip: #e7f5ff;
   --lesson: #fff9db;
   --rule: #ddd5c6;
-  --pattern: #fff8ec;
+  --sky: #ffe7c0;
+  --selected: #3d3a4b;
+  --selected-ink: #ffffff;
   --font: ui-rounded, 'SF Pro Rounded', 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --radius: 18px;
   --shadow: 0 2px 0 rgb(0 0 0 / 0.06), 0 8px 24px rgb(0 0 0 / 0.06);
-  --backdrop: none;
-  --mascot: "🎵";
+  --backdrop: linear-gradient(180deg, var(--bg) 25%, var(--sky));
   color-scheme: light;
 }
 
@@ -42,6 +43,10 @@
   box-sizing: border-box;
 }
 html {
+  background: var(--bg);
+}
+body {
+  min-height: 100dvh;
   background: var(--backdrop), var(--bg);
   background-attachment: fixed;
 }
@@ -66,6 +71,8 @@ h3 {
 }
 
 #app {
+  position: relative;
+  z-index: 1;
   max-width: 960px;
   margin: 0 auto;
   padding: max(12px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
@@ -87,8 +94,11 @@ h3 {
   flex: 1;
   margin: 0;
 }
-.title--brand::before {
-  content: var(--mascot) '\a0';
+.title--brand,
+.title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .card {
   background: var(--card);
@@ -139,11 +149,16 @@ h3 {
   padding: 12px 32px;
 }
 .icon-btn {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
   width: 48px;
   height: 48px;
   border-radius: 50%;
   border: 0;
-  background: var(--secondary);
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow);
   font-size: 1.3rem;
 }
 .link-btn {
@@ -183,9 +198,18 @@ h3 {
   font-weight: 700;
   font-size: 1.05rem;
 }
+.seg {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  transition: background-color 0.2s, color 0.2s;
+}
 .seg--on {
-  background: var(--card);
-  box-shadow: var(--shadow);
+  background: var(--selected);
+  color: var(--selected-ink);
+  box-shadow: 0 2px 0 rgb(0 0 0 / 0.15);
 }
 .home-nav {
   display: flex;
@@ -237,21 +261,6 @@ h3 {
   background: var(--gold-2);
 }
 
-/* Play */
-.progress {
-  flex: 1;
-  height: 14px;
-  background: var(--secondary);
-  border-radius: 99px;
-  overflow: hidden;
-}
-.progress__fill {
-  height: 100%;
-  width: 0;
-  background: var(--right);
-  border-radius: 99px;
-  transition: width 0.3s ease;
-}
 .staff-card {
   background: var(--card);
   border-radius: var(--radius);
@@ -352,16 +361,6 @@ h3 {
   }
 }
 
-.feedback {
-  min-height: 56px;
-}
-.praise {
-  text-align: center;
-  font-size: 2.2rem;
-  margin: 0;
-  color: var(--right);
-  font-weight: 800;
-}
 .hint,
 .lesson {
   background: var(--card);
@@ -393,7 +392,8 @@ h3 {
 /* Toasts */
 .toasts {
   position: fixed;
-  top: max(12px, env(safe-area-inset-top));
+  /* Below the top bar (journey, trophy, quit, mute), so a toast never hides progress. */
+  top: calc(max(12px, env(safe-area-inset-top)) + 64px);
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -610,10 +610,6 @@ h3 {
   padding: 4px 12px;
   font-weight: 700;
   font-size: 0.9rem;
-}
-.theme-preview__mascot {
-  font-size: 1.5rem;
-  line-height: 1;
 }
 .themes__done {
   justify-content: center;

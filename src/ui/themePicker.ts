@@ -7,6 +7,10 @@ import { THEMES, type Theme, getTheme, themeVars } from '../core/themes';
 import { GLYPHS } from '../render/glyphs';
 import { h } from './dom';
 import { applyTheme } from './theme';
+import { prefersReducedMotion } from './world/fx';
+import { icon } from './world/icons';
+import { renderMascot } from './world/mascots';
+import { groundViewBox, sceneFor } from './world/scenes';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -35,12 +39,21 @@ function miniScene(): SVGSVGElement {
   return s;
 }
 
+/** The bottom of the theme's world, as a strip behind the preview. */
+function miniGround(theme: Theme): SVGSVGElement {
+  const g = svg('svg', { viewBox: groundViewBox, preserveAspectRatio: 'xMidYMax slice', class: 'theme-preview__ground', 'aria-hidden': 'true' });
+  g.innerHTML = sceneFor(theme.id).ground;
+  return g;
+}
+
 function preview(theme: Theme): HTMLElement {
   const box = h(
     'span',
     { class: 'theme-preview', 'aria-hidden': 'true' },
+    miniGround(theme),
     h('span', { class: 'theme-preview__card' }, miniScene()),
-    h('span', { class: 'theme-preview__bar' }, h('span', { class: 'theme-preview__btn' }, 'Start ▶'), h('span', { class: 'theme-preview__mascot' }, theme.mascot)),
+    h('span', { class: 'theme-preview__bar' }, h('span', { class: 'theme-preview__btn' }, 'Start')),
+    renderMascot(theme.id, { mood: 'happy', cls: 'theme-preview__mascot' }),
   );
   // Scope the theme's tokens to this box so it previews itself, whatever the current theme is.
   for (const [name, value] of Object.entries(themeVars(theme))) box.style.setProperty(name, value);
@@ -95,8 +108,8 @@ export function renderThemePicker({ settings, save, onDone }: ThemePickerOptions
           onKeydown: onKeyDown,
         },
         preview(theme),
-        h('span', { class: 'theme-card__name' }, theme.name, h('span', { class: 'theme-card__check', 'aria-hidden': 'true' }, '✓')),
-        h('span', { class: 'theme-card__blurb' }, theme.blurb),
+        h('span', { class: 'theme-card__name' }, theme.name, h('span', { class: 'theme-card__check', 'aria-hidden': 'true' }, icon('check'))),
+        h('span', { class: 'theme-card__blurb' }, `${theme.blurb} · ${theme.mascot}`),
       ) as HTMLButtonElement,
     );
   }
@@ -107,10 +120,50 @@ export function renderThemePicker({ settings, save, onDone }: ThemePickerOptions
     h(
       'header',
       { class: 'topbar' },
-      h('button', { class: 'icon-btn', 'aria-label': 'Back', onClick: onDone }, '←'),
-      h('h1', { class: 'title', id: 'theme-title' }, '🎨 Pick a theme'),
+      h('button', { class: 'icon-btn', 'aria-label': 'Back', onClick: onDone }, icon('back')),
+      h('h1', { class: 'title', id: 'theme-title' }, icon('palette', 'title__icon'), 'Pick a theme'),
     ),
     h('div', { class: 'theme-grid', role: 'radiogroup', 'aria-labelledby': 'theme-title' }, ...cards),
+    calmSwitch(settings, save),
     h('nav', { class: 'row themes__done' }, h('button', { class: 'primary big', onClick: onDone }, 'Done')),
+  );
+}
+
+/** Calm mode: a still background and small celebrations (for kids and teachers who want less motion). */
+function calmSwitch(settings: Settings, save: () => void): HTMLElement {
+  const forced = prefersReducedMotion();
+  const sw = h(
+    'button',
+    {
+      class: 'switch',
+      role: 'switch',
+      'aria-checked': String(!!settings.calm || forced),
+      'aria-labelledby': 'calm-title',
+      'aria-describedby': 'calm-desc',
+      'data-testid': 'calm-toggle',
+      disabled: forced,
+      onClick: () => {
+        settings.calm = !settings.calm;
+        sw.setAttribute('aria-checked', String(settings.calm));
+        save();
+      },
+    },
+    h('span', { class: 'switch__knob' }),
+  );
+  return h(
+    'section',
+    { class: 'card calm-card' },
+    h('span', { class: 'calm-card__icon' }, icon('calm')),
+    h(
+      'div',
+      { class: 'calm-card__text' },
+      h('h2', { id: 'calm-title' }, 'Calm mode'),
+      h(
+        'p',
+        { class: 'muted', id: 'calm-desc' },
+        forced ? 'Your device asks for less motion, so the game is always calm here.' : 'Less motion: a still background, no confetti or flying keys.',
+      ),
+    ),
+    sw,
   );
 }

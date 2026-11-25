@@ -136,7 +136,7 @@ test('opening several questions at once shows one unlock toast, not one per ques
   }
   const texts = await page.evaluate(() => (window as unknown as { unlockToasts: string[] }).unlockToasts);
   // A perfect first session opens a whole rung at once at least once.
-  expect(texts.some((t) => /🔓 [2-9] new questions are coming up!/.test(t)), texts.join(' | ')).toBe(true);
+  expect(texts.some((t) => /^[2-9] new questions are coming up!/.test(t)), texts.join(' | ')).toBe(true);
 });
 
 test('a perfect session earns silver, shows the Letter Math grid, and persists', async ({ page }) => {

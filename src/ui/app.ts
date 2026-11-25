@@ -33,6 +33,12 @@ import { clear, h } from './dom';
 import { LetterMathPlay, letterCounts, renderLetterMap } from './letterMath';
 import { renderThemePicker } from './themePicker';
 import { durabilityCard, homeBanners } from './pwa';
+import { getTheme } from '../core/themes';
+import { clearFx, summaryShower } from './world/fx';
+import { type IconName, icon, medal } from './world/icons';
+import { renderMascot, setMood } from './world/mascots';
+import { type Medal, PlayChrome, praise } from './world/playChrome';
+import { setCalm, setWorldMode } from './world/world';
 
 type Screen = 'home' | 'play' | 'letters' | 'summary' | 'map' | 'save' | 'import' | 'debug' | 'theme';
 type ClefChoice = 'treble' | 'bass' | 'both';
@@ -60,6 +66,7 @@ export class App {
   private isNewNote = false;
   private pendingLesson: LessonId | null = null;
   private advanceTimer = 0;
+  private chrome: PlayChrome | null = null;
   private importCode = '';
   private readonly debug: boolean;
 
@@ -68,6 +75,7 @@ export class App {
     this.letters = loadState(localStorage, letterEngine);
     this.settings = loadSettings(localStorage);
     this.synth.muted = this.settings.muted;
+    setCalm(!!this.settings.calm);
     this.debug = new URLSearchParams(location.search).has('debug');
     document.addEventListener('keydown', (e) => this.onKey(e));
     document.addEventListener('pointerdown', () => this.synth.unlock(), { capture: true });
@@ -94,9 +102,12 @@ export class App {
     window.clearTimeout(this.advanceTimer);
     this.letterPlay?.dispose();
     this.letterPlay = null;
+    this.chrome = null;
+    clearFx();
     this.screen = screen;
     clear(this.root);
     this.root.dataset.screen = screen;
+    setWorldMode(screen);
     const render = {
       home: () => this.renderHome(),
       play: () => this.renderPlay(),
@@ -106,7 +117,15 @@ export class App {
       save: () => this.renderSave(),
       import: () => this.renderImport(),
       debug: () => this.renderDebug(),
-      theme: () => renderThemePicker({ settings: this.settings, save: () => saveSettings(localStorage, this.settings), onDone: () => this.go('home') }),
+      theme: () =>
+        renderThemePicker({
+          settings: this.settings,
+          save: () => {
+            saveSettings(localStorage, this.settings);
+            setCalm(!!this.settings.calm);
+          },
+          onDone: () => this.go('home'),
+        }),
     }[screen];
     this.root.append(render());
     (this.root.querySelector('[data-autofocus]') as HTMLElement | null)?.focus();
@@ -126,12 +145,17 @@ export class App {
           this.synth.muted = this.settings.muted;
           saveSettings(localStorage, this.settings);
           const btn = e.currentTarget as HTMLElement;
-          btn.textContent = this.settings.muted ? '🔇' : '🔊';
+          btn.replaceChildren(icon(this.settings.muted ? 'soundOff' : 'soundOn'));
           btn.setAttribute('aria-label', this.settings.muted ? 'Turn sound on' : 'Turn sound off');
+          btn.setAttribute('aria-pressed', String(this.settings.muted));
         },
       },
-      this.settings.muted ? '🔇' : '🔊',
+      icon(this.settings.muted ? 'soundOff' : 'soundOn'),
     );
+  }
+
+  private backButton(): HTMLElement {
+    return h('button', { class: 'icon-btn', 'aria-label': 'Back', onClick: () => this.go('home') }, icon('back'));
   }
 
   private weeklyGoal(): HTMLElement {
@@ -144,14 +168,15 @@ export class App {
       { class: 'weekly', 'data-testid': 'weekly-goal' },
       h('span', { class: 'weekly__label' }, 'This week'),
       h('span', { class: 'weekly__dots' }, ...dots),
-      h('span', { class: 'weekly__text' }, days >= WEEKLY_GOAL ? `⭐ Goal met! (${days} days)` : `${days} of ${WEEKLY_GOAL} days`),
+      h('span', { class: 'weekly__text' }, days >= WEEKLY_GOAL && icon('star', 'weekly__star'), days >= WEEKLY_GOAL ? `Goal met! (${days} days)` : `${days} of ${WEEKLY_GOAL} days`),
     );
   }
 
   private toast(text: string, kind: string): void {
     let host = document.querySelector('.toasts');
     if (!host) document.body.append((host = h('div', { class: 'toasts', 'aria-live': 'polite' })));
-    const t = h('div', { class: `toast toast--${kind}` }, text);
+    const badge = kind === 'gold' || kind === 'silver' ? medal(kind, 'toast__medal') : kind === 'polish' ? icon('sparkle', 'toast__icon') : kind === 'unlock' ? icon('lock', 'toast__icon') : null;
+    const t = h('div', { class: `toast toast--${kind}` }, badge, h('span', {}, text));
     host.append(t);
     window.setTimeout(() => t.classList.add('toast--out'), 2600);
     window.setTimeout(() => t.remove(), 3200);
@@ -162,16 +187,16 @@ export class App {
       const label = itemLabel(e.itemId);
       const lm = isLetterItemId(e.itemId);
       const key = lm ? '' : ' key';
-      if (e.kind === 'silver') this.toast(`🥈 Silver${key}: ${label}!`, 'silver');
-      if (e.kind === 'gold') this.toast(`🥇 Gold${key}: ${label}! You remembered it on a new day.`, 'gold');
-      if (e.kind === 'polished') this.toast(`✨ Polished: ${label}`, 'polish');
+      if (e.kind === 'silver') this.toast(`Silver${key}: ${label}!`, 'silver');
+      if (e.kind === 'gold') this.toast(`Gold${key}: ${label}! You remembered it on a new day.`, 'gold');
+      if (e.kind === 'polished') this.toast(`Polished: ${label}`, 'polish');
     }
     // One answer can open several items (the fast track): one toast, one screen-reader announcement.
     const unlocked = events.filter((e) => e.kind === 'unlocked');
     if (unlocked.length > 0) {
       const noun = isLetterItemId(unlocked[0]!.itemId) ? 'question' : 'note';
       this.toast(
-        unlocked.length === 1 ? `🔓 A new ${noun} is coming up!` : `🔓 ${unlocked.length} new ${noun}s are coming up!`,
+        unlocked.length === 1 ? `A new ${noun} is coming up!` : `${unlocked.length} new ${noun}s are coming up!`,
         'unlock',
       );
     }
@@ -199,36 +224,55 @@ export class App {
       );
 
     const counts = masteryCounts(this.state);
+    const theme = getTheme(document.documentElement.dataset.theme);
+    const navBtn = (name: IconName, label: string, onClick: () => void, ...extra: (Node | false)[]) =>
+      h('button', { class: 'secondary', onClick }, icon(name, 'btn-icon'), h('span', {}, label), ...extra);
 
     return h(
       'main',
       { class: 'screen home' },
-      h('header', { class: 'topbar' }, h('h1', { class: 'title title--brand' }, 'Note Reader'), this.muteButton()),
+      h('header', { class: 'topbar' }, h('h1', { class: 'title title--brand' }, h('span', { class: 'logo' }, icon('note')), 'Note Reader'), this.muteButton()),
       homeBanners({ hasProgress: [this.state, this.letters].some((s) => Object.values(s.items).some((i) => i.n > 0)), onLoadCode: () => this.go('save') }),
-      this.weeklyGoal(),
       h(
-        'section',
-        { class: 'card' },
-        h('h2', {}, 'What do you want to practice?'),
-        this.modePicker(),
-        this.settings.mode === 'letters'
-          ? h('p', { class: 'muted' }, 'Next letter, skips, and intervals. No staff needed!')
-          : h('div', { class: 'segmented', role: 'group', 'aria-label': 'Clef' }, clefBtn('treble', 'Treble'), clefBtn('bass', 'Bass'), clefBtn('both', 'Both')),
-        h('button', { class: 'primary big', 'data-autofocus': true, onClick: () => this.startPlay() }, 'Start ▶'),
+        'div',
+        { class: 'home-main' },
+        h(
+          'div',
+          { class: 'hero' },
+          h('p', { class: 'bubble' }, theme.greeting),
+          renderMascot(theme.id, { mood: 'idle', alive: true, label: theme.mascot, cls: 'hero__mascot' }),
+        ),
+        h(
+          'section',
+          { class: 'card practice' },
+          this.weeklyGoal(),
+          h('h2', {}, 'What do you want to practice?'),
+          this.modePicker(),
+          this.settings.mode === 'letters'
+            ? h('p', { class: 'muted' }, 'Next letter, skips, and intervals. No staff needed!')
+            : h('div', { class: 'segmented', role: 'group', 'aria-label': 'Clef' }, clefBtn('treble', 'Treble'), clefBtn('bass', 'Bass'), clefBtn('both', 'Both')),
+          h('button', { class: 'primary big start', 'data-autofocus': true, onClick: () => this.startPlay() }, h('span', {}, 'Start'), icon('play', 'btn-icon')),
+        ),
       ),
       h(
         'nav',
         { class: 'home-nav' },
-        h(
-          'button',
-          { class: 'secondary', onClick: () => this.go('map') },
-          `🎹 My keyboard`,
-          h('span', { class: 'pill' }, `🥇 ${counts.gold} · 🥈 ${counts.silver}`),
-        ),
-        h('button', { class: 'secondary', onClick: () => this.go('save') }, '💾 Save / load progress'),
-        h('button', { class: 'secondary', onClick: () => this.go('theme') }, '🎨 Theme'),
-        this.debug && h('button', { class: 'secondary', onClick: () => this.go('debug') }, '🛠 Debug'),
+        navBtn('keyboard', 'My keyboard', () => this.go('map'), this.medalPill(counts.gold, counts.silver)),
+        navBtn('save', 'Save / load progress', () => this.go('save')),
+        navBtn('palette', 'Theme', () => this.go('theme')),
+        this.debug && navBtn('wrench', 'Debug', () => this.go('debug')),
       ),
+    );
+  }
+
+  private medalPill(gold: number, silver: number): HTMLElement {
+    return h(
+      'span',
+      { class: 'pill', 'aria-label': `${gold} gold, ${silver} silver` },
+      medal('gold', 'pill__medal'),
+      String(gold),
+      medal('silver', 'pill__medal'),
+      String(silver),
     );
   }
 
@@ -247,9 +291,10 @@ export class App {
             this.go('home');
           },
         },
+        icon(m === 'name' ? 'note' : 'letters', 'seg__icon'),
         label,
       );
-    return h('div', { class: 'segmented', role: 'group', 'aria-label': 'Game' }, btn('name', '🎼 Name It'), btn('letters', '🔤 Letter Math'));
+    return h('div', { class: 'segmented', role: 'group', 'aria-label': 'Game' }, btn('name', 'Name It'), btn('letters', 'Letter Math'));
   }
 
   // ───────────────────────── play ─────────────────────────
@@ -288,18 +333,20 @@ export class App {
       ),
       h('button', { class: 'pad__key pad__idk', 'data-answer': '?', 'aria-label': "I don't know", onClick: () => this.answer(null) }, '?'),
     );
+    const counts = masteryCounts(this.state);
+    this.chrome = new PlayChrome({
+      length: this.session!.length,
+      mastered: counts.gold + counts.silver,
+      onQuit: () => this.go('home'),
+      mute: this.muteButton(),
+      unit: 'keys',
+    });
     const screen = h(
       'main',
       { class: 'screen play' },
-      h(
-        'header',
-        { class: 'topbar' },
-        h('button', { class: 'icon-btn', 'aria-label': 'Stop and go home', onClick: () => this.go('home') }, '✕'),
-        h('div', { class: 'progress', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': this.session!.length }, h('div', { class: 'progress__fill' })),
-        this.muteButton(),
-      ),
+      this.chrome.topbar,
       h('div', { class: 'staff-card' }, h('div', { class: 'banner' }), h('div', { class: 'staff-host' })),
-      h('div', { class: 'feedback', 'aria-live': 'polite' }),
+      this.chrome.coach,
       pad,
     );
     queueMicrotask(() => this.ask());
@@ -308,13 +355,6 @@ export class App {
 
   private q<T extends Element = HTMLElement>(sel: string): T {
     return this.root.querySelector(sel) as T;
-  }
-
-  private updateProgress(): void {
-    const s = this.session!;
-    const bar = this.q('.progress');
-    bar.setAttribute('aria-valuenow', String(s.results.length));
-    (this.q('.progress__fill') as HTMLElement).style.width = `${(100 * s.results.length) / s.length}%`;
   }
 
   private setPadEnabled(enabled: boolean): void {
@@ -337,7 +377,6 @@ export class App {
 
   private ask(): void {
     if (this.screen !== 'play' || !this.session) return;
-    this.updateProgress();
     const q = nextQuestion(this.session, this.state, this.now(), Math.random);
     clear(this.q('.feedback'));
     clear(this.q('.banner'));
@@ -347,6 +386,7 @@ export class App {
     this.phase = 'asking';
     this.drawStaff(q.itemId);
     this.setPadEnabled(true);
+    this.chrome?.asking(this.session.results.length, this.q('.staff-card'));
     this.playItem(q.itemId);
   }
 
@@ -357,20 +397,22 @@ export class App {
     const res = submit(this.session, this.state, letter, this.now());
     this.save();
     this.phase = 'feedback';
-    this.updateProgress();
     this.setPadEnabled(false);
 
     const target = item.note.letter;
-    this.q(`[data-answer="${target}"]`).classList.add('pad__key--right');
-    if (res.outcome === 'wrong') this.q(`[data-answer="${letter}"]`).classList.add('pad__key--wrong');
+    const targetBtn = this.q(`[data-answer="${target}"]`);
+    targetBtn.classList.add('pad__key--right');
+    const wrongBtn = res.outcome === 'wrong' ? this.q(`[data-answer="${letter}"]`) : null;
+    wrongBtn?.classList.add('pad__key--wrong');
     this.drawStaff(itemId, { label: target, state: res.outcome === 'correct' ? 'correct' : res.outcome === 'wrong' ? 'wrong' : 'reveal' });
     this.playItem(itemId);
     this.announce(res.events);
+    const medalWon: Medal = res.events.some((e) => e.kind === 'gold') ? 'gold' : res.events.some((e) => e.kind === 'silver') ? 'silver' : null;
+    this.chrome?.react(res.outcome, this.session.results.length, targetBtn, wrongBtn, medalWon, target);
 
     if (res.outcome === 'correct') {
-      const big = res.events.some((e) => e.kind === 'silver' || e.kind === 'gold');
-      this.q('.feedback').append(h('p', { class: 'praise' }, big ? '🎉' : '✓'));
-      this.advanceTimer = window.setTimeout(() => this.advance(), big ? 1600 : 700);
+      this.q('.feedback').append(praise(medalWon));
+      this.advanceTimer = window.setTimeout(() => this.advance(), medalWon ? 1600 : 700);
       return;
     }
 
@@ -412,7 +454,7 @@ export class App {
       h(
         'div',
         { class: 'lesson', role: 'dialog', 'aria-label': lesson.title, 'data-testid': 'lesson' },
-        h('h2', {}, '💡 ', lesson.title),
+        h('h2', {}, icon('bulb', 'lesson__icon'), lesson.title),
         ...lesson.body.map((p) => h('p', {}, p)),
         h(
           'button',
@@ -456,36 +498,58 @@ export class App {
 
   private renderSummary(): HTMLElement {
     const s = summarize(this.session!);
-    const list = (title: string, ids: string[], icon: string) =>
+    const list = (title: string, ids: string[], kind: 'gold' | 'silver' | 'polish') =>
       ids.length > 0 &&
-      h('div', { class: 'achv' }, h('h3', {}, `${icon} ${title}`), h('p', {}, [...new Set(ids)].map(itemLabel).join(', ')));
+      h(
+        'div',
+        { class: `achv achv--${kind}` },
+        h('h3', {}, kind === 'polish' ? icon('sparkle', 'achv__icon') : medal(kind, 'achv__icon'), title),
+        h('ul', { class: 'chips' }, ...[...new Set(ids)].map((id) => h('li', { class: `chip chip--${kind}` }, itemLabel(id)))),
+      );
     const anything = s.newGold.length + s.newSilver.length + s.polished.length > 0;
+    const big: Medal = s.newGold.length ? 'gold' : s.newSilver.length ? 'silver' : null;
     const lm = this.session!.mode === LETTER_MATH_MODE;
     const keys = lm ? '' : ' keys';
+    const theme = getTheme(document.documentElement.dataset.theme);
+    const mascot = renderMascot(theme.id, { mood: 'happy', alive: true, cls: 'summary__mascot' });
+    // Celebrate in proportion to real progress: confetti and a cheer only for new silver/gold (D12).
+    requestAnimationFrame(() => {
+      if (!mascot.isConnected) return;
+      if (big) {
+        setMood(mascot, 'cheer');
+        summaryShower(big);
+      } else setMood(mascot, 'happy');
+    });
     return h(
       'main',
       { class: 'screen summary' },
-      h('header', { class: 'topbar' }, h('h1', { class: 'title' }, 'Nice practice! 🎶'), this.muteButton()),
+      h('header', { class: 'topbar' }, h('h1', { class: 'title' }, 'Nice practice!'), this.muteButton()),
       h(
         'section',
-        { class: 'card' },
-        h('p', { class: 'big-stat', 'data-testid': 'score' }, `${s.correct} of ${s.total} right`),
-        anything
-          ? h('div', {}, list(`New gold${keys}`, s.newGold, '🥇'), list(`New silver${keys}`, s.newSilver, '🥈'), list('Polished', s.polished, '✨'))
-          : h(
+        { class: `card summary-hero${big ? ` summary-hero--${big}` : ''}` },
+        h('div', { class: 'summary-hero__art', 'aria-hidden': 'true' }, h('div', { class: 'summary-hero__rays' }), mascot),
+        h(
+          'div',
+          { class: 'summary-hero__text' },
+          h('p', { class: 'big-stat', 'data-testid': 'score' }, `${s.correct} of ${s.total} right`),
+          anything
+            ? h('div', { class: 'achvs' }, list(`New gold${keys}`, s.newGold, 'gold'), list(`New silver${keys}`, s.newSilver, 'silver'), list('Polished', s.polished, 'polish'))
+            : h(
               'p',
               { class: 'muted' },
               lm
                 ? 'Every practice makes your musical alphabet stronger. Squares turn silver when you know them well, and gold when you still know them on another day!'
-                : 'Every practice makes your notes stronger. Keys turn silver when you know them well, and gold when you still know them on another day!',
-            ),
-        s.unlocked.length > 0 && h('p', {}, `🔓 You unlocked ${s.unlocked.length} new ${lm ? 'question' : 'note'}${s.unlocked.length > 1 ? 's' : ''}.`),
+                  : 'Every practice makes your notes stronger. Keys turn silver when you know them well, and gold when you still know them on another day!',
+              ),
+          s.unlocked.length > 0 &&
+            h('p', { class: 'unlocked' }, icon('lock', 'unlocked__icon'), `You unlocked ${s.unlocked.length} new ${lm ? 'question' : 'note'}${s.unlocked.length > 1 ? 's' : ''}.`),
+        ),
       ),
-      this.weeklyGoal(),
+      h('section', { class: 'card card--slim' }, this.weeklyGoal()),
       h(
         'section',
         { class: 'card' },
-        ...(lm ? [renderLetterMap(this.letters, this.now())] : this.settings.clefs.map((c) => renderMasteryKeyboard(this.state, c, this.now()))),
+        ...(lm ? [renderLetterMap(this.letters, this.now())] : this.settings.clefs.map((c) => h('div', { class: 'keys-frame' }, renderMasteryKeyboard(this.state, c, this.now())))),
       ),
       h(
         'nav',
@@ -506,23 +570,34 @@ export class App {
     return h(
       'main',
       { class: 'screen map' },
-      h('header', { class: 'topbar' }, h('button', { class: 'icon-btn', 'aria-label': 'Back', onClick: () => this.go('home') }, '←'), h('h1', { class: 'title' }, '🎹 My keyboard')),
+      h(
+        'header',
+        { class: 'topbar' },
+        this.backButton(),
+        h('h1', { class: 'title' }, icon('keyboard', 'title__icon'), 'My keyboard'),
+        renderMascot(getTheme(document.documentElement.dataset.theme).id, { mood: 'happy', alive: true, cls: 'topbar__mascot' }),
+      ),
       ...(['treble', 'bass'] as Clef[]).map((c) =>
-        h('section', { class: 'card' }, h('h2', {}, c === 'treble' ? 'Treble clef' : 'Bass clef'), renderMasteryKeyboard(this.state, c, now)),
+        h(
+          'section',
+          { class: 'card' },
+          h('h2', { class: 'map-head' }, h('span', {}, c === 'treble' ? 'Treble clef' : 'Bass clef')),
+          h('div', { class: 'keys-frame' }, renderMasteryKeyboard(this.state, c, now)),
+        ),
       ),
       h(
         'section',
-        { class: 'legend' },
+        { class: 'card legend' },
         h('span', {}, h('i', { class: 'sw sw--gold' }), `Gold ${counts.gold}: you still knew it on another day`),
         h('span', {}, h('i', { class: 'sw sw--silver' }), `Silver ${counts.silver}: you know it fast`),
         h('span', {}, h('i', { class: 'sw sw--learning' }), `Learning ${counts.learning}: the bar grows as you learn`),
         h('span', {}, h('i', { class: 'sw sw--locked' }), `Coming soon ${counts.locked}`),
-        dusty > 0 && h('span', {}, `✨ ${dusty} key${dusty > 1 ? 's' : ''} could use a polish. Practice to make ${dusty > 1 ? 'them' : 'it'} shine again!`),
+        dusty > 0 && h('span', {}, icon('sparkle', 'legend__icon'), `${dusty} key${dusty > 1 ? 's' : ''} could use a polish. Practice to make ${dusty > 1 ? 'them' : 'it'} shine again!`),
       ),
       h(
         'section',
         { class: 'card' },
-        h('h2', {}, '🔤 Letter Math ', h('span', { class: 'pill' }, `🥇 ${lmCounts.gold} · 🥈 ${lmCounts.silver}`)),
+        h('h2', { class: 'map-head' }, icon('letters', 'title__icon'), h('span', {}, 'Letter Math'), this.medalPill(lmCounts.gold, lmCounts.silver)),
         renderLetterMap(this.letters, now),
       ),
     );
@@ -545,7 +620,7 @@ export class App {
     return h(
       'main',
       { class: 'screen save' },
-      h('header', { class: 'topbar' }, h('button', { class: 'icon-btn', 'aria-label': 'Back', onClick: () => this.go('home') }, '←'), h('h1', { class: 'title' }, '💾 Save / load')),
+      h('header', { class: 'topbar' }, this.backButton(), h('h1', { class: 'title' }, icon('save', 'title__icon'), 'Save / load')),
       durabilityCard(),
       h(
         'section',
@@ -604,7 +679,7 @@ export class App {
     return h(
       'main',
       { class: 'screen import' },
-      h('header', { class: 'topbar' }, h('h1', { class: 'title' }, '💾 Load progress')),
+      h('header', { class: 'topbar' }, h('h1', { class: 'title' }, icon('save', 'title__icon'), 'Load progress')),
       h(
         'section',
         { class: 'card' },
@@ -679,7 +754,7 @@ export class App {
     return h(
       'main',
       { class: 'screen debug' },
-      h('header', { class: 'topbar' }, h('button', { class: 'icon-btn', 'aria-label': 'Back', onClick: () => this.go('home') }, '←'), h('h1', { class: 'title' }, '🛠 Learner model')),
+      h('header', { class: 'topbar' }, this.backButton(), h('h1', { class: 'title' }, icon('wrench', 'title__icon'), 'Learner model')),
       h(
         'section',
         { class: 'card' },
