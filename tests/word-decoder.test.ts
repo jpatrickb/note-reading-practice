@@ -57,10 +57,8 @@ describe('the word list', () => {
     }
   });
 
-  it('has at least 23 different words, from short to long', () => {
-    // Issue #30 asks for 25. Two fewer keep a fully played profile's QR code within version 22 (see the PR);
-    // appending words later is safe (CANONICAL_ORDER is append-only).
-    expect(ALL_WORDS.length).toBeGreaterThanOrEqual(23);
+  it('has at least 25 different words, from short to long', () => {
+    expect(ALL_WORDS.length).toBeGreaterThanOrEqual(25);
     expect(Math.min(...ALL_WORDS.map((w) => w.length))).toBe(3);
     expect(Math.max(...ALL_WORDS.map((w) => w.length))).toBe(7);
   });
