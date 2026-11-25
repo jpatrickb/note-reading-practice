@@ -1,18 +1,22 @@
 import qrcode from 'qrcode-generator';
 import { describe, expect, it } from 'vitest';
-import { ProgressCodeError, crc16, decodeProfile, decodeProgress, encodeProfile, encodeProgress } from '../src/core/codec';
+import { BitWriter, ProgressCodeError, codeFromBase32, codeToBase32, crc16, decodeProfile, decodeProgress, encodeProfile, encodeProgress } from '../src/core/codec';
 import { type Engine, type ItemState, PARAMS, type StudentState, createEngine, dayIndex, isDusty, nameEngine, newStudent, recall } from '../src/core/engine';
 import { defineItemSet } from '../src/core/itemset';
 import { letterEngine } from '../src/core/letters';
 import { CORE_MODES, type CoreMode } from '../src/core/modes';
+import { codeFromHash, progressQr } from '../src/core/progress-qr';
 import { isFinished, nextQuestion, startSession, submit } from '../src/core/session';
+import * as frozen from './fixtures/codec-v3-frozen';
 import { GOLDEN_CODES } from './fixtures/codes';
 import { DAY, HOUR, T0, seededRng } from './helpers';
 
 /** Size budget for a fully played profile: keeps the Save screen's QR code easy to scan iPad-to-iPad. */
 const CODE_BUDGET = 1200;
-/** What the Save screen puts in its QR code (src/ui/app.ts renderSave), on the production host. */
-const saveUrl = (code: string) => `https://notepractice.jpatrickbeal.com/#import=${code}`;
+/** The Save screen's QR code (src/ui/app.ts renderSave) on the production host. */
+const saveQr = (code: string) => progressQr('https://notepractice.jpatrickbeal.com/', code);
+/** QR version (1..40) of a code with this many modules per side. */
+const qrVersion = (modules: number) => (modules - 17) / 4;
 
 // ───────────────────────────── helpers ─────────────────────────────
 
@@ -109,7 +113,8 @@ function expectSameBehavior(engine: Engine, a: StudentState, b: StudentState, no
     expect(y.n === 0, id).toBe(x.n === 0);
     expect(y.n >= 2, id).toBe(x.n >= 2);
     expect(y.c >= PARAMS.silverMinCorrect, id).toBe(x.c >= PARAMS.silverMinCorrect);
-    expect(fluent(y, b), id).toBe(fluent(x, a));
+    // A compact gold record drops rt: for a gold item the engine never asks whether it is fluent.
+    if (x.best < 2) expect(fluent(y, b), id).toBe(fluent(x, a));
     expect(y.last === 0, id).toBe(x.last === 0);
     // Gold needs silver on an earlier day than today.
     for (const later of [0, 1, 30]) {
@@ -237,7 +242,7 @@ describe('progress code v3', () => {
     const rts = [3199, 3200, 3201, 2000, 1, 20000, 100];
     ids.forEach((id, k) => (s.items[id]!.rt = rts[k % rts.length]!));
     const back = decodeProfile(encodeProgress(s, now), now).name;
-    for (const id of ids) expect(fluent(back.items[id]!, back), id).toBe(fluent(s.items[id]!, s));
+    for (const id of ids) if (s.items[id]!.best < 2) expect(fluent(back.items[id]!, back), id).toBe(fluent(s.items[id]!, s));
   });
 
   it('extreme values survive (clamped, never corrupting other fields)', () => {
@@ -277,7 +282,8 @@ describe('progress code v3', () => {
     it('ignores appended record bytes and trailing section bytes from a newer build', () => {
       const s = newStudent();
       const t = playName(s, T0, 2, 8);
-      const plain = v3Body(encodeProgress(s, t));
+      // Plain 5-byte records, as the build before compact gold records wrote them.
+      const plain = v3Body(frozen.encodeProgress(s, t));
       // Rebuild the Name It section with recordLen 6 (one unknown byte per record) and 2 trailing bytes.
       const [, , , , tag, , , ...rest] = plain;
       const head = rest.slice(0, 2 + 3 + 2 + 4); // baseline, days, count, bitmap (26 items)
@@ -286,7 +292,7 @@ describe('progress code v3', () => {
       for (let k = 0; k < records.length; k += 5) wide.push(...records.slice(k, k + 5), 0xab);
       const section = [...head, 6, ...wide, 0xee, 0xee];
       const crafted = [plain[0]!, plain[1]!, plain[2]!, 1, tag!, section.length >> 8, section.length & 0xff, ...section];
-      expect(decodeProfile(signV3(crafted), t).name).toEqual(decodeProfile(encodeProgress(s, t), t).name);
+      expect(decodeProfile(signV3(crafted), t).name).toEqual(decodeProfile(frozen.encodeProgress(s, t), t).name);
       // A record shorter than this build understands means a different format.
       const narrow = [...head, 4, ...records];
       const bad = [plain[0]!, plain[1]!, plain[2]!, 1, tag!, narrow.length >> 8, narrow.length & 0xff, ...narrow];
@@ -340,12 +346,21 @@ describe('progress code v3', () => {
       expect(code.length).toBeLessThanOrEqual(CODE_BUDGET);
     });
 
-    it('the Save-screen URL with a fully played code builds a QR code at level L', () => {
-      const url = saveUrl(encodeProfile(fullProfile(CORE_MODES), now));
-      const qr = qrcode(0, 'L');
-      qr.addData(url);
-      expect(() => qr.make()).not.toThrow();
-      expect(qr.getModuleCount()).toBeLessThanOrEqual(4 * 40 + 17);
+    it('the Save-screen QR code for a fully played profile is at most version 22 at level L', () => {
+      const qr = saveQr(encodeProfile(fullProfile(CORE_MODES), now));
+      expect(qrVersion(qr.getModuleCount())).toBeLessThanOrEqual(22);
+    });
+
+    it('compact gold records roughly halve a profile of gold items, and never grow one without any', () => {
+      const withBest = (best: 0 | 2) => {
+        const p = fullProfile(CORE_MODES);
+        for (const id in p) for (const key in p[id]!.items) Object.assign(p[id]!.items[key]!, { best, silverDay: -1, n: 40, c: 38, last: now - HOUR });
+        return p;
+      };
+      const gold = withBest(2);
+      const none = withBest(0);
+      expect(encodeProfile(gold, now).length).toBeLessThan(0.7 * frozen.encodeProfile(gold, now).length);
+      expect(encodeProfile(none, now)).toBe(frozen.encodeProfile(none, now));
     });
 
     it('guard: every core mode fully played still fits the budget', () => {
@@ -356,6 +371,339 @@ describe('progress code v3', () => {
           `${CODE_BUDGET} budget that keeps the Save screen's QR code scannable. Make v3 records smaller ` +
           `(see "Record" in src/core/codec.ts) or log a decision to raise the budget.`,
       ).toBeLessThanOrEqual(CODE_BUDGET);
+    });
+  });
+});
+
+// ───────────────────────────── compact gold records (#60) ─────────────────────────────
+
+/** A gold item the compact record can stand in for. */
+const compactGold = (it: ItemState): boolean => it.unlocked && it.best === 2 && it.last > 0;
+
+/** A learner model with every kind of item: locked, new, learning, silver, gold (compact or not). */
+function fuzzState(engine: Engine, now: number, seed: number): StudentState {
+  const rng = seededRng(seed);
+  const s = engine.newStudent();
+  s.rtBaseline = rng() < 0.2 ? 0 : 800 + Math.floor(rng() * 5000);
+  const today = dayIndex(now);
+  for (let d = 23; d >= 0; d--) if (rng() < 0.3) s.practiceDays.push(today - d);
+  for (const id in s.items) {
+    const kind = Math.floor(rng() * 8);
+    if (kind === 0) continue; // untouched
+    const n = kind === 1 ? 0 : 1 + Math.floor(rng() * (kind >= 5 ? 300 : 30));
+    const best = (kind >= 6 ? 2 : kind >= 4 ? 1 : 0) as 0 | 1 | 2;
+    s.items[id] = {
+      unlocked: kind !== 7 || rng() < 0.9,
+      m: rng() < 0.1 ? (rng() < 0.5 ? -6 : 6) : rng() * 12 - 6,
+      s: rng() < 0.1 ? 1.1 + rng() * 8000 : 2 + rng() * 3000,
+      n,
+      c: Math.floor(n * (0.4 + rng() * 0.6)),
+      last: n === 0 ? 0 : now - Math.floor(rng() * 500 * DAY),
+      rt: n === 0 ? 0 : 300 + Math.floor(rng() * 9000),
+      best,
+      silverDay: best > 0 ? today - Math.floor(rng() * 40) : -1,
+    };
+  }
+  return s;
+}
+
+/** Big-endian bytes from a string of 0s and 1s, padded to a whole byte with 0s. */
+function bitsToBytes(bits: string): number[] {
+  const padded = bits.padEnd(Math.ceil(bits.length / 8) * 8, '0');
+  return padded.match(/.{8}/g)!.map((b) => parseInt(b, 2));
+}
+const bin = (v: number, width: number) => v.toString(2).padStart(width, '0');
+
+describe('compact gold records (#60)', () => {
+  const now = T0 + 50 * DAY;
+
+  describe('BitWriter', () => {
+    it('flush pads the last byte with zeros', () => {
+      const w = new BitWriter();
+      w.write(0b101, 3);
+      expect(w.flush()).toEqual([0b10100000]);
+    });
+
+    it('flush adds nothing to a whole number of bytes', () => {
+      const w = new BitWriter();
+      w.write(0xab, 8);
+      w.write(0xcd, 8);
+      expect(w.flush()).toEqual([0xab, 0xcd]);
+    });
+
+    it('bytes() throws instead of silently dropping bits', () => {
+      const w = new BitWriter();
+      w.write(1, 1);
+      expect(() => w.bytes()).toThrow(/whole number of bytes/);
+      w.write(0, 7);
+      expect(w.bytes()).toEqual([0x80]);
+    });
+  });
+
+  describe('layout signal', () => {
+    // A profile whose Name It items are all compact gold.
+    const allGold = () => {
+      const p = { name: fuzzState(nameEngine, now, 1), letters: letterEngine.newStudent() };
+      for (const id in p.name.items) p.name.items[id] = { ...p.name.items[id]!, unlocked: true, best: 2, n: 40, c: 38, last: now - HOUR, silverDay: dayIndex(now) - 3 };
+      return p;
+    };
+    const recordLenAt = 4 + 1 + 2 + 2 + 3 + 2 + Math.ceil(nameEngine.set.items.length / 8);
+
+    it("today's v3 decoder says \"different version\" to a code with compact gold records", () => {
+      const code = encodeProfile(allGold(), now);
+      expect(() => frozen.decodeProfile(code, now)).toThrow(/different version/);
+      // This build reads it.
+      expect(Object.values(decodeProfile(code, now).name.items).every((i) => i.best === 2)).toBe(true);
+    });
+
+    it('marks the section with recordLen 0 and a layout number, and keeps the v3 checksum framing', () => {
+      const bytes = toBytes(encodeProfile(allGold(), now));
+      expect(bytes[0]).toBe(3);
+      expect(crc8([...bytes.subarray(0, -1)])).toBe(bytes.at(-1));
+      // header(4) + tag(1) + len(2) + baseline(2) + days(3) + count(2) + bitmap, then recordLen, layout.
+      expect([...bytes.subarray(recordLenAt, recordLenAt + 2)]).toEqual([0, 1]);
+    });
+
+    it("a section with no compact gold item stays a plain v3 section that today's decoder reads", () => {
+      const p = { name: fuzzState(nameEngine, now, 1), letters: letterEngine.newStudent() };
+      for (const id in p.name.items) if (p.name.items[id]!.best === 2) p.name.items[id]!.best = 1;
+      const code = encodeProfile(p, now);
+      expect(code).toBe(frozen.encodeProfile(p, now));
+      expect(frozen.decodeProfile(code, now).name).toEqual(decodeProfile(code, now).name);
+    });
+
+    it('rejects a layout number it does not know as a different version', () => {
+      const bytes = [...toBytes(encodeProfile(allGold(), now))];
+      expect(bytes[recordLenAt + 1]).toBe(1);
+      bytes[recordLenAt + 1] = 2;
+      expect(() => decodeProfile(signV3(bytes.slice(0, -3)), now)).toThrow(/different version/);
+    });
+
+    it('skips a compact section of a mode it does not know, like any unknown tag', () => {
+      const p = { ...allGold(), big: fullyPlayed(bigEngine, now, 3) };
+      for (const id in p.big.items) p.big.items[id] = { ...p.big.items[id]!, best: 2, n: 30, c: 30 };
+      const code = encodeProfile(p, now, WITH_BIG);
+      const older = decodeProfile(code, now);
+      expect(older.big).toBeUndefined();
+      expect(older.name).toEqual(decodeProfile(code, now, WITH_BIG).name);
+    });
+  });
+
+  describe('records by hand (independent of the encoder)', () => {
+    // A 3-item mode: items 0 and 2 saved as compact gold, item 1 untouched.
+    const TINY = defineItemSet({
+      id: 'tiny',
+      groups: { tiny: [0, 1, 2].map((i) => ({ id: `tiny:${i}` })) },
+      groupOf: () => 'tiny',
+      answerOf: () => 'C',
+    });
+    const tinyEngine = createEngine(TINY);
+    const MODES: readonly CoreMode[] = [{ id: 'tiny', tag: 201, engine: tinyEngine }];
+    const refDay = dayIndex(now);
+
+    const build = (bits: string, extra: number[] = []) => {
+      const records = [...bitsToBytes(bits), ...extra];
+      const section = [0, 0, 0, 0, 0, 0, 3, 0b10100000, 0, 1, ...records];
+      return signV3([3, refDay >> 8, refDay & 0xff, 1, 201, section.length >> 8, section.length & 0xff, ...section]);
+    };
+    const gold = (m: number, s: number, h: number) => `110${bin(m, 7)}${bin(s, 7)}${bin(h, 7)}`; // counts at the cap
+    const goldCounts = (n: number, c: number, m: number, s: number, h: number) => `111${bin(n, 4)}${bin(c, 4)}${bin(m, 7)}${bin(s, 7)}${bin(h, 7)}`;
+    const bits = gold(63, 25, 0) + gold(64, 26, 2); // 48 bits, 6 bytes
+    const bits2 = goldCounts(7, 6, 63, 25, 0) + gold(64, 26, 2);
+
+    it('decodes kind-3 records to unlocked gold, with the counts at their cap unless given', () => {
+      const back = decodeProfile(build(bits), now, MODES).tiny!;
+      expect(back.items['tiny:0']).toEqual({ unlocked: true, best: 2, m: 0, s: PARAMS.initialS, n: 15, c: 15, last: now, rt: 0, silverDay: -1 });
+      const second = back.items['tiny:2']!;
+      expect(second.m).toBeCloseTo(6 / 63, 10);
+      expect(second.s).toBeCloseTo(PARAMS.initialS * 2 ** (13 / 127), 10);
+      expect(second.last).toBeCloseTo(now - (2 ** (2 * (16 / 126)) - 1) * HOUR, 3);
+      expect(back.items['tiny:1']).toEqual({ ...tinyEngine.newStudent().items['tiny:1']!, unlocked: false });
+      // counts = 1 carries n and c.
+      expect(decodeProfile(build(bits2), now, MODES).tiny!.items['tiny:0']).toMatchObject({ n: 7, c: 6, m: 0, best: 2 });
+    });
+
+    it('ignores bytes after the records (a newer build may append)', () => {
+      expect(decodeProfile(build(bits, [0xee, 0xee]), now, MODES).tiny).toEqual(decodeProfile(build(bits), now, MODES).tiny);
+    });
+
+    it('says "incomplete" when the records are cut short', () => {
+      expect(() => decodeProfile(build(gold(63, 25, 0) + '11010'), now, MODES)).toThrow(/incomplete/);
+      expect(() => decodeProfile(build(gold(63, 25, 0) + '1111011'), now, MODES)).toThrow(/incomplete/);
+      expect(() => decodeProfile(build(gold(63, 25, 0)), now, MODES)).toThrow(/incomplete/); // second record missing
+    });
+  });
+
+  describe('the frozen v3 codec and this one', () => {
+    it('still decodes every v3 code the previous build wrote, identically', () => {
+      for (const key of ['v3Played', 'v3Mixed', 'v3Full']) {
+        const g = GOLDEN_CODES[key]!;
+        const back = decodeProfile(g.code, g.decodeAt);
+        expect(back.name, key).toEqual(g.expected.name);
+        expect(back.letters, key).toEqual(g.expected.letters);
+        expect(back).toEqual(frozen.decodeProfile(g.code, g.decodeAt));
+      }
+    });
+
+    it('golden v3 profiles re-save smaller in the new layout, which the old decoder refuses', () => {
+      for (const key of ['v3Played', 'v3Mixed', 'v3Full']) {
+        const g = GOLDEN_CODES[key]!;
+        const again = encodeProfile(g.expected, g.decodeAt);
+        expect(again.length, key).toBeLessThan(g.code.length);
+        expect(() => frozen.decodeProfile(again, g.decodeAt), key).toThrow(/different version/);
+        const back = decodeProfile(again, g.decodeAt);
+        expectSameBehavior(nameEngine, g.expected.name, back.name, g.decodeAt);
+        expectSameBehavior(letterEngine, g.expected.letters, back.letters, g.decodeAt);
+      }
+    });
+  });
+
+  describe('round-trip fuzz', () => {
+    it('matches the previous codec item for item, except what a gold item no longer needs', { timeout: 60_000 }, () => {
+      let compactItems = 0;
+      let plainCodes = 0;
+      let worst = 0;
+      for (let seed = 1; seed <= 60; seed++) {
+        const profile = { name: fuzzState(nameEngine, now, seed), letters: fuzzState(letterEngine, now, 1000 + seed) };
+        const oldCode = frozen.encodeProfile(profile, now);
+        const newCode = encodeProfile(profile, now);
+        const A = frozen.decodeProfile(oldCode, now);
+        const B = decodeProfile(newCode, now);
+        // The new decoder reads what the old encoder wrote, exactly as the old decoder does.
+        expect(decodeProfile(oldCode, now)).toEqual(A);
+
+        let anyCompact = false;
+        for (const mode of CORE_MODES) {
+          const orig = profile[mode.id as 'name' | 'letters'];
+          const a = A[mode.id]!;
+          const b = B[mode.id]!;
+          for (const item of mode.engine.set.items) {
+            const was = a.items[item.id]!;
+            if (compactGold(orig.items[item.id]!)) {
+              anyCompact = true;
+              compactItems++;
+              expect(b.items[item.id], item.id).toEqual({ ...was, rt: 0, silverDay: -1 });
+            } else {
+              expect(b.items[item.id], item.id).toEqual(was);
+            }
+          }
+          expect(b.practiceDays).toEqual(a.practiceDays);
+          expect(b.rtBaseline).toBe(a.rtBaseline);
+          // Identical engine behavior: level, unlocks and which item comes next.
+          worst = Math.max(worst, expectSameBehavior(mode.engine, orig, b, now));
+          expect(selectionAgreement(mode.engine, a, b, now), `seed ${seed} ${mode.id}`).toBe(1);
+          for (const later of [0, DAY, 7 * DAY]) {
+            for (const lane of Object.keys(mode.engine.set.groups)) {
+              expect(mode.engine.maybeUnlock(structuredClone(b), lane, now + later)).toBe(mode.engine.maybeUnlock(structuredClone(a), lane, now + later));
+            }
+          }
+        }
+        if (anyCompact) {
+          expect(newCode.length).toBeLessThan(oldCode.length);
+          expect(() => frozen.decodeProfile(newCode, now)).toThrow(/different version/);
+        } else {
+          plainCodes++;
+          expect(newCode).toBe(oldCode);
+        }
+      }
+      expect(compactItems).toBeGreaterThan(300);
+      expect(plainCodes).toBeLessThan(60);
+      expect(worst).toBeLessThanOrEqual(0.04);
+    });
+
+    it('behaves the same after long simulated play, where most items are gold', { timeout: 60_000 }, () => {
+      const name = newStudent();
+      const t = playName(name, T0, 40, 21);
+      expect(Object.values(name.items).filter(compactGold).length).toBeGreaterThan(10);
+      const code = encodeProgress(name, t);
+      expect(() => frozen.decodeProfile(code, t)).toThrow(/different version/);
+      const back = decodeProfile(code, t).name;
+      const before = frozen.decodeProfile(frozen.encodeProfile({ name }, t), t).name;
+      expectSameBehavior(nameEngine, name, back, t);
+      expect(selectionAgreement(nameEngine, before, back, t)).toBe(1);
+      expect(selectionAgreement(nameEngine, name, back, t)).toBeGreaterThanOrEqual(0.95);
+      // Keep playing on both imported copies: the same answers lead to the same questions and levels.
+      const rngA = seededRng(5);
+      const rngB = seededRng(5);
+      const a = structuredClone(before);
+      const b = structuredClone(back);
+      let at = t + DAY;
+      for (let k = 0; k < 3; k++) {
+        const sa = startSession(['treble', 'bass'], 30);
+        const sb = startSession(['treble', 'bass'], 30);
+        while (!isFinished(sa)) {
+          const qa = nextQuestion(sa, a, at, rngA);
+          const qb = nextQuestion(sb, b, at, rngB);
+          expect(qb.itemId).toBe(qa.itemId);
+          submit(sa, a, nameEngine.answerOf(qa.itemId), at + 1500);
+          submit(sb, b, nameEngine.answerOf(qb.itemId), at + 1500);
+          at += 5000;
+        }
+        at += 20 * HOUR;
+      }
+      for (const item of nameEngine.set.items) {
+        expect([b.items[item.id]!.unlocked, b.items[item.id]!.best]).toEqual([a.items[item.id]!.unlocked, a.items[item.id]!.best]);
+      }
+    });
+
+    it('re-encoding a decoded profile does not change it (compact records are stable)', () => {
+      const profile = { name: fuzzState(nameEngine, now, 7), letters: fuzzState(letterEngine, now, 8) };
+      const once = decodeProfile(encodeProfile(profile, now), now);
+      const twice = decodeProfile(encodeProfile(once, now), now);
+      expect(twice).toEqual(once);
+    });
+  });
+
+  describe('alphanumeric QR code', () => {
+    const code = encodeProfile({ name: fuzzState(nameEngine, now, 3), letters: fuzzState(letterEngine, now, 4) }, now);
+
+    it('converts a code to uppercase base32 and back without changing a byte', () => {
+      for (const c of [code, GOLDEN_CODES.v1Fresh!.code, GOLDEN_CODES.v2Full!.code, encodeProgress(newStudent(), now)]) {
+        const b32 = codeToBase32(c);
+        expect(b32).toMatch(/^[A-Z2-7]+$/);
+        expect(codeFromBase32(b32)).toBe(c);
+        expect(codeFromBase32(b32.toLowerCase())).toBe(c);
+        expect(decodeProfile(codeFromBase32(b32), now)).toEqual(decodeProfile(c, now));
+      }
+    });
+
+    it('matches RFC 4648 test vectors', () => {
+      const enc = (s: string) => codeToBase32(toCode([...new TextEncoder().encode(s)]));
+      expect([enc('f'), enc('fo'), enc('foo'), enc('foob'), enc('fooba'), enc('foobar')]).toEqual(['MY', 'MZXQ', 'MZXW6', 'MZXW6YQ', 'MZXW6YTB', 'MZXW6YTBOI']);
+    });
+
+    it('reports characters that are not base32', () => {
+      expect(() => codeFromBase32('ABC1DEF')).toThrow(/characters/);
+      expect(() => codeFromBase32('AB-_')).toThrow(ProgressCodeError);
+    });
+
+    it('opens from a base32 link (either letter case) or the base64 link, as the same code', () => {
+      expect(codeFromHash(`#import32=${codeToBase32(code)}`)).toBe(code);
+      expect(codeFromHash(`#IMPORT32=${codeToBase32(code)}`)).toBe(code);
+      expect(codeFromHash(`#import32=${codeToBase32(code).toLowerCase()}`)).toBe(code);
+      expect(codeFromHash(`#import=${code}`)).toBe(code);
+      expect(codeFromHash('#something-else')).toBeNull();
+      expect(codeFromHash('')).toBeNull();
+      expect(codeFromHash('#import32=')).toBeNull();
+      // Not base32 after all: handed back so the import screen can say what is wrong.
+      expect(codeFromHash('#import32=AB1-')).toBe('AB1-');
+      expect(() => decodeProfile(codeFromHash('#import32=AB1-')!, now)).toThrow(ProgressCodeError);
+    });
+
+    it('stores the code in alphanumeric mode: a smaller QR than the base64 link, for the same data', () => {
+      const full = encodeProfile(Object.fromEntries(CORE_MODES.map((m, k) => [m.id, fullyPlayed(m.engine, now, 100 + k)])), now);
+      const moduleCounts = (c: string) => {
+        const qr = progressQr('https://notepractice.jpatrickbeal.com/', c);
+        const old = qrcode(0, 'L');
+        old.addData(`https://notepractice.jpatrickbeal.com/#import=${c}`);
+        old.make();
+        return [qr.getModuleCount(), old.getModuleCount()] as const;
+      };
+      const [small, smallOld] = moduleCounts(code);
+      expect(small).toBeLessThanOrEqual(smallOld);
+      // At full size the gain is a whole QR version or more.
+      const [big, bigOld] = moduleCounts(full);
+      expect(big).toBeLessThan(bigOld);
     });
   });
 });

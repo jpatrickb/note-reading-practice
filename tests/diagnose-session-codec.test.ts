@@ -128,7 +128,8 @@ describe('progress code', () => {
       // v3 caps counts at 15 (the engine only needs n >= 2 and c >= 3) and stores time on a log scale.
       expect(b.n).toBe(Math.min(15, a.n));
       expect(b.c).toBe(Math.min(15, a.c));
-      expect(b.silverDay).toBe(a.silverDay);
+      // A gold item's record leaves out silverDay (compact gold records): only silver→gold reads it.
+      expect(b.silverDay).toBe(a.best === 2 ? -1 : a.silverDay);
       expect(b.m).toBeCloseTo(a.m, 1);
       expect(b.s / a.s).toBeGreaterThan(0.95);
       expect(b.s / a.s).toBeLessThan(1.05);
