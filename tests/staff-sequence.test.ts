@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type Clef, parseNote, spokenName, staffPosition } from '../src/core/music';
 import { GLYPHS } from '../src/render/glyphs';
 import { renderStaff, renderStaffSequence, yOf } from '../src/render/staff';
+import * as geometry from '../src/render/geometry';
+import { MIN_SCALE, mountStaffSequence } from '../src/render/staffSequence';
 import fixtures from './fixtures/staff-single-note.json';
 
 const N = (...ids: string[]) => ids.map(parseNote);
@@ -210,7 +212,8 @@ describe('bars, key slot, width', () => {
     expect(mid.hasAttribute('data-scroll')).toBe(false);
     const long = renderStaffSequence(Array.from({ length: 40 }, () => parseNote('C4')), 'treble', { beats: Array(40).fill('quarter'), maxWidth: 500 });
     expect(long.hasAttribute('data-scroll')).toBe(true);
-    expect(long.style.getPropertyValue('--staff-seq-w')).toBe(`${Math.round(w(long))}px`);
+    expect(long.style.getPropertyValue('--staff-seq-w')).toBe(`${Math.round(w(long) * MIN_SCALE)}px`); // min 1.8 px per unit
+    expect(mid.style.getPropertyValue('--staff-seq-w')).toBe(`${Math.round(w(mid) * MIN_SCALE)}px`);
     expect(w(long)).toBeGreaterThan(500);
     const capped = renderStaffSequence(Array.from({ length: 6 }, () => parseNote('C4')), 'treble', { maxWidth: 420 });
     expect(w(capped)).toBeLessThanOrEqual(420);
@@ -218,5 +221,109 @@ describe('bars, key slot, width', () => {
   it('renders an empty phrase and a single note', () => {
     expect(renderStaffSequence([], 'treble').querySelectorAll('g[data-index]')).toHaveLength(0);
     expect(renderStaffSequence(N('C4'), 'bass').getAttribute('aria-label')).toBe('bass clef with 1 note');
+  });
+});
+
+describe('geometry module', () => {
+  it('staff.ts keeps re-exporting the shared drawing helpers', async () => {
+    const staff = await import('../src/render/staff');
+    expect(staff.STAFF_GEOMETRY).toBe(geometry.STAFF_GEOMETRY);
+    expect(staff.yOf).toBe(geometry.yOf);
+    expect(staff.el).toBe(geometry.el);
+    expect(staff.glyph).toBe(geometry.glyph);
+    expect(staff.ACCIDENTAL_GLYPH).toBe(geometry.ACCIDENTAL_GLYPH);
+  });
+});
+
+describe('right/wrong marks', () => {
+  it('adds a check or cross above answered events, never for idle or reveal', () => {
+    const svg = renderStaffSequence(N('C4', 'D4', 'E4', 'F4'), 'treble', { states: ['right', 'wrong', 'reveal', 'idle'] });
+    const mark = (i: number) => group(svg, i).querySelector('text.staff-seq__mark');
+    expect(mark(0)!.textContent).toBe('✓');
+    expect(mark(0)!.classList.contains('staff-seq__mark--right')).toBe(true);
+    expect(mark(1)!.textContent).toBe('✗');
+    expect(mark(1)!.classList.contains('staff-seq__mark--wrong')).toBe(true);
+    expect(mark(2)).toBeNull();
+    expect(mark(3)).toBeNull();
+  });
+  it('keeps the viewBox the same height before and after answering', () => {
+    const h = (svg: Element) => svg.getAttribute('viewBox');
+    expect(h(renderStaffSequence(N('C6'), 'treble', { states: ['idle'] }))).toBe(h(renderStaffSequence(N('C6'), 'treble', { states: ['right'] })));
+  });
+});
+
+describe('cursor box', () => {
+  it('covers the event’s heads, ledger lines and stem', () => {
+    const svg = renderStaffSequence(N('E6', 'E4'), 'treble', { cursor: 0, beats: ['quarter', 'quarter'] });
+    const rect = svg.querySelector('rect.staff-seq__cursor')!;
+    const top = Number(rect.getAttribute('y'));
+    const bottom = top + Number(rect.getAttribute('height'));
+    const g = group(svg, 0);
+    for (const l of g.querySelectorAll('line')) {
+      for (const k of ['y1', 'y2']) {
+        const y = Number(l.getAttribute(k));
+        expect(y).toBeGreaterThanOrEqual(top);
+        expect(y).toBeLessThanOrEqual(bottom);
+      }
+    }
+    expect(top).toBeLessThan(yOf(8) - 18); // taller than the staff box for a high note
+  });
+});
+
+describe('mountStaffSequence', () => {
+  afterEach(() => vi.restoreAllMocks());
+  const long = Array.from({ length: 30 }, () => parseNote('C4'));
+
+  it('makes a labelled, focusable scroll region', () => {
+    const m = mountStaffSequence(long, 'treble', {}, 'Twinkle');
+    expect(m.el.tabIndex).toBe(0);
+    expect(m.el.getAttribute('role')).toBe('region');
+    expect(m.el.getAttribute('aria-label')).toBe('Twinkle');
+    expect(m.el.classList.contains('staff-seq-scroll')).toBe(true);
+    expect(m.el.firstElementChild).toBe(m.svg);
+    expect(mountStaffSequence(long, 'treble').el.getAttribute('aria-label')).toMatch(/staff/i);
+  });
+  function mounted() {
+    const m = mountStaffSequence(long, 'treble', { beats: Array(30).fill('quarter') });
+    Object.defineProperty(m.el, 'clientWidth', { value: 400, configurable: true });
+    const scrollTo = vi.fn();
+    m.el.scrollTo = scrollTo as never;
+    // 1 CSS px per viewBox unit
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      const w = this.tagName === 'svg' ? Number((this as SVGElement).getAttribute('viewBox')!.split(' ')[2]) : 0;
+      return { width: w, height: 0, x: 0, y: 0, top: 0, left: 0, right: w, bottom: 0, toJSON() {} };
+    });
+    return { m, scrollTo };
+  }
+  it('moves the cursor and scrolls it into view without animation', () => {
+    const { m, scrollTo } = mounted();
+    m.setCursor(0);
+    expect(m.svg.dataset.cursor).toBe('0');
+    expect(scrollTo).not.toHaveBeenCalled(); // already visible
+    m.setCursor(25);
+    expect(m.svg.dataset.cursor).toBe('25');
+    expect(m.svg.querySelectorAll('.staff-seq__group--cursor')).toHaveLength(1);
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    const arg = scrollTo.mock.calls[0]![0];
+    expect(arg.behavior).toBe('auto');
+    const box = m.svg.querySelector('rect.staff-seq__cursor')!;
+    const centre = Number(box.getAttribute('x')) + Number(box.getAttribute('width')) / 2;
+    expect(arg.left).toBeCloseTo(centre - 200);
+    expect(m.el.firstElementChild).toBe(m.svg); // svg replaced inside the same region
+  });
+  it('falls back to scrollLeft and clears the cursor', () => {
+    const { m } = mounted();
+    (m.el as { scrollTo?: unknown }).scrollTo = undefined;
+    m.setCursor(28);
+    expect(m.el.scrollLeft).toBeGreaterThan(0);
+    m.setCursor(undefined);
+    expect(m.svg.querySelector('.staff-seq__cursor')).toBeNull();
+  });
+  it('update re-draws with new states and keeps the cursor', () => {
+    const { m } = mounted();
+    m.setCursor(2);
+    m.update({ states: ['right'] });
+    expect(m.svg.querySelector('.staff-seq__mark--right')).not.toBeNull();
+    expect(m.svg.dataset.cursor).toBe('2');
   });
 });

@@ -10,7 +10,7 @@ import { type Accidental, type Clef, type Note, noteId, spokenName, staffPositio
 import { type LayoutMetrics, type NoteValue, layoutSequence } from '../core/staffLayout';
 import '../ui/staffSequence.css';
 import { GLYPHS } from './glyphs';
-import { ACCIDENTAL_GLYPH, STAFF_GEOMETRY, el, glyph, yOf } from './staff';
+import { ACCIDENTAL_GLYPH, HEIGHT, K, SP, el, glyph, yOf } from './geometry';
 
 /** One thing to read: a single note, or a chord (notes stacked on the same beat). */
 export type StaffEvent = Note | readonly Note[];
@@ -29,11 +29,15 @@ export interface SequenceOptions {
   states?: readonly (NoteState | undefined)[];
   /** Text under each event (e.g. letters once answered). Pass undefined for events that shouldn't show one. */
   labels?: readonly (string | undefined)[];
-  /** Widest viewBox before the staff scrolls. Default 760. */
+  /** Widest viewBox (units) before the staff scrolls. Default 480: at the 1.8 minimum scale that is about 860px. */
   maxWidth?: number;
 }
 
 const KEY_ACC_WIDTH = 13;
+/** Smallest rendered size: CSS px per viewBox unit (a half space is 9 units, so ~16px; Name It's is ~21px). */
+export const MIN_SCALE = 1.8;
+const DEFAULT_MAX_WIDTH = 480;
+const MARK_ROOM = 28; // height reserved above an event for its ✓/✗
 const CLEF_X = 22;
 const HEAD_GLYPH: Record<NoteValue, 'noteheadWhole' | 'noteheadHalf' | 'noteheadBlack'> = {
   whole: 'noteheadWhole',
@@ -51,8 +55,6 @@ export function renderStaffSequence(
   clef: Clef,
   opts: SequenceOptions = {},
 ): SVGSVGElement {
-  // Read at call time, not import time: staff.ts re-exports this module, so it may not be initialised yet.
-  const { space: SP, glyphScale: K, height: HEIGHT } = STAFF_GEOMETRY;
   const groups = events.map(toNotes);
   const keyW = opts.keySignatureSlot ? opts.keySignatureSlot * KEY_ACC_WIDTH + 6 : 0;
   const metrics: LayoutMetrics = {
@@ -64,7 +66,7 @@ export function renderStaffSequence(
     startX: CLEF_X + GLYPHS.gClef.bounds[2] * K + keyW + 14,
     endPad: 22,
     minWidth: 220,
-    maxWidth: opts.maxWidth ?? 760,
+    maxWidth: opts.maxWidth ?? DEFAULT_MAX_WIDTH,
     minPad: 14,
     barPad: 16,
     quarterGap: 44,
@@ -83,18 +85,26 @@ export function renderStaffSequence(
   );
 
   // Vertical extent: the usual 190 tall, grown for extreme ledger lines, stems and the label row.
-  let minY: number = 0;
-  let maxY: number = HEIGHT;
-  for (const e of layout.events) {
+  // Vertical extent of each event (heads, ledger lines, stem) and of the whole drawing: the usual 190
+  // tall, grown for extreme notes. Room for a ✓/✗ above every event is always reserved, so the
+  // drawing doesn't change height when an answer comes in.
+  const extents = layout.events.map((e) => {
+    let top = yOf(8) - 18;
+    let bottom = yOf(0) + 18;
     for (const h of e.heads) {
-      minY = Math.min(minY, yOf(h.pos) - SP);
-      maxY = Math.max(maxY, yOf(h.pos) + SP);
+      top = Math.min(top, yOf(h.pos) - SP);
+      bottom = Math.max(bottom, yOf(h.pos) + SP);
     }
     if (e.stemSpan) {
-      minY = Math.min(minY, yOf(Math.max(e.stemSpan.from, e.stemSpan.to)) - 4);
-      maxY = Math.max(maxY, yOf(Math.min(e.stemSpan.from, e.stemSpan.to)) + 4);
+      top = Math.min(top, yOf(Math.max(e.stemSpan.from, e.stemSpan.to)) - 4);
+      bottom = Math.max(bottom, yOf(Math.min(e.stemSpan.from, e.stemSpan.to)) + 4);
     }
-  }
+    return { top: top - 4, bottom: bottom + 4 };
+  });
+  const minY: number = Math.min(0, ...extents.map((x) => x.top - MARK_ROOM));
+  let maxY: number = Math.max(HEIGHT, ...extents.map((x) => x.bottom));
+  // Label row: a fixed 14 above the bottom of the standard drawing, or 30 below the lowest note
+  // (maxY - SP is the lowest head's centre) so labels never collide with ledger-line notes or stems.
   const labelY = Math.max(HEIGHT - 14, maxY - SP + 30);
   if (opts.labels) maxY = Math.max(maxY, labelY + 12);
 
@@ -109,8 +119,8 @@ export function renderStaffSequence(
   });
   if (layout.scroll) {
     svg.dataset.scroll = '';
-    svg.style.setProperty('--staff-seq-w', `${Math.round(w)}px`);
   }
+  svg.style.setProperty('--staff-seq-w', `${Math.round(w * MIN_SCALE)}px`); // never drawn smaller than MIN_SCALE
   if (opts.cursor !== undefined) svg.dataset.cursor = String(opts.cursor);
 
   for (let line = 0; line <= 8; line += 2) {
@@ -145,9 +155,9 @@ export function renderStaffSequence(
       g.append(
         el('rect', {
           x: ev.x - ev.left - 6,
-          y: yOf(8) - 18,
+          y: extents[i]!.top,
           width: ev.left + ev.right + 12,
-          height: yOf(0) - yOf(8) + 36,
+          height: extents[i]!.bottom - extents[i]!.top,
           rx: 8,
           class: 'staff-seq__cursor',
         }),
@@ -194,6 +204,18 @@ export function renderStaffSequence(
       if (acc && h.accX !== null) g.append(glyph(acc, ev.x + h.accX, yOf(h.pos), 'staff__note staff__accidental'));
     }
 
+    if (state === 'right' || state === 'wrong') {
+      // A ✓/✗ so right/wrong never relies on color alone (as in the tap-input staff).
+      const m = el('text', {
+        x: ev.x,
+        y: extents[i]!.top - 6,
+        'text-anchor': 'middle',
+        class: `staff-seq__mark staff-seq__mark--${state}`,
+      });
+      m.textContent = state === 'right' ? '✓' : '✗';
+      g.append(m);
+    }
+
     const label = opts.labels?.[i];
     if (label) {
       const t = el('text', { x: ev.x, y: labelY, 'text-anchor': 'middle', class: 'staff__label staff-seq__label' });
@@ -203,4 +225,59 @@ export function renderStaffSequence(
     svg.append(g);
   });
   return svg;
+}
+
+export interface MountedStaffSequence {
+  /** Scrollable region to put in the page: keyboard-focusable, labelled, `overflow-x: auto`. */
+  el: HTMLDivElement;
+  svg: SVGSVGElement;
+  /** Moves the reading cursor (undefined clears it) and scrolls it into view (`behavior: 'auto'`, so no animation). */
+  setCursor(index: number | undefined): void;
+  /** Re-draws with changed options (states, labels...), keeping the scroll position. */
+  update(patch: Partial<SequenceOptions>): void;
+}
+
+/**
+ * Renders a phrase inside a scroll region and keeps the cursor visible when it moves. Use this for
+ * phrases that may scroll (songs); `renderStaffSequence` alone is enough for short ones.
+ */
+export function mountStaffSequence(
+  events: readonly StaffEvent[],
+  clef: Clef,
+  opts: SequenceOptions = {},
+  regionLabel = 'Music staff, scrolls sideways',
+): MountedStaffSequence {
+  let current = opts;
+  const region = document.createElement('div');
+  region.className = 'staff-seq-scroll';
+  region.tabIndex = 0; // keyboard users can focus it and scroll with the arrow keys
+  region.setAttribute('role', 'region');
+  region.setAttribute('aria-label', regionLabel);
+  const m: MountedStaffSequence = {
+    el: region,
+    svg: renderStaffSequence(events, clef, current),
+    update(patch) {
+      current = { ...current, ...patch };
+      const next = renderStaffSequence(events, clef, current);
+      m.svg.replaceWith(next);
+      m.svg = next;
+    },
+    setCursor(index) {
+      m.update({ cursor: index });
+      const box = m.svg.querySelector('rect.staff-seq__cursor');
+      if (!box) return;
+      const vbW = Number(m.svg.getAttribute('viewBox')!.split(' ')[2]);
+      const scale = m.svg.getBoundingClientRect().width / vbW;
+      const left = Number(box.getAttribute('x')) * scale;
+      const right = left + Number(box.getAttribute('width')) * scale;
+      const view = region.clientWidth;
+      const margin = 24;
+      if (left - margin >= region.scrollLeft && right + margin <= region.scrollLeft + view) return; // already visible
+      const target = Math.max(0, (left + right) / 2 - view / 2);
+      if (typeof region.scrollTo === 'function') region.scrollTo({ left: target, behavior: 'auto' });
+      else region.scrollLeft = target;
+    },
+  };
+  region.append(m.svg);
+  return m;
 }

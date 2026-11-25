@@ -1,39 +1,11 @@
 // Draws a single-note staff as SVG. Colors come from CSS (classes + currentColor) so themes can restyle it.
 
-import { type Accidental, type Clef, type Note, ledgerLines, noteId, spokenName, staffPosition } from '../core/music';
+import { type Clef, type Note, ledgerLines, noteId, spokenName, staffPosition } from '../core/music';
+import { ACCIDENTAL_GLYPH, K, NOTE_X, WIDTH, HEIGHT, el, glyph, yOf } from './geometry';
 import { GLYPHS } from './glyphs';
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
-const SP = 18; // staff space in viewBox units
-const K = SP / 250; // font units → viewBox units
-const BOTTOM_Y = 130;
-const WIDTH = 300;
-const HEIGHT = 190;
-const NOTE_X = 185;
-
-export const yOf = (pos: number) => BOTTOM_Y - (pos * SP) / 2;
-
-/** Drawing constants, for other staff renderers (e.g. staffInput.ts) to line up with this one. */
-export const STAFF_GEOMETRY = { space: SP, bottomY: BOTTOM_Y, width: WIDTH, height: HEIGHT, noteX: NOTE_X, glyphScale: K } as const;
-
-export function el<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number>) {
-  const node = document.createElementNS(SVG_NS, tag);
-  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
-  return node;
-}
-
-export function glyph(name: keyof typeof GLYPHS, x: number, y: number, cls: string) {
-  return el('path', { d: GLYPHS[name].path, transform: `translate(${x} ${y}) scale(${K} ${-K})`, class: cls });
-}
-
-/** Glyph drawn for each accidental (none for a natural). */
-export const ACCIDENTAL_GLYPH: Record<Accidental, keyof typeof GLYPHS | null> = {
-  [-2]: 'doubleFlat',
-  [-1]: 'flat',
-  0: null,
-  1: 'sharp',
-  2: 'doubleSharp',
-};
+// Existing exports, now defined in geometry.ts.
+export { ACCIDENTAL_GLYPH, STAFF_GEOMETRY, el, glyph, yOf } from './geometry';
 
 export interface StaffOptions {
   /** Show the note's letter next to it (after answering). */

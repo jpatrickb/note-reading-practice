@@ -70,7 +70,7 @@ describe('accidentalColumns', () => {
     expect(accidentalColumns([2, 4], [0, 1])).toEqual([-1, 0]);
   });
   it('staggers accidentals that would touch, top note nearest the heads', () => {
-    expect(accidentalColumns([0, 2, 4], [1, 1, 1])).toEqual([2, 1, 0]);
+    expect(accidentalColumns([0, 2, 4], [1, 1, 1])).toEqual([1, 2, 0]); // top, then bottom, then middle
   });
   it('reuses a column when the notes are far enough apart', () => {
     expect(accidentalColumns([0, 8], [1, -1])).toEqual([0, 0]);

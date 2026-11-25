@@ -47,15 +47,20 @@ export function stemSpan(sorted: readonly number[], stem: StemDir): { from: numb
 export const ACCIDENTAL_CLEARANCE = 6;
 
 /**
- * Column for each accidental, 0 = nearest the heads. Working from the top note down, each goes in the
- * first column where it clears the accidentals already there. Returns -1 for notes without one.
+ * Column for each accidental, 0 = nearest the heads. As in printed music (Gould) the top accidental
+ * goes first, then the bottom one, then the rest alternating inward; each takes the first column
+ * where it clears the accidentals already there. Returns -1 for notes without one.
  */
 export function accidentalColumns(positions: readonly number[], accs: readonly Accidental[]): number[] {
   const out = positions.map(() => -1);
   const cols: number[][] = [];
-  const order = positions.map((_, i) => i).sort((a, b) => positions[b]! - positions[a]!);
+  const desc = positions.map((_, i) => i).filter((i) => accs[i]).sort((a, b) => positions[b]! - positions[a]!);
+  const order: number[] = [];
+  while (desc.length) {
+    order.push(desc.shift()!);
+    if (desc.length) order.push(desc.pop()!);
+  }
   for (const i of order) {
-    if (!accs[i]) continue;
     let c = 0;
     while (cols[c]?.some((p) => Math.abs(p - positions[i]!) < ACCIDENTAL_CLEARANCE)) c++;
     (cols[c] ??= []).push(positions[i]!);

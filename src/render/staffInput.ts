@@ -9,7 +9,7 @@
 import { type Clef, type Note, ledgerLines, noteAtPosition, noteId, staffPosition } from '../core/music';
 import { place, shiftedHeads, snapPosition, spokenPosition, stepPosition, toViewBox } from '../core/staffTap';
 import { GLYPHS } from './glyphs';
-import { ACCIDENTAL_GLYPH, STAFF_GEOMETRY as G, el, glyph, yOf } from './staff';
+import { ACCIDENTAL_GLYPH, STAFF_GEOMETRY as G, el, glyph, yOf } from './geometry';
 import '../ui/staffInput.css';
 
 export interface StaffInputOptions {

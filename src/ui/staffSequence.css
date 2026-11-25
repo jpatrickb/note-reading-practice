@@ -3,13 +3,18 @@
 .staff--seq {
   height: auto;
 }
-/* Phrases too long to fit scroll sideways inside an `overflow-x: auto` wrapper (.staff-seq-scroll). */
-.staff--seq[data-scroll] {
+/* Never smaller than 1.8 CSS px per viewBox unit (--staff-seq-w), so notes stay readable on an iPad;
+   a phrase wider than its container scrolls sideways inside .staff-seq-scroll (see mountStaffSequence). */
+.staff--seq {
   min-width: var(--staff-seq-w);
 }
 .staff-seq-scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+.staff-seq-scroll:focus-visible {
+  outline: 3px solid var(--reveal);
+  outline-offset: 2px;
 }
 
 .staff-seq__stem {
@@ -46,6 +51,15 @@
 }
 .staff-seq__group--reveal .staff-seq__stem {
   stroke: var(--reveal);
+}
+.staff-seq__mark {
+  font: 800 24px var(--font);
+}
+.staff-seq__mark--right {
+  fill: var(--right);
+}
+.staff-seq__mark--wrong {
+  fill: var(--wrong);
 }
 .staff-seq__label {
   text-anchor: middle;
