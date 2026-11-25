@@ -1,13 +1,18 @@
-// Music primitives: natural notes, clefs, staff positions.
-// v0 covers natural notes only; accidentals come later (see docs/design.md §2).
+// Music primitives: notes (with optional accidentals), clefs, staff positions.
+// Natural notes keep their original ids (`C4`); accidentals add `#`/`b` (`F#4`, `Bb3`, `F##4`, `Bbb3`).
 
 export const LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'] as const;
 export type Letter = (typeof LETTERS)[number];
 export type Clef = 'treble' | 'bass';
 
+/** Semitones away from the natural: -2 𝄫, -1 ♭, 0 ♮, 1 ♯, 2 𝄪. */
+export type Accidental = -2 | -1 | 0 | 1 | 2;
+
 export interface Note {
   letter: Letter;
   octave: number;
+  /** Absent (or 0) = natural. Ignored by staff position; included in pitch. */
+  acc?: Accidental;
 }
 
 const SEMITONES = [0, 2, 4, 5, 7, 9, 11];
@@ -22,18 +27,83 @@ export function fromDiatonic(d: number): Note {
   return { letter: LETTERS[d - octave * 7]!, octave };
 }
 
+const ACC_ID: Record<Accidental, string> = { [-2]: 'bb', [-1]: 'b', 0: '', 1: '#', 2: '##' };
+const ACC_SYMBOL: Record<Accidental, string> = { [-2]: '𝄫', [-1]: '♭', 0: '', 1: '♯', 2: '𝄪' };
+const ACC_SPOKEN: Record<Accidental, string> = { [-2]: ' double flat', [-1]: ' flat', 0: '', 1: ' sharp', 2: ' double sharp' };
+const ID_ACC: Record<string, Accidental> = { bb: -2, b: -1, '#': 1, '##': 2 };
+
+/** Note with the given accidental; a natural has no `acc` key, so ids and stored shapes stay as before. */
+function withAcc(letter: Letter, octave: number, acc: Accidental): Note {
+  return acc ? { letter, octave, acc } : { letter, octave };
+}
+
 export function noteId(n: Note): string {
-  return `${n.letter}${n.octave}`;
+  return `${n.letter}${ACC_ID[n.acc ?? 0]}${n.octave}`;
 }
 
 export function parseNote(id: string): Note {
-  const m = /^([A-G])(-?\d)$/.exec(id);
+  const m = /^([A-G])(##|#|bb|b)?(-?\d)$/.exec(id);
   if (!m) throw new Error(`Bad note id: ${id}`);
-  return { letter: m[1] as Letter, octave: Number(m[2]) };
+  return withAcc(m[1] as Letter, Number(m[3]), m[2] ? ID_ACC[m[2]]! : 0);
 }
 
 export function midi(n: Note): number {
-  return 12 * (n.octave + 1) + SEMITONES[LETTERS.indexOf(n.letter)]!;
+  return 12 * (n.octave + 1) + SEMITONES[LETTERS.indexOf(n.letter)]! + (n.acc ?? 0);
+}
+
+/** 0–11, C = 0. */
+export function pitchClass(n: Note): number {
+  return ((midi(n) % 12) + 12) % 12;
+}
+
+/** Same key on the piano (same MIDI number), e.g. C♯4 and D♭4. */
+export function isEnharmonic(a: Note, b: Note): boolean {
+  return midi(a) === midi(b);
+}
+
+/**
+ * Ways to spell a MIDI pitch: natural first, then ♯, ♭ and (with `doubles`) 𝄪, 𝄫.
+ * 61 → C♯4, D♭4; 60 → C4, B♯3.
+ */
+export function spellings(m: number, opts: { doubles?: boolean } = {}): Note[] {
+  const accs: Accidental[] = opts.doubles ? [0, 1, -1, 2, -2] : [0, 1, -1];
+  const out: Note[] = [];
+  for (const acc of accs) {
+    const base = m - acc; // MIDI of the natural letter
+    const i = SEMITONES.indexOf(((base % 12) + 12) % 12);
+    if (i >= 0) out.push(withAcc(LETTERS[i]!, Math.floor(base / 12) - 1, acc));
+  }
+  return out;
+}
+
+/** Kid-facing name with real symbols and no octave: `F♯`, `B♭`, `C`. */
+export function displayName(n: Note): string {
+  return `${n.letter}${ACC_SYMBOL[n.acc ?? 0]}`;
+}
+
+/** Name for screen readers: "F sharp", "B double flat", "C". */
+export function spokenName(n: Note): string {
+  return `${n.letter}${ACC_SPOKEN[n.acc ?? 0]}`;
+}
+
+/** A note name without octave, as typed or answered: `'C'`, `'F#'`, `'Bb'`, `'F##'`, `'Bbb'`. */
+export type AnswerName = `${Letter}${'' | '#' | 'b' | '##' | 'bb'}`;
+
+export function answerName(n: Note): AnswerName {
+  return `${n.letter}${ACC_ID[n.acc ?? 0]}` as AnswerName;
+}
+
+const SYMBOL_ASCII: Record<string, string> = { '♯': '#', '♭': 'b', '𝄪': '##', '𝄫': 'bb', '♮': '' };
+
+/**
+ * Parses an answer like `F#`, `Bb`, `c`, `F♯` or `B♭` (letter case-insensitive, ASCII or real symbols).
+ * Returns null if it isn't a note name.
+ */
+export function parseAnswerName(s: string): { letter: Letter; acc: Accidental } | null {
+  const ascii = [...s.trim()].map((ch) => SYMBOL_ASCII[ch] ?? ch).join('');
+  const m = /^([A-Ga-g])(##|#|bb|b)?$/.exec(ascii);
+  if (!m) return null;
+  return { letter: m[1]!.toUpperCase() as Letter, acc: m[2] ? ID_ACC[m[2]]! : 0 };
 }
 
 export function frequency(n: Note): number {
