@@ -1,7 +1,6 @@
 import qrcode from 'qrcode-generator';
 import { Synth } from '../audio/synth';
 import { type Profile, ProgressCodeError, decodeProfile, encodeProgress } from '../core/codec';
-import { LESSONS, type LessonId } from '../core/diagnose';
 import {
   type MasteryEvent,
   type StudentState,
@@ -12,11 +11,10 @@ import {
   newStudent,
   recall,
 } from '../core/engine';
-import { hintFor } from '../core/hints';
 import { ITEMS, itemById } from '../core/items';
 import { LETTER_GROUP, LETTER_ITEMS, LETTER_MATH_MODE, isLetterItemId, letterEngine, letterLabel } from '../core/letters';
-import { type Clef, LETTERS, type Letter, frequency, noteId } from '../core/music';
-import { type Session, isFinished, nextQuestion, startSession, submit, summarize } from '../core/session';
+import { type Clef, noteId } from '../core/music';
+import { type Session, startSession, summarize } from '../core/session';
 import {
   type ModeId,
   type Settings,
@@ -28,16 +26,17 @@ import {
   saveState,
 } from '../core/storage';
 import { masteryCounts, renderMasteryKeyboard } from '../render/keyboard';
-import { renderStaff } from '../render/staff';
 import { clear, h } from './dom';
-import { LetterMathPlay, letterCounts, renderLetterMap } from './letterMath';
+import { letterCounts, letterMathPlay, renderLetterMap } from './letterMath';
+import { nameItPlay } from './nameIt';
+import type { PlayShell } from './playShell';
 import { renderThemePicker } from './themePicker';
 import { durabilityCard, homeBanners } from './pwa';
 import { getTheme } from '../core/themes';
 import { clearFx, summaryShower } from './world/fx';
 import { type IconName, icon, medal } from './world/icons';
 import { renderMascot, setMood } from './world/mascots';
-import { type Medal, PlayChrome, praise } from './world/playChrome';
+import type { Medal } from './world/playChrome';
 import { setCalm, setWorldMode } from './world/world';
 
 type Screen = 'home' | 'play' | 'letters' | 'summary' | 'map' | 'save' | 'import' | 'debug' | 'theme';
@@ -57,16 +56,11 @@ export class App {
   private state: StudentState;
   /** Letter Math has its own learner model (see src/core/letters.ts). */
   private letters: StudentState;
-  private letterPlay: LetterMathPlay | null = null;
+  private play: PlayShell | null = null;
   private settings: Settings;
   private synth = new Synth();
   private session: Session | null = null;
   private screen: Screen = 'home';
-  private phase: 'asking' | 'feedback' | 'lesson' = 'asking';
-  private isNewNote = false;
-  private pendingLesson: LessonId | null = null;
-  private advanceTimer = 0;
-  private chrome: PlayChrome | null = null;
   private importCode = '';
   private readonly debug: boolean;
 
@@ -99,10 +93,8 @@ export class App {
   }
 
   private go(screen: Screen): void {
-    window.clearTimeout(this.advanceTimer);
-    this.letterPlay?.dispose();
-    this.letterPlay = null;
-    this.chrome = null;
+    this.play?.dispose();
+    this.play = null;
     clearFx();
     this.screen = screen;
     clear(this.root);
@@ -111,7 +103,7 @@ export class App {
     const render = {
       home: () => this.renderHome(),
       play: () => this.renderPlay(),
-      letters: () => this.renderLetters(),
+      letters: () => this.renderPlay(),
       summary: () => this.renderSummary(),
       map: () => this.renderMap(),
       save: () => this.renderSave(),
@@ -309,189 +301,24 @@ export class App {
     this.go('play');
   }
 
-  private renderLetters(): HTMLElement {
-    this.letterPlay = new LetterMathPlay({
+  private renderPlay(): HTMLElement {
+    const lm = this.screen === 'letters';
+    const host = {
       session: this.session!,
-      state: this.letters,
-      synth: this.synth,
+      state: lm ? this.letters : this.state,
       now: () => this.now(),
       save: () => this.save(),
-      announce: (events) => this.announce(events),
+      announce: (events: MasteryEvent[]) => this.announce(events),
       muteButton: () => this.muteButton(),
       quit: () => this.go('home'),
       finish: () => this.go('summary'),
-    });
-    return this.letterPlay.render();
-  }
-
-  private renderPlay(): HTMLElement {
-    const pad = h(
-      'div',
-      { class: 'pad', role: 'group', 'aria-label': 'Note names' },
-      ...['A', 'B', 'C', 'D', 'E', 'F', 'G'].map((l) =>
-        h('button', { class: 'pad__key', 'data-answer': l, onClick: () => this.answer(l as Letter) }, l),
-      ),
-      h('button', { class: 'pad__key pad__idk', 'data-answer': '?', 'aria-label': "I don't know", onClick: () => this.answer(null) }, '?'),
-    );
-    const counts = masteryCounts(this.state);
-    this.chrome = new PlayChrome({
-      length: this.session!.length,
-      mastered: counts.gold + counts.silver,
-      onQuit: () => this.go('home'),
-      mute: this.muteButton(),
-      unit: 'keys',
-    });
-    const screen = h(
-      'main',
-      { class: 'screen play' },
-      this.chrome.topbar,
-      h('div', { class: 'staff-card' }, h('div', { class: 'banner' }), h('div', { class: 'staff-host' })),
-      this.chrome.coach,
-      pad,
-    );
-    queueMicrotask(() => this.ask());
-    return screen;
-  }
-
-  private q<T extends Element = HTMLElement>(sel: string): T {
-    return this.root.querySelector(sel) as T;
-  }
-
-  private setPadEnabled(enabled: boolean): void {
-    this.root.querySelectorAll<HTMLButtonElement>('.pad__key').forEach((b) => {
-      b.disabled = !enabled;
-      if (enabled) b.classList.remove('pad__key--right', 'pad__key--wrong');
-    });
-  }
-
-  private drawStaff(itemId: string, opts: Parameters<typeof renderStaff>[2] = {}): void {
-    const item = itemById(itemId);
-    const host = this.q('.staff-host');
-    clear(host);
-    host.append(renderStaff(item.note, item.clef, opts));
-  }
-
-  private playItem(itemId: string): void {
-    this.synth.note(frequency(itemById(itemId).note));
-  }
-
-  private ask(): void {
-    if (this.screen !== 'play' || !this.session) return;
-    const q = nextQuestion(this.session, this.state, this.now(), Math.random);
-    clear(this.q('.feedback'));
-    clear(this.q('.banner'));
-    // First appearance: quiz right away (pretesting). "?" or a miss teaches it (decision D35).
-    this.isNewNote = this.state.items[q.itemId]!.n === 0;
-    if (this.isNewNote) this.q('.banner').append(h('span', { class: 'badge' }, '✨ New note! Know it? If not, tap ?'));
-    this.phase = 'asking';
-    this.drawStaff(q.itemId);
-    this.setPadEnabled(true);
-    this.chrome?.asking(this.session.results.length, this.q('.staff-card'));
-    this.playItem(q.itemId);
-  }
-
-  private answer(letter: Letter | null): void {
-    if (this.screen !== 'play' || this.phase !== 'asking' || !this.session?.current) return;
-    const itemId = this.session.current.itemId;
-    const item = itemById(itemId);
-    const res = submit(this.session, this.state, letter, this.now());
-    this.save();
-    this.phase = 'feedback';
-    this.setPadEnabled(false);
-
-    const target = item.note.letter;
-    const targetBtn = this.q(`[data-answer="${target}"]`);
-    targetBtn.classList.add('pad__key--right');
-    const wrongBtn = res.outcome === 'wrong' ? this.q(`[data-answer="${letter}"]`) : null;
-    wrongBtn?.classList.add('pad__key--wrong');
-    this.drawStaff(itemId, { label: target, state: res.outcome === 'correct' ? 'correct' : res.outcome === 'wrong' ? 'wrong' : 'reveal' });
-    this.playItem(itemId);
-    this.announce(res.events);
-    const medalWon: Medal = res.events.some((e) => e.kind === 'gold') ? 'gold' : res.events.some((e) => e.kind === 'silver') ? 'silver' : null;
-    this.chrome?.react(res.outcome, this.session.results.length, targetBtn, wrongBtn, medalWon, target);
-
-    if (res.outcome === 'correct') {
-      this.q('.feedback').append(praise(medalWon));
-      this.advanceTimer = window.setTimeout(() => this.advance(), medalWon ? 1600 : 700);
-      return;
-    }
-
-    this.pendingLesson = res.lesson;
-    const hint = hintFor(item.note, item.clef);
-    const lead = this.isNewNote
-      ? `Meet ${target}! ${res.outcome === 'wrong' ? `(Not ${letter}.) ` : ''}`
-      : res.outcome === 'wrong'
-        ? `That one is ${target}, not ${letter}.`
-        : `That one is ${target}. Thanks for being honest!`;
-    this.q('.feedback').append(
-      h(
-        'div',
-        { class: `hint hint--${res.outcome}` },
-        h('p', { class: 'hint__lead' }, lead, ' ', hint.position),
-        hint.mnemonic && h('p', {}, '🧠 ', hint.mnemonic),
-        h('p', {}, '🧭 ', hint.landmark),
-        h('button', { class: 'primary', 'data-testid': 'continue', onClick: () => this.advance() }, 'Got it →'),
-      ),
-    );
-    this.q<HTMLElement>('[data-testid=continue]').focus();
-  }
-
-  private advance(): void {
-    if (this.screen !== 'play' || !this.session || this.phase !== 'feedback') return;
-    window.clearTimeout(this.advanceTimer);
-    if (this.pendingLesson) return this.showLesson(this.pendingLesson);
-    if (isFinished(this.session)) return this.go('summary');
-    this.ask();
-  }
-
-  private showLesson(id: LessonId): void {
-    this.pendingLesson = null;
-    this.phase = 'lesson';
-    const lesson = LESSONS[id];
-    const fb = this.q('.feedback');
-    clear(fb);
-    fb.append(
-      h(
-        'div',
-        { class: 'lesson', role: 'dialog', 'aria-label': lesson.title, 'data-testid': 'lesson' },
-        h('h2', {}, icon('bulb', 'lesson__icon'), lesson.title),
-        ...lesson.body.map((p) => h('p', {}, p)),
-        h(
-          'button',
-          {
-            class: 'primary',
-            'data-testid': 'continue',
-            onClick: () => {
-              this.phase = 'feedback';
-              this.advance();
-            },
-          },
-          'OK, got it',
-        ),
-      ),
-    );
-    this.q<HTMLElement>('[data-testid=continue]').focus();
+    };
+    this.play = lm ? letterMathPlay(host, this.synth) : nameItPlay(host, this.synth);
+    return this.play.render();
   }
 
   private onKey(e: KeyboardEvent): void {
-    if (this.screen === 'letters') return this.letterPlay?.onKey(e);
-    if (this.screen !== 'play' || e.metaKey || e.ctrlKey || e.altKey) return;
-    const k = e.key.toUpperCase();
-    if (this.phase === 'asking') {
-      if ((LETTERS as readonly string[]).includes(k)) {
-        e.preventDefault();
-        this.answer(k as Letter);
-      } else if (k === '?' || k === '/') {
-        e.preventDefault();
-        this.answer(null);
-      }
-    } else if (e.key === 'Enter' || e.key === ' ') {
-      const btn = this.root.querySelector<HTMLButtonElement>('[data-testid=continue]');
-      if (btn && document.activeElement !== btn) {
-        e.preventDefault();
-        btn.click();
-      }
-    }
+    this.play?.onKey(e);
   }
 
   // ───────────────────────── summary ─────────────────────────
