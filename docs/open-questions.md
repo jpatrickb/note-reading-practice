@@ -37,6 +37,7 @@
 - **iPad hand-checks pending:** Add to Home Screen icon/name; offline play in airplane mode; the update
   banner never appears mid-session; whether Safari progress carries over to the installed app
   (believed separate); Share button location wording; Save screen ✅/⚠️.
+- **Mixed-persona peak:** under fast pacing, one seed of a kid who knows next-letter/skips but not intervals peaked at 16 open-but-weak items (median ~5). Capping open-unseen items at 7 cut it to 9 but slowed knowers a lot; not adopted. Revisit with real play data.
 
 ## Parked
 
