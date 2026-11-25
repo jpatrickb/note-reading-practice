@@ -224,13 +224,13 @@ test('nothing moves over or behind the staff while a question is up (every theme
     await page.reload();
     await page.getByRole('button', { name: /Start/ }).click();
     const l = await nextNote(page);
-    await page.waitForTimeout(500);
-    expect(await movingOverStaff(page), theme).toEqual({ hits: [], particles: 0 });
+    // The world's own 0.4s opacity fade into play mode is a running transition on `div.world`
+    // (slow runners start it late), so wait for the guard's real state: everything settles still.
+    await expect.poll(() => movingOverStaff(page), { message: theme }).toEqual({ hits: [], particles: 0 });
     // Also after a correct answer's reaction: it has to be over before the next question appears.
     await page.locator(`[data-answer="${l}"]`).click();
     await nextNote(page);
-    await page.waitForTimeout(100);
-    expect(await movingOverStaff(page), `${theme} after an answer`).toEqual({ hits: [], particles: 0 });
+    await expect.poll(() => movingOverStaff(page), { message: `${theme} after an answer` }).toEqual({ hits: [], particles: 0 });
     // The mascot waits quietly during the question.
     await expect(page.locator('.coach__mascot')).toHaveAttribute('data-mood', 'thinking');
   }
