@@ -312,6 +312,7 @@ export class App {
       muteButton: () => this.muteButton(),
       quit: () => this.go('home'),
       finish: () => this.go('summary'),
+      stopSound: () => this.synth.stopAll(),
     };
     this.play = lm ? letterMathPlay(host, this.synth) : nameItPlay(host, this.synth);
     return this.play.render();

@@ -25,7 +25,7 @@ function setup(length = 3, mode: SessionMode<Letter> = NAME_IT_MODE) {
     announce: vi.fn(),
     muteButton: () => h('button', {}, 'mute'),
     quit: vi.fn(),
-    finish: vi.fn(),
+    finish: vi.fn(), stopSound: vi.fn(),
   };
   const shell: PlayShell<Letter> = nameItPlay(host, synth);
   document.body.append(shell.render());
@@ -153,6 +153,7 @@ describe('play shell', () => {
     s.shell.dispose();
     vi.advanceTimersByTime(5000);
     expect(s.host.finish).not.toHaveBeenCalled();
+    expect(s.host.stopSound).toHaveBeenCalled();
   });
 
   it('does nothing once the screen is gone', async () => {
@@ -271,7 +272,7 @@ describe('play shell: medals, lessons, dispose', () => {
 describe('play shell, Letter Math timings', () => {
   it('auto-advances after 1000 ms', async () => {
     const session = startSession([LETTER_GROUP], 3, LETTER_MATH_MODE);
-    const host = { session, state: letterEngine.newStudent(), now: () => T0, save: vi.fn(), announce: vi.fn(), muteButton: () => h('button'), quit: vi.fn(), finish: vi.fn() };
+    const host = { session, state: letterEngine.newStudent(), now: () => T0, save: vi.fn(), announce: vi.fn(), muteButton: () => h('button'), quit: vi.fn(), finish: vi.fn(), stopSound: vi.fn() };
     const shell = letterMathPlay(host, synth);
     document.body.append(shell.render());
     await tick();
@@ -287,7 +288,7 @@ describe('play shell, Letter Math timings', () => {
 describe('play shell, Letter Math feedback', () => {
   function lm() {
     const session = startSession([LETTER_GROUP], 3, LETTER_MATH_MODE);
-    const host = { session, state: letterEngine.newStudent(), now: () => T0, save: vi.fn(), announce: vi.fn(), muteButton: () => h('button'), quit: vi.fn(), finish: vi.fn() };
+    const host = { session, state: letterEngine.newStudent(), now: () => T0, save: vi.fn(), announce: vi.fn(), muteButton: () => h('button'), quit: vi.fn(), finish: vi.fn(), stopSound: vi.fn() };
     const shell = letterMathPlay(host, synth);
     document.body.append(shell.render());
     return { session, host };

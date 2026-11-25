@@ -54,6 +54,8 @@ export interface PlayHost<A extends string = string> {
   muteButton(): HTMLElement;
   quit(): void;
   finish(): void;
+  /** Silence anything still sounding (synth.stopAll) when the screen closes. */
+  stopSound(): void;
 }
 
 export const MEDAL_MS = 1600;
@@ -96,7 +98,7 @@ export class PlayShell<A extends string = string> {
     this.disposed = true;
     window.clearTimeout(this.timer);
     this.input.dispose?.();
-    // TODO(#20): call synth.stopAll() here once the audio work (PR #66) has merged.
+    this.host.stopSound();
   }
 
   private active(): boolean {
