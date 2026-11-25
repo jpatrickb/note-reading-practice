@@ -75,8 +75,12 @@ export function pianoKeys(low: string, high: string): PianoKey[] {
   return keys;
 }
 
-/** A tap that never produced a click (dragged off, interrupted) stops swallowing clicks after this. */
-const CLICK_GUARD_MS = 1500;
+/**
+ * A pointer release is followed by its click within a few ms. A click arriving longer than this after
+ * the release is not the pointer's (e.g. VoiceOver activating a key).
+ */
+const CLICK_AFTER_RELEASE_MS = 600;
+const ACTIVATE_KEYS = new Set(['Enter', ' ']);
 
 export function createPiano(options: PianoOptions): Piano {
   const labels = options.labels ?? 'middleC';
@@ -87,8 +91,9 @@ export function createPiano(options: PianoOptions): Piano {
   let enabled = true;
   let glow: number | null = null;
   let activePointer: number | null = null;
-  /** Pointers that went down on a key and may still produce a click to swallow. */
+  /** Pointers that went down on a key; their release is followed by a click to swallow. */
   const downPointers = new Set<number>();
+  /** Clicks still expected from released pointers, valid until swallowUntil. */
   let swallow = 0;
   let swallowUntil = -Infinity;
 
@@ -153,8 +158,6 @@ export function createPiano(options: PianoOptions): Piano {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault(); // no text selection / compatibility mouse events
     downPointers.add(e.pointerId);
-    swallow++;
-    swallowUntil = performance.now() + CLICK_GUARD_MS;
     if (activePointer !== null) return; // a second simultaneous finger is ignored
     activePointer = e.pointerId;
     for (const o of order) o.tabIndex = o === b ? 0 : -1;
@@ -163,14 +166,20 @@ export function createPiano(options: PianoOptions): Piano {
   }
 
   function onPointerEnd(e: PointerEvent) {
-    if (downPointers.delete(e.pointerId) && e.type === 'pointercancel') swallow = Math.max(0, swallow - 1);
+    // The click comes after the release, however long the key was held, so the window opens here.
+    // A cancelled pointer (scroll, interruption) produces no click.
+    if (downPointers.delete(e.pointerId) && e.type === 'pointerup') {
+      swallow++;
+      swallowUntil = performance.now() + CLICK_AFTER_RELEASE_MS;
+    }
     if (e.pointerId !== activePointer) return;
     activePointer = null;
     for (const o of order) o.classList.remove('is-down');
   }
 
-  // Keyboard (Enter/Space) and assistive tech activate buttons with a click. A pointer press already
-  // fired on pointerdown, so the click that follows it is swallowed: one press per pointer.
+  // Assistive tech (VoiceOver, switch access) activates buttons with a bare click. A pointer press already
+  // fired on pointerdown, so the click that follows its release is swallowed: one press per pointer.
+  // The keyboard never goes through here (onKeyDown), so a pending swallow can't eat a keyboard press.
   function onClick(e: MouseEvent) {
     if (swallow > 0 && performance.now() < swallowUntil) {
       swallow--;
@@ -184,6 +193,11 @@ export function createPiano(options: PianoOptions): Piano {
   function onKeyDown(e: KeyboardEvent) {
     const b = keyOf(e.target);
     if (!b) return;
+    if (ACTIVATE_KEYS.has(e.key)) {
+      e.preventDefault(); // handled here, so the button doesn't also fire a click
+      if (!e.repeat) press(b); // holding Enter/Space presses once
+      return;
+    }
     const i = order.indexOf(b);
     const next = { ArrowRight: i + 1, ArrowUp: i + 1, ArrowLeft: i - 1, ArrowDown: i - 1, Home: 0, End: order.length - 1 }[
       e.key
@@ -194,10 +208,15 @@ export function createPiano(options: PianoOptions): Piano {
   }
 
   const noMenu = (e: Event) => e.preventDefault();
+  // Space activates a button on keyup; cancel that too, the press already happened on keydown.
+  const onKeyUp = (e: KeyboardEvent) => {
+    if (ACTIVATE_KEYS.has(e.key) && keyOf(e.target)) e.preventDefault();
+  };
 
   deck.addEventListener('pointerdown', onPointerDown);
   deck.addEventListener('click', onClick);
   deck.addEventListener('keydown', onKeyDown);
+  deck.addEventListener('keyup', onKeyUp);
   deck.addEventListener('contextmenu', noMenu);
   // Pointer capture can't be relied on for mouse, so the release is watched document-wide.
   document.addEventListener('pointerup', onPointerEnd);

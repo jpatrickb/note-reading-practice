@@ -26,6 +26,11 @@ function pointer(type: string, target: EventTarget, init: PointerEventInit = {})
   target.dispatchEvent(e);
   return e;
 }
+function keydown(target: HTMLElement, k: string, repeat = false) {
+  const e = new KeyboardEvent('keydown', { key: k, repeat, bubbles: true, cancelable: true });
+  target.dispatchEvent(e);
+  return e;
+}
 /** A full tap as a browser delivers it: pointerdown, pointerup, then the compatibility click. */
 function tap(target: HTMLElement, pointerId = 1) {
   pointer('pointerdown', target, { pointerId });
@@ -180,19 +185,32 @@ describe('input', () => {
     expect(onPress).toHaveBeenLastCalledWith(62, 'D4');
   });
 
-  it('a cancelled pointer does not swallow the next keyboard press', () => {
+  it.each(['mouse', 'touch'])('a long %s hold presses exactly once (the click comes at release)', (pointerType) => {
+    const { onPress } = mount();
+    const now = vi.spyOn(performance, 'now').mockReturnValue(1000);
+    pointer('pointerdown', key('C4'), { pointerType });
+    now.mockReturnValue(4000); // held for 3 seconds
+    pointer('pointerup', key('C4'), { pointerType });
+    now.mockReturnValue(4005);
+    key('C4').click();
+    expect(onPress.mock.calls).toEqual([[60, 'C4']]);
+    now.mockRestore();
+  });
+
+  it('a cancelled pointer does not swallow the next assistive-tech click', () => {
     const { onPress } = mount();
     pointer('pointerdown', key('C4'));
     pointer('pointercancel', key('C4'));
-    key('D4').click(); // Enter/Space on a focused button
+    key('D4').click();
     expect(onPress.mock.calls).toEqual([[60, 'C4'], [62, 'D4']]);
   });
 
-  it('a stale pointer press stops swallowing clicks after a moment', () => {
+  it('a click long after a release (its own click went elsewhere) still presses', () => {
     const { onPress } = mount();
     const now = vi.spyOn(performance, 'now').mockReturnValue(1000);
     pointer('pointerdown', key('C4'));
-    now.mockReturnValue(5000); // dragged off: the click went elsewhere
+    pointer('pointerup', document.body); // dragged off and released outside the piano
+    now.mockReturnValue(2000);
     key('D4').click();
     expect(onPress).toHaveBeenCalledTimes(2);
     now.mockRestore();
@@ -220,10 +238,31 @@ describe('input', () => {
     expect(e.defaultPrevented).toBe(true);
   });
 
-  it('keyboard and assistive-tech clicks press the key', () => {
+  it('assistive-tech clicks press the key', () => {
     const { onPress } = mount();
     key('A#4').click();
     expect(onPress).toHaveBeenCalledWith(70, 'A#4');
+  });
+
+  it('Enter and Space press the focused key once, ignoring auto-repeat', () => {
+    const { onPress } = mount();
+    const enter = keydown(key('E4'), 'Enter');
+    expect(enter.defaultPrevented).toBe(true); // no extra click from the button
+    keydown(key('E4'), 'Enter', true);
+    keydown(key('E4'), 'Enter', true);
+    keydown(key('F4'), ' ');
+    const up = new KeyboardEvent('keyup', { key: ' ', bubbles: true, cancelable: true });
+    key('F4').dispatchEvent(up);
+    expect(up.defaultPrevented).toBe(true);
+    expect(onPress.mock.calls).toEqual([[64, 'E4'], [65, 'F4']]);
+  });
+
+  it('a keyboard press right after dragging off a key is not lost', () => {
+    const { onPress } = mount();
+    pointer('pointerdown', key('C4'));
+    pointer('pointerup', document.body); // released outside: no click reaches the piano
+    keydown(key('D4'), 'Enter');
+    expect(onPress.mock.calls).toEqual([[60, 'C4'], [62, 'D4']]);
   });
 
   it('disabled keys ignore presses but stay focusable', () => {
@@ -234,6 +273,7 @@ describe('input', () => {
     expect(key('C4').disabled).toBe(false);
     tap(key('C4'));
     key('D4').click();
+    keydown(key('E4'), 'Enter');
     expect(onPress).not.toHaveBeenCalled();
     piano.setEnabled(true);
     expect(key('C4').hasAttribute('aria-disabled')).toBe(false);
@@ -343,15 +383,18 @@ describe('marks and highlight', () => {
 });
 
 // The token pairs piano.css draws with, checked for every theme (like CONTRAST_CHECKS).
+// Small letters (labels: 'all') are 'text' (4.5:1); on marked keys they sit on a keyWhite chip.
 const PIANO_CHECKS: [keyof ThemeColors, keyof ThemeColors, 'text' | 'large', string][] = [
-  ['keyInk', 'keyWhite', 'text', 'letters, focus ring and hint ring on white keys'],
-  ['keyWhite', 'keyBlack', 'text', 'letters, focus ring and hint ring on black keys'],
-  ['keyDot', 'keyWhite', 'large', 'middle-C dot'],
-  ['rightInk', 'right', 'large', '✓ / ★ on right and found keys'],
-  ['wrongInk', 'wrong', 'large', '✗ on wrong keys'],
-  ['card', 'reveal', 'large', '◎ on target keys'],
-  ['meter', 'keyWhite', 'large', 'glow ring on white keys'],
-  ['meter', 'keyBlack', 'large', 'glow fill on black keys'],
+  ['keyInk', 'keyWhite', 'text', 'letters on white keys and on the chip of any marked key'],
+  ['keyWhite', 'keyBlack', 'text', 'letters on black keys'],
+  ['keyInk', 'keyWhite', 'large', 'focus ring and hint box on white (incl. glowing) keys'],
+  ['keyWhite', 'keyBlack', 'large', 'focus ring and hint box on black (incl. glowing) keys'],
+  ['keyDot', 'keyWhite', 'large', 'middle-C dot (with a keyWhite ring on marked keys)'],
+  ['rightInk', 'right', 'large', '✓ / ★ icon and focus ring on right and found keys'],
+  ['wrongInk', 'wrong', 'large', '✗ icon and focus ring on wrong keys'],
+  ['card', 'reveal', 'large', '◎ icon and focus ring on target keys'],
+  ['meter', 'keyWhite', 'large', 'glow ring and bar on white keys'],
+  ['meter', 'keyBlack', 'large', 'glow rim and bar on black keys'],
 ];
 
 describe('piano colors in every theme', () => {
