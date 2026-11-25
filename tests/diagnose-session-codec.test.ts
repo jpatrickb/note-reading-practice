@@ -125,13 +125,14 @@ describe('progress code', () => {
       const b = back.items[item.id]!;
       expect(b.unlocked).toBe(a.unlocked);
       expect(b.best).toBe(a.best);
-      expect(b.n).toBe(a.n);
-      expect(b.c).toBe(a.c);
+      // v3 caps counts at 15 (the engine only needs n >= 2 and c >= 3) and stores time on a log scale.
+      expect(b.n).toBe(Math.min(15, a.n));
+      expect(b.c).toBe(Math.min(15, a.c));
       expect(b.silverDay).toBe(a.silverDay);
       expect(b.m).toBeCloseTo(a.m, 1);
       expect(b.s / a.s).toBeGreaterThan(0.95);
       expect(b.s / a.s).toBeLessThan(1.05);
-      expect(Math.abs(b.last - a.last)).toBeLessThanOrEqual(3_600_000);
+      expect(Math.abs(b.last - a.last)).toBeLessThanOrEqual(0.046 * (now - a.last + 3_600_000));
     }
   });
 
@@ -151,15 +152,15 @@ describe('progress code', () => {
     expect(() => decodeProgress('abc', now)).toThrow(/too short/);
     expect(() => decodeProgress('!!!!!!!!!!!!!!!!', now)).toThrow(ProgressCodeError);
     expect(() => decodeProgress(code.slice(0, 30), now)).toThrow(ProgressCodeError);
-    // Version 3 header with a valid checksum (v2 adds Letter Math; see letters-codec tests).
-    const bytes = [3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    // An unknown (future) version with a valid trailing CRC-8 (v3 keeps that byte for this).
+    const bytes = [9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     let crc = 0;
     for (const b of bytes) {
       crc ^= b;
       for (let i = 0; i < 8; i++) crc = crc & 0x80 ? ((crc << 1) ^ 0x07) & 0xff : (crc << 1) & 0xff;
     }
-    const v3 = btoa(String.fromCharCode(...bytes, crc)).replace(/=+$/, '');
-    expect(() => decodeProgress(v3, now)).toThrow(/different version/);
+    const v9 = btoa(String.fromCharCode(...bytes, crc)).replace(/=+$/, '');
+    expect(() => decodeProgress(v9, now)).toThrow(/different version/);
   });
 });
 
