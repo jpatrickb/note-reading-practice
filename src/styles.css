@@ -265,12 +265,13 @@ h3 {
   background: var(--card);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  padding: 8px 12px;
+  /* The top strip is reserved for the "new" badge, so it never covers the staff's ledger notes. */
+  padding: 40px 12px 8px;
   position: relative;
 }
 .banner {
   position: absolute;
-  top: 10px;
+  top: 8px;
   left: 0;
   right: 0;
   text-align: center;
