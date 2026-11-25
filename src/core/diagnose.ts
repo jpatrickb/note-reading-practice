@@ -4,10 +4,10 @@ import type { StudentState } from './engine';
 import { itemById } from './items';
 import { type Clef, noteAtPosition, shiftLetter, staffPosition } from './music';
 
-export type LessonId = 'clefSwap:bass' | 'clefSwap:treble' | 'neighbor';
+export type LessonId = 'clefSwap:bass' | 'clefSwap:treble' | 'neighbor' | 'octave';
 
-const WINDOW = 8;
-const COOLDOWN_MS = 30 * 60_000;
+export const WINDOW = 8;
+export const COOLDOWN_MS = 30 * 60_000;
 
 const other = (c: Clef): Clef => (c === 'treble' ? 'bass' : 'treble');
 
@@ -54,6 +54,14 @@ export const LESSONS: Record<LessonId, { title: string; body: string[] }> = {
       'It looks like you might be reading treble clef notes as if they were bass clef.',
       'In treble clef, the line the clef curls around is G (Treble G).',
       'Bass clef names are two letters off here. Bottom line: treble is E, bass is G.',
+    ],
+  },
+  octave: {
+    title: 'Right letter, different key!',
+    body: [
+      'You found the right letter, but in a different octave. The piano repeats the same letters again and again.',
+      'Find middle C first: it sits just left of the two black keys in the middle of the piano, and on its own little line on the staff.',
+      'Then count up or down from middle C, one white key at a time, until you reach your note.',
     ],
   },
   neighbor: {

@@ -1,0 +1,16 @@
+/* Note Catcher: the staff above an on-screen piano, with a "?" under it. Theme variables only. */
+
+.catcher-input {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.catcher-input__piano {
+  width: 100%;
+}
+.catcher__idk {
+  min-width: 96px;
+  min-height: 56px;
+  padding: 0 28px;
+}
