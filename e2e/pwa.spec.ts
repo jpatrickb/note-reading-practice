@@ -14,12 +14,16 @@ function pngSize(buf: Buffer): string {
   return `${buf.readUInt32BE(16)}x${buf.readUInt32BE(20)}`;
 }
 
-async function answerOneQuestion(page: Page) {
+/**
+ * Answer one question. A wrong answer keeps the session parked on "Got it"; a right one
+ * auto-advances after 700ms, which a slow run can lose a race against.
+ */
+async function answerOneQuestion(page: Page, { wrong = false } = {}) {
   await page.getByRole('button', { name: /Start/ }).click();
   await expect(page.locator('.pad__key:not([disabled])').first()).toBeVisible();
-  const letter = (await page.locator('svg.staff').getAttribute('data-note'))![0]!;
-  await page.locator(`[data-answer="${letter}"]`).click();
-  await expect(page.locator('.praise')).toBeVisible();
+  const right = (await page.locator('svg.staff').getAttribute('data-note'))![0]!;
+  await page.locator(`[data-answer="${wrong ? (right === 'C' ? 'D' : 'C') : right}"]`).click();
+  await expect(page.locator(wrong ? '.hint' : '.praise')).toBeVisible();
 }
 
 /** Wait until the service worker controls the page (it claims it on the first visit). */
@@ -117,7 +121,7 @@ test.describe('service worker (Chromium only)', () => {
     const site = await serveDist();
     await page.goto(site.url);
     await waitForServiceWorker(page);
-    await answerOneQuestion(page); // mid-session now
+    await answerOneQuestion(page, { wrong: true }); // mid-session now, parked on "Got it"
 
     // Deploy a new version, then let the browser find it (as it would on its own, later).
     site.deploy('v2');
@@ -125,9 +129,8 @@ test.describe('service worker (Chromium only)', () => {
     await expect.poll(() => hasWaitingWorker(page)).toBe(true);
 
     // Still mid-session: no banner, no reload, the game carries on.
-    await expect(page.locator('.feedback')).toBeVisible();
+    await expect(page.locator('.hint')).toBeVisible();
     await expect(page.getByTestId('update-ready')).toHaveCount(0);
-    await page.waitForTimeout(500);
     await expect(page.locator('.pad__key').first()).toBeVisible();
 
     // Back home: the kid gets a small, optional prompt.

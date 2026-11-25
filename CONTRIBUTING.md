@@ -141,3 +141,11 @@ npm install
 npm run dev          # local dev server
 npm run tunnel       # HTTPS tunnel for testing on a real iPad (needs cloudflared)
 ```
+
+## Local testing is light; CI is heavy
+
+Locally, run the unit tests (`npm test`) plus only the e2e specs related to your change, on
+desktop-chromium (e.g. `npx playwright test e2e/letters.spec.ts --project=desktop-chromium`).
+Local Playwright runs use 2 workers. CI runs the full suite, including real WebKit. To hunt a flaky
+test with many repeats, use the manual **Stress** workflow (`gh workflow run stress.yml --ref <branch>`)
+instead of loading your machine.
