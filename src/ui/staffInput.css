@@ -1,0 +1,63 @@
+/* Tap-a-line-or-space staff (staffInput.ts). Theme variables only, so every theme restyles it. */
+
+.staff-input {
+  position: relative;
+}
+.staff-input__slider {
+  border-radius: var(--radius);
+  cursor: pointer;
+  /* The staff is the input: no scrolling, zooming, selecting or iOS callout while a finger is on it. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.staff-input__slider[aria-disabled='true'] {
+  cursor: default;
+}
+/* Big enough that each line/space band is ≥ 16px tall (min-h is set per range from the viewBox). */
+.staff-input__slider > .staff-input__svg {
+  width: 100%;
+  height: auto;
+  max-height: max(48dvh, var(--staff-input-min-h, 260px));
+}
+
+/* Ghost: where the note will go if the finger lifts now. The band and the pips at both gutters
+   stay visible beside a finger that covers the ghost note itself. */
+.staff-input__band {
+  fill: var(--reveal);
+  opacity: 0.25;
+}
+.staff-input__ghost,
+.staff-input__pip {
+  fill: var(--reveal);
+}
+.staff-input__ghost-layer .staff__ledger {
+  stroke: var(--reveal);
+}
+
+.staff-input__placed--right,
+.staff-input__mark--right {
+  fill: var(--right);
+}
+.staff-input__placed--wrong,
+.staff-input__mark--wrong {
+  fill: var(--wrong);
+}
+.staff-input__mark {
+  font: 800 24px var(--font);
+}
+.staff-input__reveal,
+.staff-input__reveal-label {
+  fill: var(--reveal);
+}
+
+.staff-input__status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
