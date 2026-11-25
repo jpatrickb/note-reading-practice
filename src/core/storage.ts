@@ -17,6 +17,8 @@ export interface Settings {
   mode?: ModeId;
   /** Visual theme; missing = the default theme. */
   theme?: ThemeId;
+  /** Calm mode: no ambient motion, small celebrations. Missing = off (the OS reduced-motion setting also turns it on). */
+  calm?: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = { clefs: ['treble'], muted: false };
@@ -61,6 +63,7 @@ export function clearState(store: KeyValueStore, engine: Engine = nameEngine): v
 export function loadSettings(store: KeyValueStore): Settings {
   const settings: Settings = { ...DEFAULT_SETTINGS, ...readJson<Partial<Settings>>(store, SETTINGS_KEY) };
   if (!isThemeId(settings.theme)) delete settings.theme; // e.g. a theme that was removed
+  if (typeof settings.calm !== 'boolean') delete settings.calm;
   return settings;
 }
 

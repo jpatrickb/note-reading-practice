@@ -42,43 +42,47 @@ export interface ThemeColors {
   lesson: string;
   /** Thin borders: text fields, table rules. */
   rule: string;
-  /** Color of the subtle background pattern (if the theme has one). */
-  pattern: string;
+  /** Bottom of the page's sky gradient (the top is `bg`); the illustrated world sits on it. */
+  sky: string;
+  /** The chosen option in a segmented control (mode / clef picker), and its text. */
+  selected: string;
+  selectedInk: string;
 }
 
 export interface Theme {
   id: string;
   name: string;
-  /** Shown in the picker and before the home-screen title. */
+  /** The theme's mascot character (drawn in src/ui/world/mascots.ts). */
   mascot: string;
+  /** What the mascot says on the home screen. */
+  greeting: string;
   blurb: string;
   dark: boolean;
   /** System font stacks only: no web font downloads. */
   font: string;
   radius: string;
   shadow: string;
-  /** CSS background-image for the page; use `var(--pattern)` for its color. */
+  /** CSS background-image for the page (no downloads); the illustrated world is drawn on top. */
   backdrop: string;
   colors: ThemeColors;
 }
 
 const ROUNDED = "ui-rounded, 'SF Pro Rounded', 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif";
 const SOFT_SHADOW = '0 2px 0 rgb(0 0 0 / 0.06), 0 8px 24px rgb(0 0 0 / 0.06)';
-const dots = (size: number, gap: number) =>
-  `radial-gradient(circle, var(--pattern) ${size}px, transparent ${size + 1}px) 0 0 / ${gap}px ${gap}px, ` +
-  `radial-gradient(circle, var(--pattern) ${size}px, transparent ${size + 1}px) ${gap / 2}px ${gap / 2}px / ${gap}px ${gap}px`;
+const SKY = 'linear-gradient(180deg, var(--bg) 25%, var(--sky))';
 
 export const THEMES = [
   {
     id: 'sunny',
     name: 'Sunny',
-    mascot: '🎵',
+    mascot: 'Sol the sun',
+    greeting: "Hi! Ready to read some notes?",
     blurb: 'Warm and bright',
     dark: false,
     font: ROUNDED,
     radius: '18px',
     shadow: SOFT_SHADOW,
-    backdrop: 'none',
+    backdrop: SKY,
     colors: {
       bg: '#fff8ec',
       card: '#ffffff',
@@ -108,19 +112,22 @@ export const THEMES = [
       tip: '#e7f5ff',
       lesson: '#fff9db',
       rule: '#ddd5c6',
-      pattern: '#fff8ec',
+      sky: '#ffe7c0',
+      selected: '#3d3a4b',
+      selectedInk: '#ffffff',
     },
   },
   {
     id: 'ocean',
     name: 'Ocean',
-    mascot: '🐳',
+    mascot: 'Pip the whale',
+    greeting: "Let's dive into some notes!",
     blurb: 'Cool blues and bubbles',
     dark: false,
     font: ROUNDED,
     radius: '22px',
     shadow: '0 2px 0 rgb(11 46 63 / 0.06), 0 8px 24px rgb(11 46 63 / 0.08)',
-    backdrop: dots(3, 44),
+    backdrop: SKY,
     colors: {
       bg: '#e8f5fa',
       card: '#ffffff',
@@ -150,19 +157,22 @@ export const THEMES = [
       tip: '#d0f0f7',
       lesson: '#fff6d6',
       rule: '#bed6e0',
-      pattern: '#d5ecf5',
+      sky: '#bfe4f0',
+      selected: '#0b4f6c',
+      selectedInk: '#ffffff',
     },
   },
   {
     id: 'forest',
     name: 'Forest',
-    mascot: '🦊',
+    mascot: 'Fern the fox',
+    greeting: "Let's explore the staff together!",
     blurb: 'Leafy greens and woods',
     dark: false,
     font: "'Avenir Next', Avenir, 'Segoe UI', system-ui, -apple-system, sans-serif",
     radius: '14px',
     shadow: '0 2px 0 rgb(31 45 28 / 0.08), 0 8px 20px rgb(31 45 28 / 0.08)',
-    backdrop: 'repeating-linear-gradient(135deg, var(--pattern) 0 2px, transparent 2px 26px)',
+    backdrop: SKY,
     colors: {
       bg: '#f0f4e8',
       card: '#fffef8',
@@ -192,19 +202,22 @@ export const THEMES = [
       tip: '#e3f1d5',
       lesson: '#fbf2cf',
       rule: '#cdd5bf',
-      pattern: '#e6ecda',
+      sky: '#d6e8c1',
+      selected: '#3a3226',
+      selectedInk: '#ffffff',
     },
   },
   {
     id: 'candy',
     name: 'Candy',
-    mascot: '🦄',
+    mascot: 'Luna the unicorn',
+    greeting: "Sweet! Let's read some notes!",
     blurb: 'Soft pastels and sprinkles',
     dark: false,
     font: ROUNDED,
     radius: '26px',
     shadow: '0 2px 0 rgb(61 31 58 / 0.06), 0 8px 24px rgb(194 37 92 / 0.08)',
-    backdrop: dots(4, 40),
+    backdrop: SKY,
     colors: {
       bg: '#fff0f6',
       card: '#ffffff',
@@ -234,22 +247,22 @@ export const THEMES = [
       tip: '#f1e6ff',
       lesson: '#fff6cc',
       rule: '#efcfe0',
-      pattern: '#fde1ee',
+      sky: '#fbd3e6',
+      selected: '#6f2dbd',
+      selectedInk: '#ffffff',
     },
   },
   {
     id: 'space',
     name: 'Space',
-    mascot: '🚀',
+    mascot: 'Orbit the robot',
+    greeting: "Ready for launch? Let's read!",
     blurb: 'Dark sky and bright stars',
     dark: true,
     font: ROUNDED,
     radius: '18px',
     shadow: '0 0 0 1px rgb(255 255 255 / 0.07), 0 8px 24px rgb(0 0 0 / 0.35)',
-    backdrop:
-      'radial-gradient(circle, var(--pattern) 1px, transparent 2px) 0 0 / 97px 97px, ' +
-      'radial-gradient(circle, var(--pattern) 1.5px, transparent 2.5px) 31px 53px / 151px 151px, ' +
-      'radial-gradient(circle, var(--pattern) 1px, transparent 2px) 67px 19px / 73px 73px',
+    backdrop: SKY,
     colors: {
       bg: '#0f1226',
       card: '#1c2042',
@@ -279,19 +292,22 @@ export const THEMES = [
       tip: '#243063',
       lesson: '#3a3424',
       rule: '#3d4270',
-      pattern: '#5d6499',
+      sky: '#1d2250',
+      selected: '#74c0fc',
+      selectedInk: '#0f1226',
     },
   },
   {
     id: 'studio',
     name: 'Studio',
-    mascot: '🎧',
+    mascot: 'Remy the record',
+    greeting: "Let's practice.",
     blurb: 'Clean and simple',
     dark: false,
     font: "system-ui, -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
     radius: '10px',
     shadow: '0 1px 2px rgb(0 0 0 / 0.08), 0 0 0 1px rgb(0 0 0 / 0.05)',
-    backdrop: 'none',
+    backdrop: SKY,
     colors: {
       bg: '#f4f4f5',
       card: '#ffffff',
@@ -321,7 +337,9 @@ export const THEMES = [
       tip: '#e0ecff',
       lesson: '#fef6d8',
       rule: '#d4d4d8',
-      pattern: '#f4f4f5',
+      sky: '#e9e9ee',
+      selected: '#18181b',
+      selectedInk: '#ffffff',
     },
   },
 ] as const satisfies readonly Theme[];
@@ -349,7 +367,6 @@ export function themeVars(theme: Theme): Record<string, string> {
   vars['--radius'] = theme.radius;
   vars['--shadow'] = theme.shadow;
   vars['--backdrop'] = theme.backdrop;
-  vars['--mascot'] = JSON.stringify(theme.mascot);
   return vars;
 }
 
@@ -417,6 +434,8 @@ export const CONTRAST_CHECKS: readonly ColorCheck[] = [
   { fg: 'ink', bg: 'bg', kind: 'text', where: 'titles and weekly goal on the page' },
   { fg: 'ink', bg: 'card', kind: 'text', where: 'card text, answer keys, hints, toasts' },
   { fg: 'ink', bg: 'secondary', kind: 'text', where: 'secondary buttons, clef picker' },
+  { fg: 'selectedInk', bg: 'selected', kind: 'text', where: 'chosen option in the mode / clef picker' },
+  { fg: 'ink', bg: 'sky', kind: 'text', where: 'text low on the page, over the bottom of the sky' },
   { fg: 'ink', bg: 'tip', kind: 'text', where: 'home-screen tip' },
   { fg: 'ink', bg: 'lesson', kind: 'text', where: 'mini-lessons' },
   { fg: 'muted', bg: 'bg', kind: 'text', where: 'muted text on the page' },
@@ -445,7 +464,10 @@ export const CONTRAST_CHECKS: readonly ColorCheck[] = [
   { fg: 'wrongInk', bg: 'wrong', kind: 'large', where: 'wrong answer key' },
   { fg: 'muted', bg: 'secondary', kind: 'large', where: '"?" key' },
   { fg: 'card', bg: 'reveal', kind: 'large', where: 'check mark on the chosen theme' },
-  { fg: 'right', bg: 'secondary', kind: 'large', where: 'progress bar fill' },
+  { fg: 'right', bg: 'secondary', kind: 'large', where: 'journey (progress) trail fill' },
+  // Selected vs unselected controls must be told apart at a glance, not just by a faint shadow.
+  { fg: 'selected', bg: 'secondary', kind: 'large', where: 'selected vs unselected segment' },
+  { fg: 'selected', bg: 'card', kind: 'large', where: 'selected segment vs the card around it' },
   // Mastery keyboard: the four levels must look clearly different from each other
   { fg: 'meter', bg: 'keyWhite', kind: 'large', where: 'learning bar on a key' },
   { fg: 'keyDot', bg: 'keyWhite', kind: 'large', where: 'middle-C dot' },
