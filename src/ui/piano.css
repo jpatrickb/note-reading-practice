@@ -1,0 +1,187 @@
+/* On-screen piano (src/ui/piano.ts). Theme variables only, so it follows every theme; the token pairs
+   used here are checked for every theme in tests/piano.test.ts. */
+
+.piano {
+  /* Fill the container, but grow past a narrow one (e.g. the 960px app column) when the viewport has
+     room, so white keys stay ≥ 44px wide: 22 keys fit in iPad landscape. */
+  --fit: max(100%, min(var(--whites) * 44px, 100vw - 32px));
+  container-type: inline-size;
+  width: var(--fit);
+  margin-inline: calc((100% - var(--fit)) / 2);
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.piano__keys {
+  --bw: calc(100% / var(--whites) * 0.72); /* black-key hit width (visible part is narrower) */
+  position: relative;
+  /* Keys keep a piano-like shape as the width changes; fallback height for old browsers. */
+  height: 180px;
+  height: clamp(150px, calc(100cqw / var(--whites) * 4.6), 280px);
+  touch-action: manipulation;
+}
+
+.piano__key {
+  position: absolute;
+  top: 0;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.piano__key--white {
+  left: calc(var(--x) * 100% / var(--whites));
+  width: calc(100% / var(--whites));
+  height: 100%;
+  padding-bottom: 12px;
+  background: var(--key-white);
+  color: var(--key-ink);
+  border: 1px solid var(--key-border);
+  border-radius: 0 0 8px 8px;
+  z-index: 1;
+}
+
+/* The button is the (wider) hit area; the transparent side padding stays tappable. */
+.piano__key--black {
+  left: calc(var(--x) * 100% / var(--whites) - var(--bw) / 2);
+  width: var(--bw);
+  height: 62%;
+  padding: 0 3px 10px;
+  background: var(--key-black);
+  background-clip: content-box;
+  color: var(--key-white);
+  border: 0;
+  border-radius: 0 0 6px 6px;
+  z-index: 2;
+}
+
+.piano__key.is-down {
+  transform: translateY(2px);
+}
+
+.piano__key:focus-visible {
+  outline: 3px solid var(--key-ink);
+  outline-offset: -7px; /* inset, so it never hides under or covers a neighbor */
+}
+.piano__key--black:focus-visible {
+  outline-color: var(--key-white);
+  outline-offset: -8px;
+}
+
+.piano__label {
+  font-size: clamp(0.8rem, 2.2cqw, 1.15rem);
+  font-weight: 700;
+  line-height: 1;
+}
+.piano__key--black .piano__label {
+  font-size: clamp(0.65rem, 1.6cqw, 0.85rem);
+}
+
+.piano__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--key-dot);
+}
+
+/* Marks: a fill color plus an icon (never color alone, D53). */
+.piano__icon {
+  font-size: clamp(1rem, 2.6cqw, 1.5rem);
+  font-weight: 800;
+  line-height: 1;
+}
+.piano__icon:empty {
+  display: none;
+}
+.piano__key[data-mark] .piano__icon {
+  display: block;
+}
+.piano__key--right .piano__icon::before {
+  content: '✓';
+}
+.piano__key--wrong .piano__icon::before {
+  content: '✗';
+}
+.piano__key--target .piano__icon::before {
+  content: '◎';
+}
+.piano__key--found .piano__icon::before {
+  content: '★';
+}
+.piano__key--hint .piano__icon::before {
+  content: '◇';
+}
+
+.piano__key--right,
+.piano__key--found {
+  background-color: var(--right);
+  color: var(--right-ink);
+}
+.piano__key--wrong {
+  background-color: var(--wrong);
+  color: var(--wrong-ink);
+}
+.piano__key--target {
+  background-color: var(--reveal);
+  color: var(--card);
+}
+/* A hint keeps the key's own color and gets a dashed ring, so it nudges without giving it away. */
+.piano__key--hint {
+  outline: 3px dashed var(--key-ink);
+  outline-offset: -7px;
+}
+.piano__key--black.piano__key--hint {
+  outline-color: var(--key-white);
+  outline-offset: -8px;
+}
+
+/* Read-only glow (Key to Staff, Echo): a meter-colored ring and bar. */
+.piano__key--glow::after {
+  content: '';
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  top: 10px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--meter);
+}
+.piano__key--white.piano__key--glow {
+  box-shadow: inset 0 0 0 4px var(--meter);
+}
+.piano__key--black.piano__key--glow {
+  background-color: var(--meter);
+}
+
+.piano--disabled .piano__key {
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .piano__key {
+    transition: transform 80ms ease-out;
+  }
+  .piano__key[data-mark] .piano__icon {
+    animation: piano-pop 160ms ease-out;
+  }
+  @keyframes piano-pop {
+    from {
+      transform: scale(0.6);
+    }
+    to {
+      transform: scale(1);
+    }
+  }
+}
