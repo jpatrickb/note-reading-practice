@@ -600,7 +600,7 @@ function decodeLegacy(bytes: Uint8Array, now: number, modes: readonly CoreMode[]
 // ───────────────────────────── public API ─────────────────────────────
 
 /** Decode a v1, v2 or v3 code into every mode's learner model (fresh for modes not in the code). */
-export function decodeProfile(code: string, now: number, modes: readonly CoreMode[] = CORE_MODES): Profile {
+function decodeWithSections(code: string, now: number, modes: readonly CoreMode[]): DecodedCode {
   let bytes: Uint8Array;
   try {
     bytes = fromBase64Url(code.trim());
@@ -627,7 +627,38 @@ export function decodeProfile(code: string, now: number, modes: readonly CoreMod
   const profile: Record<string, StudentState> = {};
   for (const m of modes) profile[m.id] = decoded[m.id] ?? m.engine.newStudent();
   for (const id in decoded) profile[id] ??= decoded[id]!;
-  return profile as Profile;
+  return { profile: profile as Profile, present: modes.filter((m) => decoded[m.id]).map((m) => m.id) };
+}
+
+/** A decoded code, and which modes it actually carried a section for (the rest are fresh stand-ins). */
+export interface DecodedCode {
+  profile: Profile;
+  /** Ids of the modes the code had a section for. v1 holds Name It, v2 Name It and Letter Math. */
+  present: string[];
+}
+
+export function decodeProfile(code: string, now: number, modes: readonly CoreMode[] = CORE_MODES): Profile {
+  return decodeWithSections(code, now, modes).profile;
+}
+
+/** Like decodeProfile, but also says which modes the code contained, so an import can leave the others alone. */
+export function decodeProfileSections(code: string, now: number, modes: readonly CoreMode[] = CORE_MODES): DecodedCode {
+  return decodeWithSections(code, now, modes);
+}
+
+/**
+ * The profile after importing a code: modes the code contains are replaced by the code's progress;
+ * every other mode keeps the device's. Practice days are unioned (newest kept, capped), never lost.
+ */
+export function mergeImport(device: Profile, imported: DecodedCode, modes: readonly CoreMode[] = CORE_MODES): Profile {
+  const out: Record<string, StudentState> = { ...device };
+  for (const m of modes) {
+    if (!imported.present.includes(m.id)) continue;
+    const incoming = imported.profile[m.id]!;
+    const days = [...new Set([...(device[m.id]?.practiceDays ?? []), ...incoming.practiceDays])].sort((a, b) => a - b);
+    out[m.id] = { ...incoming, practiceDays: days.slice(-PARAMS.maxPracticeDays) };
+  }
+  return out as Profile;
 }
 
 /** Encode Name It and (optionally) Letter Math progress. Kept for existing callers; see encodeProfile. */
