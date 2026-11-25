@@ -7,6 +7,8 @@ const baseURL = process.env.E2E_BASE_URL ?? `http://localhost:${port}`;
 export default defineConfig({
   testDir: 'e2e',
   fullyParallel: true,
+  // Local runs stay light (CI gets the default); see CONTRIBUTING.md.
+  workers: process.env.CI ? undefined : 2,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
