@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { NAME_IT_MODE, type SessionMode } from '../src/core/session';
 import { LETTER_GROUP, LETTER_MATH_MODE } from '../src/core/letters';
 import { LETTERS } from '../src/core/music';
+import { PLACE_IT_MODE, placeAnswerSpace } from '../src/core/placeIt';
 import { PARAMS, recall } from '../src/core/engine';
 import { CORE_MODES } from '../src/core/modes';
 import { MOVES, MOVE_MODE } from './fixtures/moves';
@@ -29,6 +30,7 @@ interface Case {
 const CASES: Case[] = [
   { name: 'Name It', mode: NAME_IT_MODE, groups: ['treble', 'bass'], space: LETTERS, luckySilver: 0 },
   { name: 'Letter Math', mode: LETTER_MATH_MODE, groups: [LETTER_GROUP], space: LETTERS, luckySilver: 0 },
+  { name: 'Place It', mode: PLACE_IT_MODE, groups: ['treble', 'bass'], space: placeAnswerSpace('treble'), luckySilver: 0 },
   { name: 'a mode with three answers', mode: MOVE_MODE, groups: ['a', 'b'], space: MOVES, luckySilver: 1 },
 ];
 const SEEDS = [1, 2, 3, 4, 5];
