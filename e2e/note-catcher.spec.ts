@@ -164,6 +164,16 @@ test.describe('on a phone', () => {
     const at = whites.indexOf(note);
     const slip = whites[at + 5] ?? whites[at - 5]!;
     await key(page, slip).scrollIntoViewIfNeeded();
+    // Let the smooth scroll finish: a tap that lands on a moving keyboard is (rightly) not an answer.
+    let last = -1;
+    await expect
+      .poll(async () => {
+        const now = await piano(page).evaluate((el) => el.scrollLeft);
+        const still = now === last;
+        last = now;
+        return still;
+      })
+      .toBe(true);
     await key(page, slip).tap();
     await expect(key(page, note)).toHaveAttribute('data-mark', 'target');
     await expect

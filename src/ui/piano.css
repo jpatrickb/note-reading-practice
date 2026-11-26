@@ -216,7 +216,7 @@
   scrollbar-width: thin;
 }
 .piano--scroll .piano__keys {
-  width: max(100%, calc(var(--whites) * 44px));
+  width: max(100%, calc(var(--whites) * 45px));
   touch-action: pan-x pan-y;
 }
 .piano--scroll .piano__key {
