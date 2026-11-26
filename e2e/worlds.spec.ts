@@ -4,6 +4,11 @@ import { type Page, expect, test } from '@playwright/test';
 // calm mode, reduced motion, reward size following real progress, wrong < right, and nothing moving
 // over or behind the staff while a question is up.
 
+// Nothing here is about offline support, so keep the service worker out: its first-visit claim and
+// install can cancel or replace a navigation on WebKit ("Navigation canceled by policy check",
+// "Execution context was destroyed"). pwa.spec.ts covers the service worker itself.
+test.use({ serviceWorkers: 'block' });
+
 const THEMES = ['sunny', 'ocean', 'forest', 'candy', 'space', 'studio'];
 const LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
 const shift = (l: string, n: number) => LETTERS[(((LETTERS.indexOf(l) + n) % 7) + 7) % 7]!;
@@ -22,6 +27,24 @@ async function nextNote(page: Page): Promise<string> {
   return (await page.locator('svg.staff').getAttribute('data-note'))![0]!;
 }
 
+/**
+ * Record every mood the mascot takes. A correct answer's "happy" lasts only until the 700ms
+ * auto-advance, which a slow runner can outrun before a check gets to look.
+ */
+async function recordMoods(page: Page) {
+  await page.addInitScript(() => {
+    const w = window as unknown as { moods: string[] };
+    w.moods = [];
+    new MutationObserver((records) => {
+      for (const r of records) {
+        const el = r.target as Element;
+        if (el.classList.contains('coach__mascot')) w.moods.push(el.getAttribute('data-mood') ?? '');
+      }
+    }).observe(document, { subtree: true, attributes: true, attributeFilter: ['data-mood'] });
+  });
+}
+const moods = (page: Page) => page.evaluate(() => (window as unknown as { moods: string[] }).moods);
+
 const fx = (page: Page) => page.locator('.fx-layer');
 
 async function lastReaction(page: Page) {
@@ -34,25 +57,42 @@ async function lastReaction(page: Page) {
 }
 
 /**
- * What actually runs right now, measured from the browser, not from numbers the app records about
- * itself: the longest finite animation (CSS animations + Web Animations, outside the ambient world) in ms from
- * its start, how many are running, and how many particles are alive on the canvas.
+ * What actually runs, measured from the browser, not from numbers the app records about itself:
+ * the longest finite animation (CSS animations + Web Animations, outside the ambient world) in ms
+ * from its start, how many are running, and how many particles are alive on the canvas.
+ *
+ * The reaction lasts under the 700ms auto-advance, so a Playwright round trip after the click can
+ * arrive too late on a slow runner. The page takes its own snapshot a frame after every answer tap
+ * instead; `reactionSnapshots` returns them in tap order.
  */
-function liveReaction(page: Page) {
-  return page.evaluate(() => {
-    let longest = 0;
-    let running = 0;
-    for (const a of document.getAnimations()) {
-      const el = (a.effect as KeyframeEffect | null)?.target as Element | null;
-      if (!el || el.closest('.world') || a.playState !== 'running' || a instanceof CSSTransition) continue; // transitions: colors, progress
-      const end = a.effect!.getComputedTiming().endTime as number;
-      if (!Number.isFinite(end)) continue; // idle loops (blink, breathe) are not a reaction
-      longest = Math.max(longest, end);
-      running++;
-    }
-    return { longest, running, particles: Number(document.querySelector('.fx-layer')?.getAttribute('data-active') ?? 0) };
+async function snapshotReactions(page: Page) {
+  await page.addInitScript(() => {
+    const w = window as unknown as { reactions: unknown[] };
+    w.reactions = [];
+    const measure = () => {
+      let longest = 0;
+      let running = 0;
+      for (const a of document.getAnimations()) {
+        const el = (a.effect as KeyframeEffect | null)?.target as Element | null;
+        if (!el || el.closest('.world') || a.playState !== 'running' || a instanceof CSSTransition) continue; // transitions: colors, progress
+        const end = a.effect!.getComputedTiming().endTime as number;
+        if (!Number.isFinite(end)) continue; // idle loops (blink, breathe) are not a reaction
+        longest = Math.max(longest, end);
+        running++;
+      }
+      return { longest, running, particles: Number(document.querySelector('.fx-layer')?.getAttribute('data-active') ?? 0) };
+    };
+    document.addEventListener('click', (e) => {
+      if (!(e.target as Element).closest('[data-answer]')) return;
+      requestAnimationFrame(() => w.reactions.push(measure()));
+    });
   });
 }
+type Live = { longest: number; running: number; particles: number };
+const reactionSnapshot = async (page: Page, n: number): Promise<Live> => {
+  await expect.poll(() => page.evaluate(() => (window as unknown as { reactions: unknown[] }).reactions.length)).toBeGreaterThan(n);
+  return page.evaluate((i) => (window as unknown as { reactions: Live[] }).reactions[i]!, n);
+};
 
 /** Running animations (CSS + Web Animations) whose element overlaps the staff card. */
 function movingOverStaff(page: Page) {
@@ -99,6 +139,7 @@ test('the selected mode / clef stands out clearly (Space)', async ({ page }) => 
 });
 
 test('calm mode: the toggle persists and turns ambient motion and effects off', async ({ page, hasTouch }) => {
+  await recordMoods(page);
   await seed(page, { theme: 'ocean' });
   await page.goto('/');
   await expect(page.locator('html')).toHaveAttribute('data-calm', 'false');
@@ -127,7 +168,7 @@ test('calm mode: the toggle persists and turns ambient motion and effects off', 
   await expect(fx(page)).toHaveAttribute('data-last-kind', 'correct');
   expect(await lastReaction(page)).toMatchObject({ particles: 0, ms: 0 });
   // The mascot still shows it is happy, just without the hop.
-  await expect(page.locator('.coach__mascot')).toHaveAttribute('data-mood', 'happy');
+  expect(await moods(page)).toContain('happy');
 });
 
 test('the OS reduced-motion setting turns calm mode on', async ({ page }) => {
@@ -149,16 +190,18 @@ test('the OS reduced-motion setting turns calm mode on', async ({ page }) => {
 });
 
 test('a wrong answer gets a smaller, gentler reaction than a correct one', async ({ page }) => {
+  await recordMoods(page);
+  await snapshotReactions(page);
   await seed(page, { theme: 'candy' });
   await page.goto('/');
   await page.getByRole('button', { name: /Start/ }).click();
 
   let l = await nextNote(page);
   await page.locator(`[data-answer="${l}"]`).click();
-  const rightLive = await liveReaction(page); // measured right away, while it is still running
+  const rightLive = await reactionSnapshot(page, 0);
   await expect(fx(page)).toHaveAttribute('data-last-kind', 'correct');
   const right = await lastReaction(page);
-  await expect(page.locator('.coach__mascot')).toHaveAttribute('data-mood', 'happy');
+  expect(await moods(page)).toContain('happy');
   expect(right.particles).toBeGreaterThan(0);
   expect(right.particles).toBeLessThanOrEqual(20); // small: the big show is saved for new mastery
   expect(right.ms).toBeLessThan(700); // fits inside the auto-advance
@@ -167,7 +210,7 @@ test('a wrong answer gets a smaller, gentler reaction than a correct one', async
 
   l = await nextNote(page);
   await page.locator(`[data-answer="${shift(l, 2)}"]`).click();
-  const wrongLive = await liveReaction(page);
+  const wrongLive = await reactionSnapshot(page, 1);
   await expect(fx(page)).toHaveAttribute('data-last-kind', 'wrong');
   const wrong = await lastReaction(page);
   await expect(page.locator('.coach__mascot')).toHaveAttribute('data-mood', 'encourage');
@@ -182,7 +225,7 @@ test('a wrong answer gets a smaller, gentler reaction than a correct one', async
   await page.getByTestId('continue').click();
   await nextNote(page);
   await page.locator('[data-answer="?"]').click();
-  const idkLive = await liveReaction(page);
+  const idkLive = await reactionSnapshot(page, 2);
   await expect(fx(page)).toHaveAttribute('data-last-kind', 'idk');
   const idk = await lastReaction(page);
   expect(idk.particles).toBe(0);
@@ -224,13 +267,13 @@ test('nothing moves over or behind the staff while a question is up (every theme
     await page.reload();
     await page.getByRole('button', { name: /Start/ }).click();
     const l = await nextNote(page);
-    await page.waitForTimeout(500);
-    expect(await movingOverStaff(page), theme).toEqual({ hits: [], particles: 0 });
+    // The world's own 0.4s opacity fade into play mode is a running transition on `div.world`
+    // (slow runners start it late), so wait for the guard's real state: everything settles still.
+    await expect.poll(() => movingOverStaff(page), { message: theme }).toEqual({ hits: [], particles: 0 });
     // Also after a correct answer's reaction: it has to be over before the next question appears.
     await page.locator(`[data-answer="${l}"]`).click();
     await nextNote(page);
-    await page.waitForTimeout(100);
-    expect(await movingOverStaff(page), `${theme} after an answer`).toEqual({ hits: [], particles: 0 });
+    await expect.poll(() => movingOverStaff(page), { message: `${theme} after an answer` }).toEqual({ hits: [], particles: 0 });
     // The mascot waits quietly during the question.
     await expect(page.locator('.coach__mascot')).toHaveAttribute('data-mood', 'thinking');
   }
