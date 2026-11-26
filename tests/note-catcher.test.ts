@@ -285,13 +285,13 @@ describe('the Note Catcher play screen', () => {
     const s = setup();
     await tick();
     expect(document.querySelectorAll('.piano__key--white')).toHaveLength(7);
+    expect(keyEl(answerOf(s))).not.toBeNull();
     Object.defineProperty(window, 'innerWidth', { value: 320, configurable: true });
     document.body.innerHTML = '';
     const small = setup();
     await tick();
     expect(document.querySelectorAll('.piano__key--white')).toHaveLength(6);
     expect(keyEl(answerOf(small))).not.toBeNull();
-    expect(keyEl(answerOf(s))).not.toBeNull();
   });
 
   it('a black key is not an answer: it says so, scores nothing and lets the kid tap again', async () => {
