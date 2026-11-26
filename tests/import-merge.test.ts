@@ -14,7 +14,10 @@ const THIRD = defineItemSet({
   answerOf: () => 'C',
 });
 const MODES: readonly CoreMode[] = [...CORE_MODES, { id: 'third', tag: 201, engine: createEngine(THIRD) }];
-const [NAME, LETTERS, THIRD_MODE] = MODES as [CoreMode, CoreMode, CoreMode];
+const byId = (id: string) => MODES.find((m) => m.id === id)!;
+const NAME = byId('name');
+const LETTERS = byId('letters');
+const ALL_IDS = MODES.map((m) => m.id);
 
 /** A learner model that has been played a bit, distinguishable by `seed`. */
 function played(mode: CoreMode, seed: number, days: number[] = []): StudentState {
@@ -33,7 +36,8 @@ function played(mode: CoreMode, seed: number, days: number[] = []): StudentState
 }
 
 const today = dayIndex(T0);
-const profileOf = (seed: number, days: number[] = []) => ({ name: played(NAME, seed, days), letters: played(LETTERS, seed, days), third: played(THIRD_MODE, seed, days) }) as unknown as Profile;
+// Every registered mode (plus the test-only third), so new modes are covered automatically.
+const profileOf = (seed: number, days: number[] = []) => Object.fromEntries(MODES.map((m) => [m.id, played(m, seed, days)])) as unknown as Profile;
 const importOf = (p: Profile, ids: string[]) => decodeProfileSections(encodeProfile(Object.fromEntries(ids.map((id) => [id, p[id]])), T0, MODES), T0, MODES);
 
 describe('importing a progress code', () => {
@@ -49,8 +53,8 @@ describe('importing a progress code', () => {
   });
 
   it('replaces every mode when the code has them all', () => {
-    const code = importOf(profileOf(9), ['name', 'letters', 'third']);
-    expect(code.present).toEqual(['name', 'letters', 'third']);
+    const code = importOf(profileOf(9), ALL_IDS);
+    expect([...code.present].sort()).toEqual([...ALL_IDS].sort());
     const merged = mergeImport(profileOf(5), code, MODES);
     for (const m of MODES) expect(merged[m.id]!.items[m.engine.set.items[0]!.id]!.n).toBe(9);
   });
@@ -121,7 +125,7 @@ describe('importing a progress code', () => {
     expect(code.present).toEqual([]);
     expect(code.unreadable).toBe(1);
     const mixed = decodeProfileSections(encodeProfile(profileOf(9), T0, MODES), T0, CORE_MODES);
-    expect(mixed.present).toEqual(['name', 'letters']);
+    expect([...mixed.present].sort()).toEqual(CORE_MODES.map((m) => m.id).sort());
     expect(mixed.unreadable).toBe(1);
     expect(mixed.profile.third).toBeUndefined();
   });
