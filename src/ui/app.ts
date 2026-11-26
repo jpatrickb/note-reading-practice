@@ -107,6 +107,8 @@ export class App {
   private go(screen: Screen): void {
     this.play?.dispose();
     this.play = null;
+    // Placement state lives only on the offer, the round and the result; any other screen drops it.
+    if (screen !== 'offer' && screen !== 'play' && screen !== 'placed') this.placing = null;
     this.synth.stopAll(); // nothing keeps sounding on another screen, whatever the screen was
     clearFx();
     clear(this.root);
@@ -350,6 +352,7 @@ export class App {
     const { mode } = this.active!;
     return renderPlacementOffer({
       mode,
+      lane: this.placing!.lane,
       onBack: () => this.go('home'),
       onBegin: () => this.startPlay(mode, false),
       // The round is the play screen with the run attached; nothing is saved until it finishes.

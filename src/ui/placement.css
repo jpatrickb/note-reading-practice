@@ -26,3 +26,12 @@
   font-weight: 700;
   text-align: center;
 }
+
+.placement__lane {
+  margin: 0;
+  font-weight: 700;
+  color: var(--muted);
+}
+.play--placement .journey {
+  display: none;
+}

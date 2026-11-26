@@ -123,6 +123,7 @@ export class PlayShell<A extends string = string> {
     if (id === null) return placement!.done();
     clear(this.chrome.feedback);
     clear(this.banner);
+    this.el.classList.add('play--placement'); // the round's length is not fixed: no progress bar
     this.banner.append(h('span', { class: 'badge badge--calm', 'data-testid': 'placement-hint' }, 'Warm-up: not sure? Tap ?'));
     this.isNew = false;
     this.phase = 'asking';

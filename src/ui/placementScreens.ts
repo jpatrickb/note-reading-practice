@@ -13,7 +13,7 @@ import { renderMascot } from './world/mascots';
 const mascot = () => renderMascot(getTheme(document.documentElement.dataset.theme).id, { mood: 'happy', alive: true, cls: 'placement__mascot' });
 
 /** Offered, not forced: both choices are equally easy to tap. */
-export function renderPlacementOffer(o: { mode: UiMode; onPlace(): void; onBegin(): void; onBack(): void }): HTMLElement {
+export function renderPlacementOffer(o: { mode: UiMode; lane: string; onPlace(): void; onBegin(): void; onBack(): void }): HTMLElement {
   return h(
     'main',
     { class: 'screen placement', 'data-testid': 'placement-offer' },
@@ -23,11 +23,12 @@ export function renderPlacementOffer(o: { mode: UiMode; onPlace(): void; onBegin
       { class: 'card placement__card' },
       mascot(),
       h('h2', {}, 'Ready to play?'),
-      h('p', {}, 'Show me what you already know, and we will start in the right place. It takes about a minute. Not sure about one? Just tap ?.'),
+      o.mode.lanes === 'clefs' && h('p', { class: 'placement__lane', 'data-testid': 'placement-lane' }, `${o.lane[0]!.toUpperCase()}${o.lane.slice(1)} clef`),
+      h('p', {}, 'Show me what you know! Not sure? Tap ?.'),
       h(
         'div',
         { class: 'placement__choices' },
-        h('button', { class: 'primary big', 'data-testid': 'placement-start', 'data-autofocus': true, onClick: o.onPlace }, 'Show me what you know'),
+        h('button', { class: 'secondary big', 'data-testid': 'placement-start', onClick: o.onPlace }, 'Show me what you know'),
         h('button', { class: 'secondary big', 'data-testid': 'placement-skip', onClick: o.onBegin }, 'Start from the beginning'),
       ),
     ),

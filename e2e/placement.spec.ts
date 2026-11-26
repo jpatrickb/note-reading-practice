@@ -103,3 +103,19 @@ test('Letter Math offers placement too, and "?" all the way starts at the beginn
   }
   await expect(page.getByTestId('placement-line')).toContainText("Let's start with the first ones");
 });
+
+test('after quitting the round, "Start from the beginning" is a normal session with normal feedback', async ({ page }) => {
+  await startNameIt(page);
+  await page.getByRole('button', { name: 'Show me what you know' }).click();
+  await expect(page.locator('.pad__key:not([disabled])').first()).toBeVisible();
+  await page.locator('[data-answer="?"]').click();
+  await page.getByRole('button', { name: 'Stop and go home' }).click();
+  await page.getByRole('button', { name: /Start/ }).click();
+  await page.getByRole('button', { name: 'Start from the beginning' }).click();
+  await expect(page.getByText('✨ New note!')).toBeVisible();
+  const letter = (await page.locator('svg.staff').getAttribute('data-note'))![0]!;
+  await page.locator(`[data-answer="${letter === 'A' ? 'B' : 'A'}"]`).click();
+  await expect(page.locator('.hint')).toBeVisible();
+  await expect(page.getByTestId('continue')).toBeVisible();
+  await expect(page.locator('.pad__key--wrong')).toHaveCount(1);
+});

@@ -103,8 +103,13 @@ describe('the result', () => {
   it('the screens: two equal offers, and a result with one button', () => {
     const onPlace = vi.fn();
     const onBegin = vi.fn();
-    const offer = renderPlacementOffer({ mode: nameItMode, onPlace, onBegin, onBack: vi.fn() });
+    const offer = renderPlacementOffer({ mode: nameItMode, lane: 'bass', onPlace, onBegin, onBack: vi.fn() });
     expect(offer.textContent).toContain('Show me what you know');
+    expect(offer.querySelector('[data-testid=placement-lane]')!.textContent).toBe('Bass clef');
+    const a = offer.querySelector('[data-testid=placement-start]') as HTMLElement;
+    const b = offer.querySelector('[data-testid=placement-skip]') as HTMLElement;
+    expect(a.className).toBe(b.className); // same style: neither is the default
+    expect(offer.querySelector('[data-autofocus]')).toBeNull();
     (offer.querySelector('[data-testid=placement-skip]') as HTMLElement).click();
     expect(onBegin).toHaveBeenCalled();
     (offer.querySelector('[data-testid=placement-start]') as HTMLElement).click();
@@ -143,6 +148,12 @@ describe('the placement round on the play shell', () => {
   }
 
   beforeEach(() => vi.useFakeTimers());
+
+  it('hides the progress bar: the round has no fixed length', async () => {
+    setup();
+    await Promise.resolve();
+    expect(document.querySelector('.play')!.classList.contains('play--placement')).toBe(true);
+  });
 
   it('asks the round with no new-note banner, and a right answer gets only a quiet thanks', async () => {
     const { run, host } = setup();
