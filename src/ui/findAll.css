@@ -1,0 +1,12 @@
+/* Find All: reuses the Note Catcher keyboard layout; only the prompt and counter are its own. Theme variables only. */
+
+.find-question {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.find-count {
+  font-weight: 700;
+  color: var(--ink);
+}
