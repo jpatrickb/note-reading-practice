@@ -1,5 +1,5 @@
 import { Synth } from '../audio/synth';
-import { type Profile, ProgressCodeError, decodeProfile, encodeProfile } from '../core/codec';
+import { type DecodedCode, type Profile, ProgressCodeError, decodeProfileSections, encodeProfile, mergeImport } from '../core/codec';
 import { type MasteryEvent, WEEKLY_GOAL, daysThisWeek, isDusty, level, recall } from '../core/engine';
 import { codeFromHash, codeFromPasted, progressQr } from '../core/progress-qr';
 import type { Clef } from '../core/music';
@@ -479,15 +479,31 @@ export class App {
   }
 
   private renderImport(): HTMLElement {
-    let incoming: Profile | null = null;
+    let incoming: DecodedCode | null = null;
     let error = '';
     try {
-      incoming = decodeProfile(this.importCode, this.now());
+      incoming = decodeProfileSections(this.importCode, this.now());
     } catch (e) {
       error = e instanceof ProgressCodeError ? e.message : 'That code didn’t work.';
     }
     // The modes this code carries progress for (a mode the kid never played has no section).
-    const inCode = incoming ? this.modes.filter((m) => hasProgress(incoming![m.core.id])) : [];
+    const inCode = incoming ? this.modes.filter((m) => incoming!.present.includes(m.core.id)) : [];
+    const kept = this.modes.filter((m) => !inCode.includes(m) && hasProgress(this.profile[m.core.id]));
+    const names = (ms: readonly UiMode[]) => ms.map((m) => m.title).reduce((a, t, i, all) => (i === 0 ? t : `${a}${i === all.length - 1 ? ' and ' : ', '}${t}`), '');
+    const swaps = inCode.filter((m) => hasProgress(this.profile[m.core.id]));
+    const adds = inCode.filter((m) => !swaps.includes(m));
+    const effect = [
+      swaps.length > 0 ? `This swaps your ${names(swaps)} progress for the one in the code.` : '',
+      adds.length > 0 ? `This adds ${names(adds)}.` : '',
+      kept.length > 0 ? `Your ${names(kept)} progress stays.` : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const lessThanDevice = swaps.filter((m) => {
+      const c = m.counts(incoming!.profile[m.core.id]!);
+      const d = m.counts(this.profile[m.core.id]!);
+      return c.gold < d.gold || (c.gold === d.gold && c.silver < d.silver);
+    });
     return h(
       'main',
       { class: 'screen import' },
@@ -504,27 +520,35 @@ export class App {
                 'ul',
                 { class: 'import-modes', 'data-testid': 'import-modes' },
                 ...inCode.map((m) => {
-                  const c = m.counts(incoming![m.core.id]!);
+                  const c = m.counts(incoming!.profile[m.core.id]!);
                   return h('li', { 'data-mode': m.id }, `${m.title}: 🥇 ${c.gold} gold and 🥈 ${c.silver} silver`);
                 }),
               ),
-              h('p', { class: 'warn' }, 'Loading it will replace the progress on this device.'),
+              inCode.length > 0
+                ? h('p', { class: 'warn', 'data-testid': 'import-effect' }, effect)
+                : h('p', { class: 'muted', 'data-testid': 'import-effect' }, incoming.unreadable > 0 ? 'This code is from a newer version of the game, so this version can’t read it yet.' : 'Nothing on this device would change.'),
+              ...lessThanDevice.map((m) => {
+                const c = m.counts(incoming!.profile[m.core.id]!);
+                const d = m.counts(this.profile[m.core.id]!);
+                return h('p', { class: 'muted', 'data-testid': 'import-less', 'data-mode': m.id }, `Careful: this code has ${c.gold} gold and ${c.silver} silver in ${m.title}; this device has ${d.gold} and ${d.silver}.`);
+              }),
               h(
                 'div',
                 { class: 'row' },
+                inCode.length > 0 &&
                 h(
                   'button',
                   {
                     class: 'primary',
                     'data-testid': 'confirm-import',
                     onClick: () => {
-                      this.profile = incoming!;
+                      this.profile = mergeImport(this.profile, incoming!);
                       saveProfile(localStorage, this.profile);
                       this.toast(inCode.length > 0 ? `Progress loaded: ${inCode.map((m) => m.title).join(', ')}` : 'Progress loaded!', 'unlock');
                       this.go('home');
                     },
                   },
-                  'Replace my progress',
+                  'Load this progress',
                 ),
                 h('button', { class: 'secondary', onClick: () => this.go('home') }, 'Cancel'),
               ),
