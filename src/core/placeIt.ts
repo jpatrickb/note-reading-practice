@@ -7,6 +7,7 @@
 // progress-code indices stable whatever happens to Name It.
 
 import { createEngine } from './engine';
+import { TEACHING_ORDER as NAME_IT_ORDER } from './items';
 import { defineItemSet } from './itemset';
 import { type Clef, type Note, describePosition, noteAtPosition, parseNote, staffPosition } from './music';
 import type { SessionMode } from './session';
@@ -33,14 +34,14 @@ export const CANONICAL_ORDER: readonly string[] = [
 ];
 
 /**
- * Teaching order per clef: Name It's first 12 per clef (guide notes first, all 7 letters among the
- * first 7). The rest of Name It's range stays out for now: every item costs about 6 characters of
- * progress code, and 34 would push a fully played profile over the 1,200-character budget (and the QR
- * code past version 22). They can be appended later, once the code gets smaller.
+ * Teaching order per clef: Name It's first 12 notes per clef (guide notes first, all 7 letters among
+ * the first 7), derived so hint anchoring (src/core/hints.ts uses Name It's order) can never drift.
+ * The rest of Name It's range stays out for now to keep the progress code small; append later.
  */
+export const PLACE_NOTES = 12;
 export const TEACHING_ORDER: Record<Clef, string[]> = {
-  treble: ['G4', 'C4', 'A4', 'F4', 'E4', 'B4', 'D4', 'C5', 'D5', 'E5', 'F5', 'G5'],
-  bass: ['F3', 'G3', 'E3', 'A3', 'D3', 'C3', 'B2', 'G2', 'A2', 'C4', 'B3', 'F2'],
+  treble: NAME_IT_ORDER.treble.slice(0, PLACE_NOTES),
+  bass: NAME_IT_ORDER.bass.slice(0, PLACE_NOTES),
 };
 
 function build(clef: Clef): PlaceItem[] {
@@ -75,14 +76,10 @@ export function placeRange(clef: Clef): { low: number; high: number } {
   return { low: Math.min(...ps), high: Math.max(...ps) };
 }
 
-/** Every position either clef offers, as answer strings (what a guesser could tap). */
-export function placeAnswerSpace(): string[] {
-  const all = new Set<number>();
-  for (const clef of ['treble', 'bass'] as const) {
-    const { low, high } = placeRange(clef);
-    for (let p = low; p <= high; p++) all.add(p);
-  }
-  return [...all].sort((a, b) => a - b).map(String);
+/** Every position one clef offers, as answer strings: what a kid sees (12 per clef). */
+export function placeAnswerSpace(clef: Clef = 'treble'): string[] {
+  const { low, high } = placeRange(clef);
+  return Array.from({ length: high - low + 1 }, (_, i) => String(low + i));
 }
 
 // ───────────────────────── wording ─────────────────────────
@@ -98,10 +95,13 @@ export function whichOne(item: PlaceItem): string {
   return (same.length === 2 ? ['lower', 'higher'] : ['lowest', 'middle', 'highest'])[at] ?? '';
 }
 
+/** "an" before A, E and F (spoken "ay", "ee", "eff"), else "a". */
+export const article = (letter: string): string => ('AEF'.includes(letter) ? 'an' : 'a');
+
 /** The question, split so the letter can be shown big: "Put the lower [G] on the treble staff." */
 export function placePrompt(item: PlaceItem): { lead: string; letter: string; tail: string } {
   const which = whichOne(item);
-  return { lead: `Put ${which ? `the ${which}` : 'a'}`, letter: item.note.letter, tail: `on the ${item.clef} staff.` };
+  return { lead: `Put ${which ? `the ${which}` : article(item.note.letter)}`, letter: item.note.letter, tail: `on the ${item.clef} staff.` };
 }
 
 export function placeLabel(id: string): string {
@@ -119,7 +119,7 @@ export function wrongPlacement(item: PlaceItem, answerPos: number): string {
     const n = Math.abs(diff) / 7;
     return `That's a ${item.note.letter}, but the one ${COUNTS[n] ?? `${n} octaves`} ${diff > 0 ? 'lower' : 'higher'}. Close!`;
   }
-  return `That spot is ${'AEF'.includes(spot.letter) ? 'an' : 'a'} ${spot.letter}, not ${item.note.letter}.`;
+  return `That spot is ${article(spot.letter)} ${spot.letter}, not ${item.note.letter}.`;
 }
 
 /** Where the right note goes, as words: "the 2nd line". */

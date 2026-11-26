@@ -2,7 +2,8 @@
 // Place It: the wording, the octave rule and the play screen (name → staff).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Synth } from '../src/audio/synth';
-import { PLACE_IT, PLACE_IT_MODE, placeAnswerSpace, placeEngine, placeItem, placePrompt, placeRange, whichOne, wrongPlacement } from '../src/core/placeIt';
+import { TEACHING_ORDER as NAME_IT_ORDER } from '../src/core/items';
+import { PLACE_IT, TEACHING_ORDER, PLACE_IT_MODE, placeAnswerSpace, placeEngine, placeItem, placePrompt, placeRange, whichOne, wrongPlacement } from '../src/core/placeIt';
 import { startSession } from '../src/core/session';
 import { h } from '../src/ui/dom';
 import { placeItMode, placeItPlay, renderPlaceMap } from '../src/ui/placeIt';
@@ -17,7 +18,9 @@ describe('Place It wording', () => {
     expect(placePrompt(placeItem('place:treble:G4'))).toEqual({ lead: 'Put the lower', letter: 'G', tail: 'on the treble staff.' });
     expect(whichOne(placeItem('place:treble:G5'))).toBe('higher');
     expect(whichOne(placeItem('place:treble:A4'))).toBe('');
-    expect(placePrompt(placeItem('place:treble:A4')).lead).toBe('Put a');
+    expect(placePrompt(placeItem('place:treble:A4')).lead).toBe('Put an');
+    expect(placePrompt(placeItem('place:treble:B4')).lead).toBe('Put a');
+    expect(placePrompt(placeItem('place:bass:E3')).lead).toBe('Put an');
     expect(whichOne(placeItem('place:bass:D3'))).toBe('');
   });
 
@@ -41,9 +44,14 @@ describe('Place It wording', () => {
     expect(wrongPlacement(g4, g4.pos + 5)).toBe('That spot is an E, not G.');
   });
 
+  it('teaches in Name It\'s order, so hint anchoring never drifts', () => {
+    for (const clef of ['treble', 'bass'] as const) expect(TEACHING_ORDER[clef]).toEqual(NAME_IT_ORDER[clef].slice(0, 12));
+  });
+
   it('offers every position of the clef, whatever is unlocked', () => {
     expect(placeRange('treble').low).toBeLessThanOrEqual(-2);
-    expect(placeAnswerSpace().length).toBeGreaterThan(12);
+    expect(placeAnswerSpace()).toHaveLength(12);
+    expect(placeAnswerSpace('bass')).toHaveLength(12);
   });
 });
 
