@@ -404,3 +404,246 @@ played, and v1 codes always decode.
 
 **D96. The selected control uses its own token (`selected`) and must reach 3:1 against unselected ones and against the card.**
 *Why:* the old Space segment was nearly invisible. A rule in the contrast gate keeps any new theme from repeating that.
+
+### 2026-11-26: Phase 1 build loop, batch 2 (PRs #64–#85)
+
+**Play shell (PR #64)**
+
+**D97. Turn-based, one-outcome-per-question modes go through `PlayShell`; a new mode is a `PlayMode` object, not a new flow.** Real-time (Note Catcher timeouts) and multi-pick (Find All) modes may extend it with hooks.
+*Why:* the answer and advance guardrails (D11, D15, D30, D35) are enforced in one place for every mode that fits, so they can't drift.
+
+**D98. The shell, not the mode, appends "Got it →" and decides auto-advance vs. wait.**
+*Why:* a mode can't auto-advance a wrong answer or skip the explanation. It only picks the correct-answer delay (`correctMs`); silver and gold always get 1600 ms.
+
+**D99. The shell is generic over the answer type; correctness comes only from `engine.grade`.** `AnswerInput<A>` takes item ids and has an optional `dispose()`.
+*Why:* Place It, accidentals, Word Decoder and Find All need non-letter answers, partial key entry and listener cleanup.
+
+**D100. `AnswerInput` is the seam for answer UIs** (`setEnabled`, `markRight`, `markWrong`, `fromKey`).
+*Why:* accidentals and Word Decoder can swap the pad without touching the flow.
+
+**Engine: generic answers (PR #65)**
+
+**D101. The engine is generic over the answer type; Name It and Letter Math stay letters.** An item's `answerOf` is both its teaching answer and its answer key; `isCorrect` is optional and only for modes with several valid answers.
+*Why:* one engine keeps need-based selection, asymmetric scoring and reward tiers (D55) for every answer type, and `answerOf` as the key keeps D33's rule meaningful for all of them.
+
+**D102. Canonical (progress-code) order is declared separately from teaching order, per item set, and is append-only.** `defineItemSet` throws if it isn't exactly the set's items, and `tests/canonical-order.test.ts` pins every index. This supersedes D31's "append to the flattened lanes" convention.
+*Why:* appending to the lanes would shift every bass index and silently corrupt saved codes. An explicit order makes a missing append fail loudly at load time, and teaching order can be edited without touching saved progress.
+
+**D103. Every mode must pass the shared guardrail suite (`tests/guardrails.test.ts`) before it ships.** A random guesser unlocks nothing and stays below 50% recall; a button-masher unlocks nothing; "?" costs less than a miss; the first three open items in a lane have different answers; picks go through `engine.selectItem`; replaying mastered material earns nothing.
+*Why:* the guardrails (D10, D12, D33, D34) belong to both the engine and the content, so each mode has to prove them in one place.
+
+**D104. Modes should offer at least 5 answers, or add content-level protection.** The suite allows one lucky silver for the 3-answer test mode and none for letter modes.
+*Why:* with 3 answers a random guesser stumbled into a silver in 2 of 5 runs of 600 guesses (0 of 5 for 7 letters). A 2-answer mode like step/skip would be easy to game with this engine as tuned.
+
+**D105. The pre-#18 lockstep reference (`tests/reference/`) is temporary.** Whoever next changes the learner model on purpose deletes it and `tests/lockstep.test.ts`. The golden order test is permanent.
+*Why:* the lockstep test proves a refactor changed nothing; afterwards it would only block intended tuning.
+
+**Audio (PR #66)**
+
+**D106. Sequences are scheduled on the audio clock with a 0.2 s look-ahead and a 25 ms timer.**
+*Why:* setTimeout-based playback drifts and stutters when the main thread is busy (rendering SVG, particles); the audio clock doesn't.
+
+**D107. `stopAll()` is called when a screen closes, and muting calls it too.**
+*Why:* a tune must never keep playing after the kid leaves the screen or turns sound off. Wiring it into each screen is a one-line follow-up in `app.ts`.
+
+**D108. Polyphony cap of 16; melody outranks chord, which outranks bass, when voices are stolen.**
+*Why:* old iPads stutter with too many oscillators, and losing accompaniment is far less noticeable than losing the tune.
+
+**D109. Chord and bass voices use fewer, rounder partials, a slower attack, a darker filter and lower levels.**
+*Why:* accompaniment must support the melody, not compete with it.
+
+**D110. The silent-switch fix is a generated silent WAV looped in an `<audio>` element, started in the unlock gesture and paused while muted.** Not yet checked on a real iPhone.
+*Why:* iOS routes media elements through the playback channel, which ignores the ring/silent switch. Generating the clip avoids a binary asset and a precache entry, and D4 (sound always on) is what makes the switch matter.
+
+**Multi-note staff (PR #67)**
+
+**D111. Long phrases scroll, they don't wrap, and are never drawn below 1.8 CSS px per unit.** Past `maxWidth` the SVG sets `data-scroll` inside a focusable, labelled region.
+*Why:* wrapping needs a clef per system and breaks stable `data-index` and cursor tracking. Kids follow one line.
+
+**D112. Without `beats`, events are whole notes with no stems.**
+*Why:* this matches the Name It look; stems and values appear only when a mode asks for them.
+
+**D113. Note names reach the DOM only after answering.** The group label is "note 3 of 6" until the event is answered, and the SVG label never lists notes. Visible labels are drawn only for events the caller names.
+*Why:* the answer must not leak to screen readers or DOM text.
+
+**D114. Stem rule: down from the middle line up; chords use the average of the extreme notes; stems are 3.5 spaces and reach at least the middle line.** Accidentals in chords go into columns top, then bottom, then middle when they would sit under 6 positions apart.
+*Why:* standard engraving, so what kids see matches printed music.
+
+**D115. Right and wrong are marked with ✓ and ✗ above the event as well as by color.**
+*Why:* D53 says color alone is never the cue.
+
+**D116. The cursor is a tinted box (16% `--primary`) with an outline, and has no animation.**
+*Why:* it is visible without relying on color, and there is nothing to gate on reduced motion. A per-theme test checks it against ink, line, right, wrong and reveal.
+
+**Ledger lines (PR #71)**
+
+**D117. A hint counts only from a guide note taught at or before the note.**
+*Why:* a hint must never point at a landmark the kid hasn't met.
+
+**D118. High C and Low C are taught first among the far notes** (treble C6 B5 A3 B3; bass D4 E4 C2 D2), with no letter repeated back to back.
+*Why:* the guide notes anchor the hints for their neighbours (D33).
+
+**D119. New ledger notes are appended to `CANONICAL_ORDER` at 26–33.**
+*Why:* D102 is append-only, so old codes decode unchanged.
+
+**D120. Hint text for all items is pinned by a table test.**
+*Why:* a hint change should be deliberate.
+
+**Placement core (PR #73)**
+
+**D121. Placement is a binary search with 2 correct answers per level and spot checks, and takes at most 15 answers.**
+*Why:* two right per level makes a lucky guess 1 in 49 per level, and three spot checks below the frontier make a lucky placement about 1 in a few thousand, with no guess detector needed (D10).
+
+**D122. Placement answers are evidence, not play: no run, no first-try credit, no unlock, no silver, gold or polish.**
+*Why:* this keeps D12 (rewards only for new mastery in play) and stops the fast track from counting the same answers twice (D101–D105).
+
+**D123. Placed items start at recall 0.75 and unseen, so they stay weak until answered.**
+*Why:* a wrong placement is corrected by the normal need-weighted engine within a session, and a right one is confirmed just as fast by first-try credit.
+
+**D124. Placement runs only on a fresh lane, and needs an answer space of at least 5.**
+*Why:* it is a start, not a way to reset progress, so it can't farm or wipe anything. A 3-answer mode would make a lucky level 1 about 1 in 9 (D104).
+
+**D125. Placement answers count as practice days and feed `confusions` and `recentErrors` for the items that open.** Answers on items that stay locked above the final open set are not recorded.
+*Why:* a placement day is real practice. Locked items keep their intro and transfer prior, which is the simplest option.
+
+**D126. Errors are asymmetric on purpose: under-placement is cheap, over-placement is not.**
+*Why:* the fast track climbs quickly from too low, while too high puts struggling items in front of a kid.
+
+**Compact progress codes (PR #74)**
+
+**D127. Compact-gold layout is signalled per section by `recordLen = 0` plus a layout byte, and is written only for sections that contain a gold item.**
+*Why:* the decoder already rejects `recordLen < 5` as "different version", so no layout change is ever silent. Sections without gold stay byte-identical.
+
+**D128. Gold records keep m, s, hours since last answer, and n/c, and drop rt and silverDay (decoded as 0 and -1).**
+*Why:* the engine never reads rt or silverDay for a gold item, while n and c still feed the transfer prior. Teacher statistics come from sync (D80).
+
+**D129. The QR carries `#import32=` with uppercase base32 as a two-segment (byte + alphanumeric) code. `#import=` base64 links and text codes stay valid.**
+*Why:* `#` and `=` aren't QR alphanumeric characters, so the URL stays readable to phone cameras, and a distinct key avoids guessing the encoding.
+
+**D130. Tests keep a frozen copy of the previous codec (`tests/fixtures/codec-v3-frozen.ts`) and golden v3 fixtures. The frozen copy is never edited.**
+*Why:* "an old decoder says different version" and "the new codec matches the old one" can only be shown against the real old code.
+
+**D131. From this build on, unknown `#import<key>=` keys say "different version".** Builds from before this change ignore `#import32=` and land on the home screen, silently when offline.
+*Why:* when online, the service worker update reloads the app at launch and keeps the fragment, so the new build opens the import screen. This is a known gap until then.
+
+**Mode registry (PR #76)**
+
+**D132. A mode is one `defineMode` file plus one line in `src/ui/modes.ts` (and one permanent `CORE_MODES` entry); the app never names a mode.**
+*Why:* parallel modes touch only their own files, and nothing in the app can drift from the mode list.
+
+**D133. The home screen lists modes as cards under fixed group headings. A locked mode is shown with a friendly reason, never hidden, and can't be selected.** The chosen card is marked by a check and outline as well as color.
+*Why:* kids should see what is coming and what unlocks it (D12), and D53 says color is never the only cue.
+
+**D134. Choosing a mode or clef redraws only the practice card, and the Start row is sticky.**
+*Why:* with about ten modes the list scrolls, and picking a card must not jump the page or hide Start.
+
+**D135. `Settings.mode` is any registered mode id (unknown falls back to Name It); `Settings.lanes` stores each mode's clef choice, with `clefs` kept as the last choice and default.**
+*Why:* old settings keep working, and a mode registered later never breaks a saved one.
+
+**D136. `normalize()` repairs rather than rejects.** Missing or malformed fields take the fresh learner's value, sound fields are untouched, and unknown items and fields are kept. A save with items but no `version` is treated as version 1.
+*Why:* a kid's progress must never brick the app, whether from an older build, a partial write or a hand edit (#72).
+
+**D137. Only the active mode's state is written after an answer. My progress shows only modes with progress; the home pill and weekly goal count every mode (extends D59).**
+*Why:* ten modes would otherwise rewrite ten learner models on every tap, and an empty map for an unplayed mode is noise.
+
+**D138. A test-only locked mode exists behind `?debug`.**
+*Why:* the locked state needs an end-to-end test before any real mode is locked.
+
+**Per-mode import (PR #80)**
+
+**D139. Import is per mode, by the sections present in the code.**
+*Why:* older codes and codes from kids who never played a mode have no section. Treating a missing section as "reset" would silently destroy progress.
+
+**D140. Practice days are unioned per replaced mode (capped at 21), not replaced.**
+*Why:* the weekly goal is device-wide, and a code must never lower it.
+
+**D141. A mode with a section replaces the device's learner model wholesale instead of merging items.**
+*Why:* merging item by item would mix two learner models and make the code stop meaning what it says.
+
+**Place It (PR #82)**
+
+**D142. Place It's answer is the staff position, and the wrong octave is wrong.**
+*Why:* it's the only reading that tests octave placement. Kids need "the one an octave higher" feedback, not a free pass.
+
+**D143. When a clef offers several of a letter, the prompt says "the lower/higher G" (lowest, middle, highest for three).** The count runs over the whole item list so the wording is stable.
+*Why:* otherwise a right placement can be marked wrong for an ambiguous question.
+
+**D144. The question is silent; the pitch plays with the answer.**
+*Why:* sound at question time would let a kid with a good ear skip reading. D3 and D4 still hold, since every answer sounds.
+
+**D145. Place It ships 12 notes per clef (24 items), derived from Name It's order.**
+*Why:* this keeps the progress code small and hint anchoring in step with Name It.
+
+**D146. Place It owns its canonical order (`place:` ids), tag 3.**
+*Why:* it is independent of Name It's list, so editing one never moves indices in the other.
+
+**Placement UI (PR #83)**
+
+**D147. Placement is offered on the first Start of a fresh lane only, as two equal choices, neither focused.**
+*Why:* D12 (kids choose what to practice), and "offered, not forced": a kid who wants to begin at the beginning is never nudged.
+
+**D148. During placement every answer gets the same neutral "Thanks!"** There are no right or wrong marks, no teaching and no medals. The ask-time note still plays (D4).
+*Why:* answers are evidence, not play. Showing a miss would turn a warm-up into a test.
+
+**D149. With several clefs chosen, only the first fresh lane is placed.**
+*Why:* 15 answers per lane would stretch a one-minute warm-up. The other lane starts at the beginning, which errs toward placing low.
+
+**D150. Quitting mid-round discards it; nothing is saved and the offer returns.**
+*Why:* a partial round is weak evidence, and a kid who stops isn't asking to be placed.
+
+**D151. The result line is mode-owned (`placedLine`) and never shows a score.**
+*Why:* a number would turn placement into a grade. A starting place is all the kid needs.
+
+**Note Catcher (PR #78)**
+
+**D152. Key names aren't spoken while a question is open.** Each key's accessible name is its place ("Piano key 5 of 17"); keys are named again after the answer.
+*Why:* the letter-to-key mapping is what this mode teaches, and a spoken name per key would turn it into Name It for a screen reader user.
+
+**D153. Nothing sounds when a question appears.** The pressed key sounds, and after a miss or "?" the right key sounds too.
+*Why:* the pitch of the shown note would let a kid hunt for the key by ear. D4 still holds, since every note answered plays.
+
+**D154. Narrow screens show a window of as many white keys as fit at 44px or more (at least 6), at a random offset. Wide screens show the whole range.**
+*Why:* keys stay at least 44px at every supported width, and the window's position says little about the answer.
+
+**D155. A black key is not an answer.** It shows a gentle tip and isn't scored, so the answer space is white keys only.
+*Why:* black keys are never right here and overlap neighbours on small screens, so a mis-tap should cost nothing.
+
+**D156. The piano shows no middle-C dot during a question; it appears with the answer.**
+*Why:* a dot on every C4 question would let a kid mark C4 by its absence.
+
+**D157. A mode carries its own mini-lessons (`SessionMode.lessons`).**
+*Why:* five modes are adding lessons, and one shared table would conflict every time.
+
+**Word Decoder (PR #79)**
+
+**D158. Any wrong note makes the whole word wrong, and a wrong note can't be undone.**
+*Why:* an undo would let a kid retry into the answer, defeating asymmetric scoring (D10). A mis-tap costs one word, and the hint teaches the note.
+
+**D159. A Word Decoder item is a (clef, word) pair with the typed word as its answer, graded per word.** All notes right is correct; any "?" with nothing wrong is "?"; any wrong note is wrong.
+*Why:* one engine answer per question keeps the shared shell and session unchanged, and "?" costs less than a miss (D11).
+
+**D160. A word opens only when every letter has a silver Name It note in that clef.** The mode needs 5 silver notes in a clef, covering the starter words. A fresh model with no Name It source opens only the starters.
+*Why:* word mastery must not stand in for note reading. Replaying a mastered word earns nothing (D12).
+
+**D161. Notes for a word are drawn fresh each play from the kid's silver Name It notes, in any octave.** Ledger notes appear only once silver there.
+*Why:* the picture can't be memorized, and the kid is never shown a note they haven't earned.
+
+**D162. Later letters of a long word partly measure vocabulary (a kid can predict CABBAGE after C-A-B).** Per-note judging, the silver gate, and one silver and one gold per word bound what that can earn.
+*Why:* the design can't stop prediction, so the decision records it and the mitigation.
+
+**D163. Word response time is judged per note (`ItemSet.rtUnits`).**
+*Why:* a 7-letter word shouldn't look slower than a 3-letter one against the kid's own baseline (D10, D55).
+
+**D164. Word lists are data in `src/core/words.ts`: only A–G, 3 to 7 letters, original and kid-safe, in Name It's teaching order.** The progress-code order is separate and append-only.
+*Why:* a teacher can review and edit words without touching logic or moving saved records (D33 variety).
+
+**D165. Word Decoder's registration uses core tag 7.**
+*Why:* it is the number the issue reserved, and tags are permanent (D79).
+
+**Owner decisions**
+
+**D166. Code budget: the progress-code budget is 1,800 characters / QR version 29.** It was set from a real two-iPad camera test on 2026-11-25, where QR codes up to 2,200 characters (v32) all scanned. It keeps one step of margin and supersedes D82's 1,200.
+
+**D167. Phase 2: sync goes ahead after the Phase 1 modes (issue #11).** With sync, the QR will carry only a short sync code. The planner's design (Pages Functions + D1) stands, and it needs D1 → Edit on the Cloudflare token.
+
+**D168. Silver rule: corrupted `best` values clamp to the 0–2 range (3 → 2), so a kid never loses a gold key to corrupted data.**
