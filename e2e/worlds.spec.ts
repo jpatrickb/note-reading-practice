@@ -1,4 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
+import { skipPlacement } from './skipPlacement';
 
 // Illustrated worlds + game feel, and the learning-science guardrails that keep them in check:
 // calm mode, reduced motion, reward size following real progress, wrong < right, and nothing moving
@@ -162,6 +163,7 @@ test('calm mode: the toggle persists and turns ambient motion and effects off', 
   expect(await runningIn(page, '.mascot')).toBe(0);
 
   await page.getByRole('button', { name: /Start/ }).click();
+  await skipPlacement(page);
   const l = await nextNote(page);
   await page.locator(`[data-answer="${l}"]`).click();
   await expect(page.locator('.praise')).toBeVisible();
@@ -183,6 +185,7 @@ test('the OS reduced-motion setting turns calm mode on', async ({ page }) => {
   await expect(toggle).toBeDisabled();
   await page.getByRole('button', { name: 'Done' }).click();
   await page.getByRole('button', { name: /Start/ }).click();
+  await skipPlacement(page);
   const l = await nextNote(page);
   await page.locator(`[data-answer="${l}"]`).click();
   await expect(fx(page)).toHaveAttribute('data-last-kind', 'correct');
@@ -195,6 +198,7 @@ test('a wrong answer gets a smaller, gentler reaction than a correct one', async
   await seed(page, { theme: 'candy' });
   await page.goto('/');
   await page.getByRole('button', { name: /Start/ }).click();
+  await skipPlacement(page);
 
   let l = await nextNote(page);
   await page.locator(`[data-answer="${l}"]`).click();
@@ -239,6 +243,7 @@ test('new silver mastery gets the big celebration: confetti, a flying key and a 
   await seed(page, { theme: 'space' });
   await page.goto('/');
   await page.getByRole('button', { name: /Start/ }).click();
+  await skipPlacement(page);
   await expect(page.getByTestId('trophy')).toContainText('0');
   let correct = 0;
   for (let i = 0; i < 20; i++) {
@@ -266,6 +271,7 @@ test('nothing moves over or behind the staff while a question is up (every theme
     await page.evaluate((t) => localStorage.setItem('nrp:v1:settings', JSON.stringify({ clefs: ['treble'], muted: true, theme: t })), theme);
     await page.reload();
     await page.getByRole('button', { name: /Start/ }).click();
+    await skipPlacement(page);
     const l = await nextNote(page);
     // The world's own 0.4s opacity fade into play mode is a running transition on `div.world`
     // (slow runners start it late), so wait for the guard's real state: everything settles still.
@@ -284,6 +290,7 @@ test('the summary celebrates, and the journey reaches its goal', async ({ page }
   await seed(page, { theme: 'forest' });
   await page.goto('/');
   await page.getByRole('button', { name: /Start/ }).click();
+  await skipPlacement(page);
   for (let i = 0; i < 20; i++) {
     const l = await nextNote(page);
     await page.locator(`[data-answer="${l}"]`).click();
@@ -299,6 +306,7 @@ test('the "new note" badge never covers the staff', async ({ page }) => {
   await seed(page, { theme: 'sunny' });
   await page.goto('/');
   await page.getByRole('button', { name: /Start/ }).click();
+  await skipPlacement(page);
   await nextNote(page);
   const badge = await page.locator('.banner .badge').boundingBox();
   const staff = await page.locator('.staff').boundingBox();

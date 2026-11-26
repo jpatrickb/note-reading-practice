@@ -1,4 +1,5 @@
 // Installable, offline-capable PWA: manifest, service worker, install tip, update prompt.
+import { skipPlacement } from './skipPlacement';
 import { readFile } from 'node:fs/promises';
 import { type AddressInfo } from 'node:net';
 import { createServer } from 'node:http';
@@ -20,6 +21,7 @@ function pngSize(buf: Buffer): string {
  */
 async function answerOneQuestion(page: Page, { wrong = false } = {}) {
   await page.getByRole('button', { name: /Start/ }).click();
+  await skipPlacement(page);
   await expect(page.locator('.pad__key:not([disabled])').first()).toBeVisible();
   const right = (await page.locator('svg.staff').getAttribute('data-note'))![0]!;
   await page.locator(`[data-answer="${wrong ? (right === 'C' ? 'D' : 'C') : right}"]`).click();
