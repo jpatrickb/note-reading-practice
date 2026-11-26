@@ -8,7 +8,8 @@
 //     `wordReadable`): the real reading evidence lives in Name It, and a kid can't unlock words ahead
 //     of it by memorizing.
 //  2. The notes are drawn fresh on every play from the Name It notes the kid has at silver
-//     (`chooseNotes`), so the picture is never the same twice and a letter can sit in any octave.
+//     (`chooseNotes`): a letter can sit in any octave, but consecutive notes stay close (small jumps)
+//     until the kid earns gold in Name It.
 //  3. Rewards come only from the shared engine, once per word (silver, then gold on another day);
 //     replaying a mastered word earns nothing (D12), so repeating a known word cannot farm anything.
 //
@@ -18,7 +19,7 @@
 import { PARAMS, type StudentState, createEngine, level } from './engine';
 import { defineItemSet } from './itemset';
 import { ITEMS } from './items';
-import { type Clef, type Letter, type Note, noteId } from './music';
+import { type Clef, type Letter, type Note, staffPosition } from './music';
 import type { SessionMode } from './session';
 import { WORD_LISTS } from './words';
 
@@ -111,24 +112,53 @@ export const WORD_MODE: SessionMode<string> = { engine: wordEngine };
 
 // ───────────────────────────── playing a word ─────────────────────────────
 
+/** The Name It notes of a clef that are gold, as a share (0..1) of all that clef's Name It notes: how advanced the kid is there. */
+export function goldShare(name: StudentState | undefined, clef: Clef): number {
+  if (!name) return 0;
+  const all = ITEMS.filter((i) => i.clef === clef);
+  const gold = all.filter((i) => name.items[i.id] && level(name.items[i.id]!) === 'gold').length;
+  return all.length === 0 ? 0 : gold / all.length;
+}
+
+/** Chance that a note takes a bigger leap instead of the closest note: 0 with no gold, at most 0.5 with all gold. */
+export const leapChance = (share: number) => share * 0.5;
+/** The biggest leap (in staff steps) a bigger-leap note may take: 3 steps with no gold, up to 7 (an octave) with all gold. */
+export const leapMax = (share: number) => 3 + Math.round(share * 4);
+/** The middle line of the staff (position 4): the first note of a word is drawn near it. */
+const MIDDLE = 4;
+
 /**
  * The notes to draw for a word: one per letter, each from the Name It notes of that letter the kid
- * has at silver (any octave: they vary from play to play), and a different note for a repeated letter
- * when the kid has more than one. A note the kid has not earned is NEVER drawn: a letter with no silver
+ * has at silver (any octave). A note the kid has not earned is NEVER drawn: a letter with no silver
  * note throws (the gate and `clefReady` make that unreachable for any word that is offered).
+ *
+ * SMALL JUMPS (issue #88): the first note is the one nearest the middle of the staff, and each next
+ * note is the silver note of its letter CLOSEST to the previous one (ties at random), so a beginner
+ * reads stepwise melodies. As the kid advances (`goldShare`: the share of the clef's Name It notes at
+ * gold) a note sometimes (`leapChance`) takes a bigger leap instead, to any silver note of its letter
+ * within `leapMax` steps, so reading across the staff is still practiced. A beginner (no gold) never leaps.
+ * Deterministic for a seeded `rng`.
  */
 export function chooseNotes(item: WordItem, name: StudentState | undefined, rng: () => number): Note[] {
   const silver = silverNotes(name, item.clef);
-  const used = new Set<string>();
-  return [...item.word].map((letter) => {
+  const share = goldShare(name, item.clef);
+  const out: Note[] = [];
+  let prev = MIDDLE; // staff position the next note is measured from
+  for (const [i, letter] of [...item.word].entries()) {
     const pool = silver.filter((n) => n.letter === letter);
     if (pool.length === 0) throw new Error(`No silver ${item.clef} note for ${letter} in ${item.word}`);
-    const fresh = pool.filter((n) => !used.has(noteId(n)));
-    const from = fresh.length > 0 ? fresh : pool;
-    const note = from[Math.floor(rng() * from.length)]!;
-    used.add(noteId(note));
-    return note;
-  });
+    const dist = (n: Note) => Math.abs(staffPosition(n, item.clef) - prev);
+    const nearest = Math.min(...pool.map(dist));
+    let choices = pool.filter((n) => dist(n) === nearest);
+    if (i > 0 && rng() < leapChance(share)) {
+      const far = pool.filter((n) => dist(n) <= leapMax(share));
+      if (far.length > 0) choices = far;
+    }
+    const note = choices[Math.floor(rng() * choices.length)]!;
+    out.push(note);
+    prev = staffPosition(note, item.clef);
+  }
+  return out;
 }
 
 /** How the kid answered one note: right, wrong (with the letter they chose), or "?". */
