@@ -10,11 +10,10 @@ import { type Clef, frequency, midi, noteId, parseNote } from '../core/music';
 import {
   BLACK_KEY_TIP,
   CATCHER_RANGE,
-  type CatchItem,
+  MIDDLE_C,
   NOTE_CATCHER,
   NOTE_CATCHER_MODE,
   catchItem,
-  keyWindow,
   missText,
   whereIs,
 } from '../core/noteCatcher';
@@ -27,15 +26,6 @@ import { type PlayHost, PlayShell } from './playShell';
 import './letterMath.css';
 import './noteCatcher.css';
 
-const MIN_KEY_PX = 44;
-const APP_COLUMN_PX = 960;
-const GUTTER_PX = 32;
-
-/** How many white keys fit at ≥ 44px on this screen (the app column is at most 960px wide). */
-export function whiteKeysThatFit(viewportWidth: number): number {
-  return Math.floor((Math.min(viewportWidth, APP_COLUMN_PX) - GUTTER_PX) / MIN_KEY_PX);
-}
-
 /**
  * What a screen reader hears for a key WHILE A QUESTION IS OPEN: its place on the keyboard, never its
  * name. A name would answer "which key is G?", which is exactly what this mode teaches. After the
@@ -45,14 +35,22 @@ export function neutralKeyLabels(keys: readonly PianoKey[]): Map<number, string>
   const whites = keys.filter((k) => !k.black).length;
   const labels = new Map<number, string>();
   for (const k of keys) {
-    labels.set(k.midi, k.black ? `Black key after white key ${k.white + 1}` : `Piano key ${k.white + 1} of ${whites}`);
+    // Middle C is the one named key: it is the marked anchor, and never a question.
+    labels.set(k.midi, k.black ? `Black key after white key ${k.white + 1}` : `Piano key ${k.white + 1} of ${whites}${k.id === MIDDLE_C ? ', middle C' : ''}`);
   }
   return labels;
 }
 
+const retiredIds = new Set(NOTE_CATCHER.retired.map((i) => i.id));
+
+/** Medal counts without the retired middle-C items, which are no longer on the map or asked. */
+export function catcherCounts(state: StudentState): { gold: number; silver: number } {
+  return medalCounts({ ...state, items: Object.fromEntries(Object.entries(state.items).filter(([id]) => !retiredIds.has(id))) });
+}
+
 interface CatcherInput extends AnswerInput<string> {
   /** Build the piano for this question. */
-  show(item: CatchItem): void;
+  show(): void;
   /** The key pressed for the current question (null: none, or "?"). */
   given(): string | null;
 }
@@ -76,14 +74,6 @@ function catcherInput(synth: Synth, onAnswer: (answer: string | null) => void, t
     piano?.el.setAttribute('aria-label', named ? 'Piano keyboard' : 'Piano keys');
   };
 
-  /** After the answer: the landmark dot on middle C, as the piano's own 'middleC' label draws it. */
-  function showMiddleC() {
-    const c4 = piano?.el.querySelector<HTMLElement>('[data-note="C4"]');
-    if (!c4 || c4.querySelector('.piano__dot')) return;
-    const dot = h('span', { class: 'piano__dot', 'aria-hidden': 'true' });
-    c4.prepend(dot);
-  }
-
   function answer(a: string | null) {
     if (!open) return;
     // A black key is never an answer here: say so, with no score, and let the kid tap again.
@@ -102,16 +92,18 @@ function catcherInput(synth: Synth, onAnswer: (answer: string | null) => void, t
   return {
     el,
     given: () => given,
-    /** Rebuild the piano for the question: the clef's whole range, or a window of it on a narrow screen. */
-    show(item) {
+    /**
+     * Rebuild the piano for the question. It is always the same one keyboard, whatever the clef, and
+     * always starts centered on middle C, so where it is scrolled says nothing about the answer.
+     */
+    show() {
       piano?.dispose();
-      const range = keyWindow(CATCHER_RANGE[item.clef], item.note, whiteKeysThatFit(window.innerWidth), Math.random());
-      keys = pianoKeys(range.low, range.high);
-      // No middle-C dot while the question is open: it would mark every C4 answer (and its absence would
-      // mark C4 by elimination). The dot appears with the answer, as a landmark (see setEnabled).
-      piano = createPiano({ low: range.low, high: range.high, labels: 'none', onPress: (_m, id) => answer(id) });
+      keys = pianoKeys(CATCHER_RANGE.low, CATCHER_RANGE.high);
+      // Middle C is marked all the time (C4 is never asked, so the mark is no clue); no other key shows anything.
+      piano = createPiano({ low: CATCHER_RANGE.low, high: CATCHER_RANGE.high, labels: 'middleC', anchorText: true, scroll: true, onPress: (_m, id) => answer(id) });
       clear(slot);
       slot.append(piano.el);
+      piano.reveal([midi(parseNote(MIDDLE_C))], false);
       given = null;
       tip.textContent = '';
       label(false);
@@ -125,13 +117,14 @@ function catcherInput(synth: Synth, onAnswer: (answer: string | null) => void, t
         label(false);
       } else {
         label(true);
-        showMiddleC();
       }
     },
     markRight(itemId) {
       const target = targetOf(itemId);
       // Right: a check. Otherwise the right key is shown as the target, next to the wrong one.
       piano?.mark(midi(parseNote(target)), given === target ? 'right' : 'target');
+      // After a miss or "?", bring the right key (and the tapped one, if any) into view together.
+      if (given !== target) piano?.reveal([midi(parseNote(target)), ...(given ? [midi(parseNote(given))] : [])], true);
       return piano?.el.querySelector<HTMLElement>(`[data-note="${target}"]`) ?? null;
     },
     markWrong(_itemId, ans) {
@@ -165,12 +158,12 @@ export function noteCatcherPlay(host: PlayHost<string>, synth: Synth): PlayShell
     newBadge: '✨ New note! Know its key? If not, tap ?',
     correctMs: 700,
     mastered: (state) => {
-      const c = medalCounts(state);
+      const c = catcherCounts(state);
       return c.gold + c.silver;
     },
     renderPrompt: (id) => {
       draw(id);
-      input?.show(catchItem(id));
+      input?.show();
     },
     reveal: (id, outcome) => draw(id, { label: catchItem(id).note.letter, state: outcome === 'correct' ? 'correct' : outcome === 'wrong' ? 'wrong' : 'reveal' }),
     // Nothing sounds when the question appears (the sound would give the key away by ear). The
@@ -259,6 +252,8 @@ export const noteCatcherMode = defineMode<string>({
     encourage: 'Every practice helps your fingers find the notes. Keys turn silver when you know them well, and gold when you still know them on another day!',
   },
   createPlay: (host, env) => noteCatcherPlay(host, env.synth),
+  // Retired middle-C items aren't on the map, so their old medals aren't counted in the pill or the weekly goal either.
+  counts: catcherCounts,
   renderMap: renderCatcherMap,
   itemLabel: (id) => {
     const item = catchItem(id);

@@ -13,20 +13,19 @@ import {
   CANONICAL_ORDER,
   CATCHER_LESSONS,
   CATCHER_RANGE,
-  MIN_WHITE_KEYS,
+  MIDDLE_C,
   NOTE_CATCHER,
   NOTE_CATCHER_MODE,
   catchItem,
   catcherEngine,
   classifyMiss,
   diagnoseCatcher,
-  keyWindow,
   missText,
   whereIs,
 } from '../src/core/noteCatcher';
 import { startSession } from '../src/core/session';
 import { h } from '../src/ui/dom';
-import { neutralKeyLabels, noteCatcherMode, noteCatcherPlay, renderCatcherMap, whiteKeysThatFit } from '../src/ui/noteCatcher';
+import { catcherCounts, neutralKeyLabels, noteCatcherMode, noteCatcherPlay, renderCatcherMap } from '../src/ui/noteCatcher';
 import { pianoKeys } from '../src/ui/piano';
 import { DAY, T0 } from './helpers';
 
@@ -42,11 +41,29 @@ const GOLDEN = [
 ];
 
 describe('the Note Catcher item set', () => {
-  it('has the same notes as Name It, in the same teaching order, with its own ids', () => {
+  it('has the same notes as Name It, in the same teaching order, with its own ids, except middle C', () => {
     expect(NOTE_CATCHER.items.map((i) => i.id)).toEqual(GOLDEN);
     expect(CANONICAL_ORDER).toEqual(GOLDEN);
     for (const clef of ['treble', 'bass'] as const) {
-      expect(NOTE_CATCHER.groups[clef]!.map((i) => noteId(i.note))).toEqual(NAME_IT.groups[clef]!.map((i) => noteId(i.note)));
+      expect(NOTE_CATCHER.groups[clef]!.map((i) => noteId(i.note))).toEqual(
+        NAME_IT.groups[clef]!.map((i) => noteId(i.note)).filter((n) => n !== MIDDLE_C),
+      );
+    }
+  });
+
+  it('retires the C4 items: they keep their index but are never asked, even from an old save that had them open', () => {
+    expect(NOTE_CATCHER.retired.map((i) => i.id)).toEqual(['catch:treble:C4', 'catch:bass:C4']);
+    for (const id of NOTE_CATCHER.retired.map((i) => i.id)) {
+      expect(GOLDEN).toContain(id);
+      expect(Object.values(NOTE_CATCHER.groups).flat().map((i) => i.id)).not.toContain(id);
+    }
+    const state = catcherEngine.newStudent();
+    for (const id of ['catch:treble:C4', 'catch:bass:C4']) state.items[id]!.unlocked = true;
+    let n = 0;
+    const rng = () => (n++ % 97) / 97;
+    for (let i = 0; i < 200; i++) {
+      const id = catcherEngine.selectItem(state, ['treble', 'bass'], T0, rng);
+      expect(noteId(catchItem(id).note)).not.toBe('C4');
     }
   });
 
@@ -59,11 +76,27 @@ describe('the Note Catcher item set', () => {
     expect(catcherEngine.grade(g4, null)).toBe('idk');
   });
 
-  it('every item of a lane is within the range the piano shows for that clef', () => {
-    for (const clef of ['treble', 'bass'] as const) {
-      const keys = pianoKeys(CATCHER_RANGE[clef].low, CATCHER_RANGE[clef].high).map((k) => k.id);
-      for (const item of NOTE_CATCHER.groups[clef]!) expect(keys, item.id).toContain(noteId(item.note));
-    }
+  it('every item of both clefs is on the one keyboard, which runs from the lowest bass to the highest treble note', () => {
+    const keys = pianoKeys(CATCHER_RANGE.low, CATCHER_RANGE.high).map((k) => k.id);
+    expect(keys[0]).toBe('C2');
+    expect(keys.at(-1)).toBe('C6');
+    for (const item of NOTE_CATCHER.items) expect(keys, item.id).toContain(noteId(item.note));
+  });
+
+  it('never throws when only the retired C4 items are open (a malformed save): it re-opens the first live item', () => {
+    const state = catcherEngine.newStudent();
+    for (const it of Object.values(state.items)) it.unlocked = false;
+    for (const id of ['catch:treble:C4', 'catch:bass:C4']) state.items[id]!.unlocked = true;
+    const id = catcherEngine.selectItem(state, ['treble', 'bass'], T0, () => 0.5);
+    expect(['catch:treble:G4', 'catch:bass:F3']).toContain(id);
+    expect(state.items[id]!.unlocked).toBe(true);
+  });
+
+  it('does not count retired C4 medals in the pill or weekly goal (the map does not show them)', () => {
+    const state = catcherEngine.newStudent();
+    Object.assign(state.items['catch:treble:C4']!, { unlocked: true, best: 1, n: 6, c: 6 });
+    expect(catcherCounts(state)).toEqual({ gold: 0, silver: 0 });
+    expect(noteCatcherMode.counts(state)).toEqual({ gold: 0, silver: 0 });
   });
 
   it('opens different answers first, so one key cannot carry early play (D33)', () => {
@@ -134,54 +167,14 @@ describe('the octave lesson', () => {
   });
 });
 
-describe('a smaller key range for narrow screens', () => {
-  it('fits 44px keys: a phone gets 6 to 8 white keys, a portrait iPad about 17, landscape the app column', () => {
-    expect(whiteKeysThatFit(320)).toBe(6);
-    expect(whiteKeysThatFit(360)).toBe(7);
-    expect(whiteKeysThatFit(375)).toBe(7);
-    expect(whiteKeysThatFit(390)).toBe(8);
-    expect(whiteKeysThatFit(820)).toBe(17);
-    expect(whiteKeysThatFit(1366)).toBe(21);
-    // Every key is at least 44px wide at every supported width (the keys fill the app column).
-    for (const w of [320, 360, 375, 390, 412, 768, 820]) {
-      const shown = Math.max(MIN_WHITE_KEYS, whiteKeysThatFit(w));
-      expect((Math.min(w, 960) - 32) / shown, `${w}px`).toBeGreaterThanOrEqual(44);
-    }
-  });
-
-  it('shows the whole range when it fits, otherwise a window that always holds the note', () => {
-    expect(keyWindow(CATCHER_RANGE.treble, parseNote('G4'), 21, 0.5)).toEqual(CATCHER_RANGE.treble);
-    for (const clef of ['treble', 'bass'] as const) {
-      for (const size of [4, 6, 7, 8, 12]) {
-        for (const item of NOTE_CATCHER.groups[clef]!) {
-          for (const rand of [0, 0.37, 0.999]) {
-            const w = keyWindow(CATCHER_RANGE[clef], item.note, size, rand);
-            const keys = pianoKeys(w.low, w.high);
-            expect(keys.filter((k) => !k.black).length, `${item.id} ${size}`).toBe(Math.max(MIN_WHITE_KEYS, size));
-            expect(keys.map((k) => k.id), `${item.id} ${size} ${rand}`).toContain(noteId(item.note));
-          }
-        }
-      }
-    }
-  });
-
-  it('puts every note, the lowest and highest too, at varied places in the window', () => {
-    for (const [clef, note] of [['treble', 'A3'], ['treble', 'A5'], ['bass', 'C2'], ['bass', 'C4']] as const) {
-      const at = new Set(
-        [0, 0.2, 0.4, 0.6, 0.8, 0.99].map((r) => {
-          const w = keyWindow(CATCHER_RANGE[clef], parseNote(note), 7, r);
-          return pianoKeys(w.low, w.high).findIndex((k) => k.id === note);
-        }),
-      );
-      expect(at.size, `${clef} ${note}`).toBeGreaterThan(3);
-    }
-  });
-
+describe('the one keyboard', () => {
   it('only names keys by place while a question is open', () => {
-    const labels = [...neutralKeyLabels(pianoKeys('C4', 'B4')).values()];
-    expect(labels).toContain('Piano key 1 of 7');
+    const labels = [...neutralKeyLabels(pianoKeys('C2', 'C6')).values()];
+    expect(labels).toContain('Piano key 1 of 29');
     expect(labels).toContain('Black key after white key 1');
-    expect(labels.join(' ')).not.toMatch(/\b[A-G][0-9#]?\b/);
+    // Only middle C, the marked anchor, is named.
+    expect(labels.filter((l) => /middle C/.test(l))).toEqual(['Piano key 15 of 29, middle C']);
+    expect(labels.join(' ').replace('middle C', '')).not.toMatch(/\b[A-G][0-9#]?\b/);
   });
 });
 
@@ -228,12 +221,15 @@ describe('the Note Catcher play screen', () => {
     expect(piano.querySelectorAll('.piano__label')).toHaveLength(0);
     expect(piano.querySelectorAll('[data-mark]')).toHaveLength(0);
     for (const b of piano.querySelectorAll('.piano__key')) {
-      expect(b.getAttribute('aria-label'), b.outerHTML).toMatch(/^(Piano key \d+ of \d+|Black key after white key \d+)$/);
-      expect(b.textContent).toBe('');
+      expect(b.getAttribute('aria-label'), b.outerHTML).toMatch(/^(Piano key \d+ of \d+(, middle C)?|Black key after white key \d+)$/);
     }
     expect(document.querySelector('.staff')!.getAttribute('aria-label')).not.toMatch(/the note/);
     expect(document.querySelector('.staff__label')).toBeNull();
-    expect(piano.querySelectorAll('.piano__dot')).toHaveLength(0);
+    // The only thing on any key is the middle-C anchor.
+    expect(piano.querySelectorAll('.piano__dot')).toHaveLength(1);
+    expect(keyEl('C4').querySelector('.piano__dot')).not.toBeNull();
+    expect([...piano.querySelectorAll('.piano__key')].filter((b) => b.textContent !== '').map((b) => (b as HTMLElement).dataset.note)).toEqual(['C4']);
+    expect(keyEl('C4').textContent).toBe('Middle C');
     expect(synth.note).not.toHaveBeenCalled();
     expect(s.session.current).not.toBeNull();
   });
@@ -255,10 +251,11 @@ describe('the Note Catcher play screen', () => {
     await tick();
     const want = answerOf(s);
     const letter = want[0]!;
-    const up = `${letter}${Number(want.slice(1)) + 1}`;
+    const climb = keyEl(`${letter}${Number(want.slice(1)) + 1}`) ? 1 : -1;
+    const up = `${letter}${Number(want.slice(1)) + climb}`;
     press(up);
     expect(s.session.results[0]!.outcome).toBe('wrong');
-    expect(document.querySelector('.hint__lead')!.textContent).toContain("That's the right letter, but one octave too high.");
+    expect(document.querySelector('.hint__lead')!.textContent).toContain(`That's the right letter, but one octave too ${climb > 0 ? 'high' : 'low'}.`);
     expect(keyEl(want).dataset.mark).toBe('target');
     expect(keyEl(up).dataset.mark).toBe('wrong');
     expect(synth.note).toHaveBeenCalledTimes(2); // the pressed key, then the right one 0.45 s later
@@ -280,18 +277,50 @@ describe('the Note Catcher play screen', () => {
     expect(cont()).not.toBeNull();
   });
 
-  it('on a phone the piano is a window of the range, and the note is on it', async () => {
-    Object.defineProperty(window, 'innerWidth', { value: 375, configurable: true });
+  it('treble and bass questions share one keyboard: same keys, same range, never changed by the clef', async () => {
+    const seen = new Set<string>();
+    for (const clef of ['treble', 'bass'] as const) {
+      document.body.innerHTML = '';
+      const session = startSession([clef], 3, NOTE_CATCHER_MODE);
+      const host = { session, state: catcherEngine.newStudent(), now: () => T0, save: vi.fn(), announce: vi.fn(), muteButton: () => h('button', {}, 'm'), quit: vi.fn(), finish: vi.fn(), stopSound: vi.fn() };
+      document.body.append(noteCatcherPlay(host, synth).render());
+      await tick();
+      expect(document.querySelectorAll('.piano__key--white')).toHaveLength(29);
+      seen.add([...document.querySelectorAll('.piano__key')].map((b) => (b as HTMLElement).dataset.note).join());
+    }
+    expect(seen.size).toBe(1);
+  });
+
+  it('C4 is never asked, so the marked middle C is no clue', async () => {
+    for (let i = 0; i < 30; i++) {
+      document.body.innerHTML = '';
+      const s = setup();
+      await tick();
+      expect(answerOf(s)).not.toBe('C4');
+    }
+  });
+
+  it('a swipe across the keys scrolls and does not answer; a still tap does', async () => {
     const s = setup();
     await tick();
-    expect(document.querySelectorAll('.piano__key--white')).toHaveLength(7);
-    expect(keyEl(answerOf(s))).not.toBeNull();
-    Object.defineProperty(window, 'innerWidth', { value: 320, configurable: true });
-    document.body.innerHTML = '';
-    const small = setup();
-    await tick();
-    expect(document.querySelectorAll('.piano__key--white')).toHaveLength(6);
-    expect(keyEl(answerOf(small))).not.toBeNull();
+    const k = keyEl('E4');
+    const fire = (type: string, x: number, id: number) => {
+      const e = new MouseEvent(type, { bubbles: true, clientX: x, clientY: 10 });
+      Object.assign(e, { pointerId: id, pointerType: 'touch' });
+      (type === 'pointerup' || type === 'pointercancel' ? document : k).dispatchEvent(e);
+    };
+    fire('pointerdown', 100, 7);
+    fire('pointermove', 160, 7);
+    fire('pointerup', 160, 7);
+    expect(s.session.results).toHaveLength(0);
+    fire('pointerdown', 100, 8);
+    fire('pointercancel', 100, 8); // the browser took it for a scroll
+    expect(s.session.results).toHaveLength(0);
+    expect(synth.note).not.toHaveBeenCalled();
+    fire('pointerdown', 100, 9);
+    expect(s.session.results).toHaveLength(0); // not yet: it waits for the release
+    fire('pointerup', 101, 9);
+    expect(s.session.results).toHaveLength(1);
   });
 
   it('a black key is not an answer: it says so, scores nothing and lets the kid tap again', async () => {
@@ -309,16 +338,52 @@ describe('the Note Catcher play screen', () => {
     expect(document.querySelector('[data-testid=catcher-tip]')!.textContent).toBe('');
   });
 
-  it('the middle-C dot never shows during a question (it would mark C4 answers), only after the answer', async () => {
+  it('middle C is marked during every question and after it, and nothing else is', async () => {
     const s = setup();
     for (let i = 0; i < 3; i++) {
       await tick();
-      expect(document.querySelectorAll('.piano__dot'), `question ${i}`).toHaveLength(0);
-      const want = answerOf(s);
-      press(want);
+      expect(document.querySelectorAll('.piano__dot'), `question ${i}`).toHaveLength(1);
+      expect(keyEl('C4').querySelector('.piano__dot'), `question ${i}`).not.toBeNull();
+      press(answerOf(s));
       expect(document.querySelectorAll('.piano__dot'), `after answer ${i}`).toHaveLength(1);
       vi.advanceTimersByTime(1700);
     }
+  });
+
+  it('each question starts centered on middle C by a jump (never an animation), and a miss scrolls smoothly to the tapped and right keys', async () => {
+    const calls: ScrollToOptions[] = [];
+    (HTMLElement.prototype as unknown as { scrollTo: unknown }).scrollTo = (o: ScrollToOptions) => calls.push(o);
+    const s = setup();
+    await tick();
+    expect(calls).toHaveLength(0); // the jump sets scrollLeft with scroll-behavior off, so it can't animate
+    expect(document.querySelector<HTMLElement>('.piano__scroller')!.style.scrollBehavior).toBe('');
+    const want = answerOf(s);
+    press(want === 'D3' ? 'E3' : 'D3');
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.behavior).toBe('smooth');
+    delete (HTMLElement.prototype as unknown as { scrollTo?: unknown }).scrollTo;
+  });
+
+  it('shows a chevron (44px or more) only on a side with more keys, and a tap scrolls one octave', async () => {
+    setup();
+    await tick();
+    const scroller = document.querySelector<HTMLElement>('.piano__scroller')!;
+    const left = document.querySelector<HTMLButtonElement>('.piano__more--left')!;
+    const right = document.querySelector<HTMLButtonElement>('.piano__more--right')!;
+    expect(left.hidden && right.hidden).toBe(true); // nothing to scroll in jsdom
+    Object.defineProperty(scroller, 'clientWidth', { value: 300, configurable: true });
+    Object.defineProperty(scroller, 'scrollWidth', { value: 1305, configurable: true });
+    scroller.scrollLeft = 0;
+    scroller.dispatchEvent(new Event('scroll'));
+    expect(left.hidden).toBe(true);
+    expect(right.hidden).toBe(false);
+    expect(document.querySelector('.piano')!.classList.contains('piano--more-right')).toBe(true);
+    expect(right.getAttribute('aria-label')).toBe('Show keys to the right'); // no key names, no answer
+    const calls: ScrollToOptions[] = [];
+    (HTMLElement.prototype as unknown as { scrollTo: unknown }).scrollTo = (o: ScrollToOptions) => calls.push(o);
+    right.click();
+    expect(calls[0]).toEqual({ left: 7 * 45, behavior: 'smooth' });
+    delete (HTMLElement.prototype as unknown as { scrollTo?: unknown }).scrollTo;
   });
 
   it('has the octave lesson for itself, and Name It keeps its own lessons', () => {
@@ -346,7 +411,7 @@ describe('the Note Catcher play screen', () => {
     expect(noteCatcherMode.group).toBe('keys');
     expect(noteCatcherMode.core.tag).toBe(4);
     const map = renderCatcherMap(catcherEngine.newStudent(), T0);
-    expect(map.querySelectorAll('[data-item]')).toHaveLength(NOTE_CATCHER.items.length);
+    expect(map.querySelectorAll('[data-item]')).toHaveLength(NOTE_CATCHER.items.length - NOTE_CATCHER.retired.length);
     expect(noteCatcherMode.itemLabel('catch:treble:G4')).toBe('G4 key (treble clef)');
   });
 });

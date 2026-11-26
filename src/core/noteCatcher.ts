@@ -7,7 +7,7 @@
 import { createEngine } from './engine';
 import { TEACHING_ORDER } from './items';
 import { defineItemSet } from './itemset';
-import { type Clef, type Note, diatonic, fromDiatonic, noteId, parseNote } from './music';
+import { type Clef, type Note, diatonic, noteId, parseNote } from './music';
 import type { SessionMode } from './session';
 import type { StudentState } from './engine';
 
@@ -40,51 +40,37 @@ export const CANONICAL_ORDER: readonly string[] = [
   'catch:bass:D2',
 ];
 
+/** Middle C: the anchor the keyboard always marks, so it is never asked (the marked key would be a free answer). */
+export const MIDDLE_C = 'C4';
+const isMiddleC = (n: string) => n === MIDDLE_C;
+
 const build = (clef: Clef): CatchItem[] =>
-  TEACHING_ORDER[clef].map((n) => ({ id: `catch:${clef}:${n}`, clef, note: parseNote(n) }));
+  TEACHING_ORDER[clef].filter((n) => !isMiddleC(n)).map((n) => ({ id: `catch:${clef}:${n}`, clef, note: parseNote(n) }));
+
+/** The C4 items, retired: they keep their canonical index (saved codes still decode) but are never asked. */
+const retiredC4: CatchItem[] = (['treble', 'bass'] as Clef[]).map((clef) => ({ id: `catch:${clef}:${MIDDLE_C}`, clef, note: parseNote(MIDDLE_C) }));
 
 export const NOTE_CATCHER = defineItemSet<CatchItem, string>({
   id: 'catch',
   groups: { treble: build('treble'), bass: build('bass') },
+  retired: retiredC4,
   order: CANONICAL_ORDER,
   groupOf: (i) => i.clef,
   // The exact key: 'G4'. Octave matters.
   answerOf: (i) => noteId(i.note),
   // First-try credit after 1 right answer in a row (PARAMS' default is 2), the same as Name It: each
-  // note is its own fact, and with ~30 keys a guesser is very unlikely to string one together.
+  // note is its own fact, and with ~28 keys a guesser is very unlikely to string one together.
   pacing: { firstTryRun: 1 },
 });
 
 export const catcherEngine = createEngine(NOTE_CATCHER);
 export const catchItem = (id: string) => NOTE_CATCHER.get(id);
 
-/** What the piano shows for each clef: every note a lane teaches, white key to white key. */
-export const CATCHER_RANGE: Record<Clef, { low: string; high: string }> = {
-  treble: { low: 'A3', high: 'C6' },
-  bass: { low: 'C2', high: 'E4' },
-};
-
 /**
- * The fewest white keys ever shown. 6 white keys have no letter twin (an octave has 7), and still
- * give 6 or more answers (D63). Fewer than this would make the keys bigger than 44px for no reason.
+ * The ONE keyboard both clefs share: the lowest bass note to the highest treble note, white key to
+ * white key. A clef changes only the staff, never the keys, so treble and bass read as one piano.
  */
-export const MIN_WHITE_KEYS = 6;
-
-/**
- * The white keys to show when the screen is too narrow for the clef's whole range at ≥ 44px a key:
- * `size` white keys (at least 6) that contain `target`, at a random offset (`rand` in [0, 1)). The
- * window may run past the clef's range, so the lowest and highest notes are not always at an edge
- * and the window's position says little about where in the staff the note is.
- */
-export function keyWindow(range: { low: string; high: string }, target: Note, size: number, rand: number): { low: string; high: string } {
-  const lo = diatonic(parseNote(range.low));
-  const hi = diatonic(parseNote(range.high));
-  const n = Math.max(MIN_WHITE_KEYS, size);
-  if (n >= hi - lo + 1) return range;
-  const t = diatonic(target);
-  const start = Math.max(0, t - n + 1 + Math.floor(rand * n));
-  return { low: noteId(fromDiatonic(start)), high: noteId(fromDiatonic(start + n - 1)) };
-}
+export const CATCHER_RANGE = { low: 'C2', high: 'C6' } as const;
 
 // ───────────────────────── wrong answers ─────────────────────────
 

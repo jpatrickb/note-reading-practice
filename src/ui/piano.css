@@ -203,3 +203,111 @@
     }
   }
 }
+
+/* A keyboard wider than its box (Note Catcher): keys never shrink below 44px (45px, a hair over, so
+   subpixel rounding in WebKit never dips under), and the keys scroll sideways inside .piano__scroller.
+   The finger drags the keys; a tap still presses (see `scroll` in piano.ts). */
+.piano--scroll {
+  position: relative;
+  width: min(100vw - 32px, calc(var(--whites) * 64px));
+  margin-inline: calc((100% - min(100vw - 32px, calc(var(--whites) * 64px))) / 2);
+}
+.piano__scroller {
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.piano__scroller::-webkit-scrollbar {
+  display: none;
+}
+.piano--scroll .piano__keys {
+  width: max(100%, calc(var(--whites) * 45px));
+  touch-action: pan-x pan-y;
+}
+.piano--scroll .piano__key {
+  touch-action: pan-x pan-y;
+}
+@media (prefers-reduced-motion: reduce) {
+  .piano__scroller {
+    scroll-behavior: auto;
+  }
+}
+
+/* "More keys this way": a fade at the edge, and a big chevron button that scrolls one octave. Shown
+   only on a side that has more keys; they follow scroll position alone and never hint at an answer. */
+.piano--scroll::before,
+.piano--scroll::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 56px;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.piano--scroll::before {
+  left: 0;
+  background: linear-gradient(to right, color-mix(in srgb, var(--ink, #000) 35%, transparent), transparent);
+}
+.piano--scroll::after {
+  right: 0;
+  background: linear-gradient(to left, color-mix(in srgb, var(--ink, #000) 35%, transparent), transparent);
+}
+.piano--more-left::before,
+.piano--more-right::after {
+  opacity: 1;
+}
+.piano__more {
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  z-index: 4;
+  width: 48px;
+  height: 48px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 0 4px;
+  border-radius: 50%;
+  border: 2px solid var(--key-border);
+  background: var(--key-white);
+  color: var(--key-ink);
+  font: inherit;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.25);
+}
+.piano__more[hidden] {
+  display: none;
+}
+.piano__more--left {
+  left: 6px;
+}
+.piano__more--right {
+  right: 6px;
+}
+.piano__more:focus-visible {
+  outline: 3px solid var(--key-ink);
+  outline-offset: 2px;
+}
+
+/* "Middle C": a quiet label beside the dot, the one reference point a screen keyboard lacks. */
+.piano__anchor {
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  color: var(--key-ink);
+  pointer-events: none;
+}
+.piano__key[data-mark] .piano__anchor {
+  padding: 2px 4px;
+  border-radius: 6px;
+  background: var(--key-white);
+}

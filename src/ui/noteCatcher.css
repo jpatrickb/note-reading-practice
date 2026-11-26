@@ -34,5 +34,6 @@
   max-height: 24dvh;
 }
 .note-catcher .piano__keys {
-  height: clamp(130px, calc(100cqw / var(--whites) * 4.2), 210px);
+  /* The keys are a fixed 44px+ wide and the piano scrolls, so its height can't follow its width. */
+  height: clamp(130px, 24dvh, 200px);
 }
