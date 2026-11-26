@@ -1,8 +1,10 @@
 import { Synth } from '../audio/synth';
-import { type Profile, ProgressCodeError, decodeProfile, encodeProfile } from '../core/codec';
+import { type DecodedCode, type Profile, ProgressCodeError, decodeProfileSections, encodeProfile, mergeImport } from '../core/codec';
 import { type MasteryEvent, WEEKLY_GOAL, daysThisWeek, isDusty, level, recall } from '../core/engine';
 import { codeFromHash, codeFromPasted, progressQr } from '../core/progress-qr';
 import type { Clef } from '../core/music';
+import { type PlacementRun, MAX_ANSWERS, applyPlacement, startPlacement } from '../core/placement';
+import { placementLane } from '../core/placementFlow';
 import { type Session, startSession, summarize } from '../core/session';
 import {
   DEFAULT_MODE,
@@ -20,6 +22,7 @@ import {
 import { clear, h } from './dom';
 import { hasProgress, modeIcon, type UiMode } from './mode';
 import { renderModeChooser } from './modeChooser';
+import { renderPlacementOffer, renderPlacementResult } from './placementScreens';
 import { modeById, registeredModes } from './modes';
 import type { PlayHost, PlayShell } from './playShell';
 import { renderThemePicker } from './themePicker';
@@ -31,7 +34,7 @@ import { renderMascot, setMood } from './world/mascots';
 import type { Medal } from './world/playChrome';
 import { setCalm, setWorldMode } from './world/world';
 
-type Screen = 'home' | 'play' | 'summary' | 'map' | 'save' | 'import' | 'debug' | 'theme';
+type Screen = 'home' | 'play' | 'summary' | 'map' | 'save' | 'import' | 'debug' | 'theme' | 'offer' | 'placed';
 type ClefChoice = 'treble' | 'bass' | 'both';
 
 const OFFSET_KEY = 'nrp:debug:clockOffset';
@@ -50,6 +53,8 @@ export class App {
   private synth = new Synth();
   private session: Session<string> | null = null;
   private importCode = '';
+  /** A placement round in progress (or just finished, for its result screen), and the lane it places. */
+  private placing: { run: PlacementRun; lane: string; applied: boolean } | null = null;
   private readonly debug: boolean;
 
   constructor(private root: HTMLElement) {
@@ -102,6 +107,8 @@ export class App {
   private go(screen: Screen): void {
     this.play?.dispose();
     this.play = null;
+    // Placement state lives only on the offer, the round and the result; any other screen drops it.
+    if (screen !== 'offer' && screen !== 'play' && screen !== 'placed') this.placing = null;
     this.synth.stopAll(); // nothing keeps sounding on another screen, whatever the screen was
     clearFx();
     clear(this.root);
@@ -115,6 +122,8 @@ export class App {
       save: () => this.renderSave(),
       import: () => this.renderImport(),
       debug: () => this.renderDebug(),
+      offer: () => this.renderOffer(),
+      placed: () => this.renderPlaced(),
       theme: () =>
         renderThemePicker({
           settings: this.settings,
@@ -304,10 +313,17 @@ export class App {
 
   // ───────────────────────── play ─────────────────────────
 
-  private startPlay(mode: UiMode): void {
+  /** Start practice. A mode that opts in offers placement first, on a lane with no progress only. */
+  private startPlay(mode: UiMode, offer = true): void {
     this.synth.unlock();
     const clefs = lanesFor(this.settings, mode.id);
     this.active = { mode, clefs };
+    this.placing = null;
+    const lane = offer && mode.placement ? placementLane(mode.core.engine, this.profile[mode.core.id], mode.groups(clefs, this.profile)) : null;
+    if (lane) {
+      this.placing = { run: startPlacement(mode.core.engine, lane), lane, applied: false };
+      return this.go('offer');
+    }
     this.session = startSession(mode.groups(clefs, this.profile), undefined, mode.session);
     this.go('play');
   }
@@ -325,8 +341,40 @@ export class App {
       finish: () => this.go('summary'),
       stopSound: () => this.synth.stopAll(),
     };
+    if (this.placing && !this.placing.applied) host.placement = { run: this.placing.run, done: () => this.finishPlacement() };
     this.play = mode.createPlay(host, { synth: this.synth, profile: this.profile });
     return this.play.render();
+  }
+
+  // ───────────────────────── placement ─────────────────────────
+
+  private renderOffer(): HTMLElement {
+    const { mode } = this.active!;
+    return renderPlacementOffer({
+      mode,
+      lane: this.placing!.lane,
+      onBack: () => this.go('home'),
+      onBegin: () => this.startPlay(mode, false),
+      // The round is the play screen with the run attached; nothing is saved until it finishes.
+      onPlace: () => {
+        this.session = startSession([this.placing!.lane], MAX_ANSWERS, mode.session);
+        this.go('play');
+      },
+    });
+  }
+
+  /** The round is over: open the lane up to where the kid placed, then show where they start. */
+  private finishPlacement(): void {
+    const { mode } = this.active!;
+    applyPlacement(mode.core.engine, this.profile[mode.core.id]!, this.placing!.run);
+    this.saveMode(mode);
+    this.placing!.applied = true;
+    this.go('placed');
+  }
+
+  private renderPlaced(): HTMLElement {
+    const { mode } = this.active!;
+    return renderPlacementResult({ mode, run: this.placing!.run, onGo: () => this.startPlay(mode, false) });
   }
 
   private onKey(e: KeyboardEvent): void {
@@ -479,15 +527,31 @@ export class App {
   }
 
   private renderImport(): HTMLElement {
-    let incoming: Profile | null = null;
+    let incoming: DecodedCode | null = null;
     let error = '';
     try {
-      incoming = decodeProfile(this.importCode, this.now());
+      incoming = decodeProfileSections(this.importCode, this.now());
     } catch (e) {
       error = e instanceof ProgressCodeError ? e.message : 'That code didn’t work.';
     }
     // The modes this code carries progress for (a mode the kid never played has no section).
-    const inCode = incoming ? this.modes.filter((m) => hasProgress(incoming![m.core.id])) : [];
+    const inCode = incoming ? this.modes.filter((m) => incoming!.present.includes(m.core.id)) : [];
+    const kept = this.modes.filter((m) => !inCode.includes(m) && hasProgress(this.profile[m.core.id]));
+    const names = (ms: readonly UiMode[]) => ms.map((m) => m.title).reduce((a, t, i, all) => (i === 0 ? t : `${a}${i === all.length - 1 ? ' and ' : ', '}${t}`), '');
+    const swaps = inCode.filter((m) => hasProgress(this.profile[m.core.id]));
+    const adds = inCode.filter((m) => !swaps.includes(m));
+    const effect = [
+      swaps.length > 0 ? `This swaps your ${names(swaps)} progress for the one in the code.` : '',
+      adds.length > 0 ? `This adds ${names(adds)}.` : '',
+      kept.length > 0 ? `Your ${names(kept)} progress stays.` : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const lessThanDevice = swaps.filter((m) => {
+      const c = m.counts(incoming!.profile[m.core.id]!);
+      const d = m.counts(this.profile[m.core.id]!);
+      return c.gold < d.gold || (c.gold === d.gold && c.silver < d.silver);
+    });
     return h(
       'main',
       { class: 'screen import' },
@@ -504,27 +568,35 @@ export class App {
                 'ul',
                 { class: 'import-modes', 'data-testid': 'import-modes' },
                 ...inCode.map((m) => {
-                  const c = m.counts(incoming![m.core.id]!);
+                  const c = m.counts(incoming!.profile[m.core.id]!);
                   return h('li', { 'data-mode': m.id }, `${m.title}: 🥇 ${c.gold} gold and 🥈 ${c.silver} silver`);
                 }),
               ),
-              h('p', { class: 'warn' }, 'Loading it will replace the progress on this device.'),
+              inCode.length > 0
+                ? h('p', { class: 'warn', 'data-testid': 'import-effect' }, effect)
+                : h('p', { class: 'muted', 'data-testid': 'import-effect' }, incoming.unreadable > 0 ? 'This code is from a newer version of the game, so this version can’t read it yet.' : 'Nothing on this device would change.'),
+              ...lessThanDevice.map((m) => {
+                const c = m.counts(incoming!.profile[m.core.id]!);
+                const d = m.counts(this.profile[m.core.id]!);
+                return h('p', { class: 'muted', 'data-testid': 'import-less', 'data-mode': m.id }, `Careful: this code has ${c.gold} gold and ${c.silver} silver in ${m.title}; this device has ${d.gold} and ${d.silver}.`);
+              }),
               h(
                 'div',
                 { class: 'row' },
+                inCode.length > 0 &&
                 h(
                   'button',
                   {
                     class: 'primary',
                     'data-testid': 'confirm-import',
                     onClick: () => {
-                      this.profile = incoming!;
+                      this.profile = mergeImport(this.profile, incoming!);
                       saveProfile(localStorage, this.profile);
                       this.toast(inCode.length > 0 ? `Progress loaded: ${inCode.map((m) => m.title).join(', ')}` : 'Progress loaded!', 'unlock');
                       this.go('home');
                     },
                   },
-                  'Replace my progress',
+                  'Load this progress',
                 ),
                 h('button', { class: 'secondary', onClick: () => this.go('home') }, 'Cancel'),
               ),

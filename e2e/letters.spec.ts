@@ -1,4 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
+import { skipPlacement } from './skipPlacement';
 
 // Letter Math: musical-alphabet questions answered on the same A–G pad as Name It.
 
@@ -44,6 +45,7 @@ async function start(page: Page) {
   await page.goto('/');
   await page.getByRole('radio', { name: /Letter Math/ }).click();
   await page.getByRole('button', { name: /Start/ }).click();
+  await skipPlacement(page);
 }
 
 async function playPerfectSession(page: Page) {

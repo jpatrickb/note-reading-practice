@@ -24,7 +24,7 @@ Terraform (staging live).
 
 Remaining:
 
-- Place It, Note Catcher, Find All
+- Place It, Find All (Note Catcher: built, see #27)
 - Placement round
 - Ledger lines, then accidentals and enharmonics
 - **Placement / fast track** (needed: Letter Math pacing, see open questions)

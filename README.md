@@ -21,6 +21,10 @@ an item set (`src/core/itemset.ts`) and gets its own engine from `createEngine` 
 note in turn. It unlocks once a clef has a few silver notes in Name It. The word lists live in
 `src/core/words.ts` for teacher review.
 
+**Note Catcher** shows a note on the staff and the kid taps its exact key on an on-screen piano
+(octave matters; a right letter in the wrong octave is a kind, specific miss). Its items live in
+`src/core/noteCatcher.ts`.
+
 ## Quick start
 
 ```bash

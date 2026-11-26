@@ -1,0 +1,38 @@
+/* Note Catcher: the staff above an on-screen piano, with a "?" under it. Theme variables only. */
+
+.catcher-input {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.catcher-input__piano {
+  width: 100%;
+}
+.catcher__tip {
+  margin: 0;
+  min-height: 1.4em;
+  font-weight: 700;
+  text-align: center;
+  color: var(--ink);
+}
+.catcher__idk {
+  min-width: 96px;
+  min-height: 56px;
+  padding: 0 28px;
+}
+
+/* The keys sit right under the staff and the feedback goes below them, so a miss shows the marked
+   keys and the explanation together. A shorter staff and shallower keys keep both on an iPad screen. */
+.note-catcher .catcher-input {
+  order: 1;
+}
+.note-catcher .coach {
+  order: 2;
+}
+.note-catcher .staff-card .staff {
+  max-height: 24dvh;
+}
+.note-catcher .piano__keys {
+  height: clamp(130px, calc(100cqw / var(--whites) * 4.2), 210px);
+}

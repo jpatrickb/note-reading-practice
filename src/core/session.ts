@@ -2,7 +2,7 @@
 // Works for any mode: the session carries the mode's engine (and optional misconception detector),
 // and is generic over the mode's answer type `A` (a Letter unless the mode says otherwise).
 
-import { type LessonId, diagnose } from './diagnose';
+import { diagnose } from './diagnose';
 import { type Engine, type MasteryEvent, type Outcome, type Rng, type StudentState, nameEngine } from './engine';
 import type { PracticeItem } from './itemset';
 import type { Letter } from './music';
@@ -13,8 +13,16 @@ const FINISH_EASY = 3;
 /** What a session needs from a game mode. */
 export interface SessionMode<A extends string = Letter> {
   engine: Engine<PracticeItem, A>;
-  /** Spot a misconception after a wrong answer and suggest a mini-lesson (optional). */
-  diagnose?: (state: StudentState, now: number) => LessonId | null;
+  /** Spot a misconception after a wrong answer and return the id of a mini-lesson to show (optional). */
+  diagnose?: (state: StudentState, now: number) => string | null;
+  /** The mode's own lessons, by id (optional). Ids not listed here are Name It's (see diagnose.ts LESSONS). */
+  lessons?: Readonly<Record<string, Lesson>>;
+}
+
+/** A mini-lesson shown after a wrong answer: a title and a few short paragraphs. */
+export interface Lesson {
+  title: string;
+  body: readonly string[];
 }
 
 export const NAME_IT_MODE: SessionMode = { engine: nameEngine, diagnose };
@@ -56,7 +64,7 @@ export function nextQuestion(session: Session<string>, state: StudentState, now:
 export interface SubmitResult {
   outcome: Outcome;
   events: MasteryEvent[];
-  lesson: LessonId | null;
+  lesson: string | null;
 }
 
 /** Submit an answer to the current question. `answer = null` means "I don't know". */

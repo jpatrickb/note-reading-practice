@@ -68,6 +68,10 @@ export interface UiMode {
   /** `'clefs'`: the home screen offers the clef picker for this mode. */
   readonly lanes: 'clefs' | null;
   readonly words: ModeWords;
+  /** Offers the placement round on a fresh lane (needs at least 5 different answers). */
+  readonly placement: boolean;
+  /** "You're starting at ..." for the item placement landed on. */
+  placedLine(itemId: string): string;
   /** The unlock lanes a session practices, given the chosen clefs (ignored without `lanes`). */
   groups(clefs: readonly Clef[], profile?: Profile): string[];
   /** Build the play screen; its prompt, input and hints are the mode's own, the flow is the shell's. */
@@ -98,6 +102,10 @@ export interface ModeSpec<A extends string> {
   lanes?: 'clefs' | null;
   /** Default: the clefs chosen, or every lane of the item set if the mode has no clef lanes. */
   groups?(clefs: readonly Clef[], profile?: Profile): string[];
+  /** Default: false. Opt in to the "Show me what you know" placement round on a fresh lane. */
+  placement?: boolean;
+  /** Default: "You're starting at <item label>." */
+  placedLine?(itemId: string): string;
   /** Default: gold and silver items. */
   counts?(state: StudentState): { gold: number; silver: number };
   /** Default: the item id. */
@@ -143,6 +151,8 @@ export function defineMode<A extends string>(spec: ModeSpec<A>): UiMode {
     groups: spec.groups ?? ((clefs) => (lanes === 'clefs' ? [...clefs] : Object.keys(core.engine.set.groups))),
     createPlay: spec.createPlay as unknown as UiMode['createPlay'],
     renderMap: spec.renderMap,
+    placement: spec.placement ?? false,
+    placedLine: spec.placedLine ?? ((id) => `You're starting at ${(spec.itemLabel ?? ((x: string) => x))(id)}.`),
     counts: spec.counts ?? medalCounts,
     itemLabel: spec.itemLabel ?? ((id) => id),
     availability: spec.availability ?? (() => ({ ok: true })),

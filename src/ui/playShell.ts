@@ -9,6 +9,7 @@
 
 import type { MasteryEvent, Outcome, StudentState } from '../core/engine';
 import { LESSONS, type LessonId } from '../core/diagnose';
+import { type PlacementRun, nextPlacementItem, submitPlacement } from '../core/placement';
 import { type Session, isFinished, nextQuestion, submit } from '../core/session';
 import { clear, h } from './dom';
 import type { AnswerInput } from './letterPad';
@@ -56,7 +57,15 @@ export interface PlayHost<A extends string = string> {
   finish(): void;
   /** Silence anything still sounding (synth.stopAll) when the screen closes. */
   stopSound(): void;
+  /**
+   * A placement round instead of a normal session: the shell asks the round's questions and records
+   * them as evidence only (no medals, no sounds, no feedback screens), then calls `done`.
+   */
+  placement?: { run: PlacementRun; done(): void };
 }
+
+/** How long the neutral "thanks" stays up between placement questions. */
+export const PLACEMENT_ACK_MS = 450;
 
 export const MEDAL_MS = 1600;
 
@@ -64,7 +73,7 @@ export class PlayShell<A extends string = string> {
   private phase: 'asking' | 'feedback' | 'lesson' = 'asking';
   private timer = 0;
   private isNew = false;
-  private lesson: LessonId | null = null;
+  private lesson: string | null = null;
   private readonly input: AnswerInput<A>;
   private disposed = false;
   private el!: HTMLElement;
@@ -105,8 +114,39 @@ export class PlayShell<A extends string = string> {
     return !this.disposed && this.el.isConnected;
   }
 
+  private askedAt = 0;
+
+  /** One placement question: the mode's own prompt and input, with no new-note banner. */
+  private askPlacement(): void {
+    const { placement, session } = this.host;
+    const id = nextPlacementItem(session.mode.engine, placement!.run, Math.random);
+    if (id === null) return placement!.done();
+    clear(this.chrome.feedback);
+    clear(this.banner);
+    this.el.classList.add('play--placement'); // the round's length is not fixed: no progress bar
+    this.banner.append(h('span', { class: 'badge badge--calm', 'data-testid': 'placement-hint' }, 'Warm-up: not sure? Tap ?'));
+    this.isNew = false;
+    this.phase = 'asking';
+    this.mode.renderPrompt(id);
+    this.input.setEnabled(true);
+    this.chrome.asking(placement!.run.answers.length, this.card);
+    this.askedAt = this.host.now();
+    this.mode.play?.(id, 'ask');
+  }
+
+  /** Evidence only: no marks, no reveal, no sound, no reaction, no save. A plain "thanks", then on. */
+  private answerPlacement(answer: A | null): void {
+    const { placement, session } = this.host;
+    submitPlacement(session.mode.engine, placement!.run, answer, this.host.now() - this.askedAt, this.host.now());
+    this.phase = 'feedback';
+    this.input.setEnabled(false);
+    this.chrome.feedback.append(h('p', { class: 'placement-ack', 'data-testid': 'placement-ack' }, 'Thanks!'));
+    this.timer = window.setTimeout(() => this.advance(), PLACEMENT_ACK_MS);
+  }
+
   private ask(): void {
     if (!this.active()) return;
+    if (this.host.placement) return this.askPlacement();
     const { session, state } = this.host;
     const qn = nextQuestion(session, state, this.host.now(), Math.random);
     clear(this.chrome.feedback);
@@ -124,6 +164,7 @@ export class PlayShell<A extends string = string> {
   /** `null` is "I don't know". */
   answer(answer: A | null): void {
     const { session, state } = this.host;
+    if (this.host.placement) return this.active() && this.phase === 'asking' ? this.answerPlacement(answer) : undefined;
     if (!this.active() || this.phase !== 'asking' || !session.current) return;
     const itemId = session.current.itemId;
     const target = String(session.mode.engine.answerOf(itemId));
@@ -160,15 +201,16 @@ export class PlayShell<A extends string = string> {
   private advance(): void {
     if (!this.active() || this.phase !== 'feedback') return;
     window.clearTimeout(this.timer);
+    if (this.host.placement) return this.askPlacement();
     if (this.lesson) return this.showLesson(this.lesson);
     if (isFinished(this.host.session)) return this.host.finish();
     this.ask();
   }
 
-  private showLesson(id: LessonId): void {
+  private showLesson(id: string): void {
     this.lesson = null;
     this.phase = 'lesson';
-    const lesson = LESSONS[id];
+    const lesson = this.host.session.mode.lessons?.[id] ?? LESSONS[id as LessonId];
     clear(this.chrome.feedback);
     this.chrome.feedback.append(
       h(
