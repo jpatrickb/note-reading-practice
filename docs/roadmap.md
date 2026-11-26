@@ -26,9 +26,10 @@ Done 2026-11-26: Place It; Note Catcher; Word Decoder; placement round; mode reg
 
 Remaining:
 
-- Find All
+- Find All (#28)
+- Key to Staff (#29)
 - Ledger lines, then accidentals and enharmonics
-- **Placement / fast track** (needed: Letter Math pacing, see open questions)
+- ~~Placement / fast track~~ done: fast pacing (#55), placement round (#73, #83)
 - First production release (`release/0.1.0`)
 
 ## Phase 2: Sync & teacher page
