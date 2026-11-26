@@ -10,3 +10,14 @@
   font-weight: 700;
   color: var(--ink);
 }
+.find-zone-note {
+  font-size: 0.95rem;
+  color: var(--ink);
+}
+
+/* Stage 1: the two octaves that count get a soft tint and a bar along the bottoms (never color alone).
+   Marks (found / wrong / target) set their own background and win over the tint. */
+.find-all .piano__key--white.is-zone:not([data-mark]) {
+  background-color: color-mix(in srgb, var(--meter) 14%, var(--key-white));
+  box-shadow: inset 0 -8px 0 var(--meter);
+}

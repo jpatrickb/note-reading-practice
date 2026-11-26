@@ -11,13 +11,12 @@ async function start(page: Page) {
   await page.getByRole('button', { name: /Start/ }).click();
 }
 
-/** The letter asked, once the question is answerable; its keys on the 29-white-key keyboard. */
+/** The letter asked, once the question is answerable; its keys (a fresh profile is in stage 1: the two octaves C3-B4). */
 async function asked(page: Page): Promise<{ letter: string; targets: string[] }> {
   await expect(page.locator('.piano__key[aria-disabled="true"]')).toHaveCount(0);
   await expect(page.getByTestId('find-question')).toBeVisible();
   const letter = (await page.locator('.lm-letter').textContent())!.trim();
-  const octaves = letter === 'C' ? [2, 3, 4, 5, 6] : [2, 3, 4, 5];
-  return { letter, targets: octaves.map((o) => `${letter}${o}`) };
+  return { letter, targets: [`${letter}3`, `${letter}4`] };
 }
 
 test('the home screen offers Find All under Find keys', async ({ page }) => {
@@ -63,8 +62,45 @@ test('a black key is not an answer, and "?" teaches', async ({ page }) => {
   const { targets } = await asked(page);
   await key(page, 'C#3').click();
   await expect(page.getByTestId('catcher-tip')).toContainText('black key');
+  await key(page, 'C5').click(); // outside the tinted zone: a tip, not a miss
+  await expect(page.getByTestId('catcher-tip')).toContainText('tinted');
   await expect(page.locator('.piano [data-mark]')).toHaveCount(0);
   await page.getByRole('button', { name: "I don't know" }).click();
   await expect(page.locator('.piano__key--target')).toHaveCount(targets.length);
   await expect(page.getByTestId('continue')).toBeVisible();
+});
+
+test('stage 1 tints the two octaves around middle C, the same 14 keys for every letter', async ({ page }) => {
+  await start(page);
+  await asked(page);
+  await expect(page.locator('.piano__key.is-zone')).toHaveCount(14);
+  await expect(key(page, 'C3')).toHaveClass(/is-zone/);
+  await expect(key(page, 'B4')).toHaveClass(/is-zone/);
+  await expect(key(page, 'C5')).not.toHaveClass(/is-zone/);
+  await expect(page.locator('.piano [data-mark]')).toHaveCount(0);
+});
+
+test('a swipe across the keys does not find a key, but a tap does (runs on iPad WebKit too)', async ({ page }) => {
+  await start(page);
+  const { targets } = await asked(page);
+  const target = key(page, targets[0]!);
+  await target.scrollIntoViewIfNeeded();
+  const b = (await target.boundingBox())!;
+  const touch = (type: string, x: number) =>
+    target.evaluate(
+      (el, a) => {
+        const e = new PointerEvent(a.type, { bubbles: true, pointerId: 5, pointerType: 'touch', isPrimary: true, clientX: a.x, clientY: 40 });
+        (a.type === 'pointerup' ? document : el).dispatchEvent(e);
+      },
+      { type, x },
+    );
+  await touch('pointerdown', b.x + 10);
+  await touch('pointermove', b.x + 90);
+  await touch('pointerup', b.x + 90);
+  await expect(page.locator('.piano [data-mark]')).toHaveCount(0);
+  await expect(page.getByTestId('find-count')).toHaveText(`0 of ${targets.length} found`);
+  await touch('pointerdown', b.x + 10);
+  await touch('pointerup', b.x + 10);
+  await expect(target).toHaveAttribute('data-mark', 'found');
+  await expect(page.getByTestId('find-count')).toHaveText(`1 of ${targets.length} found`);
 });
