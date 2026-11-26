@@ -2,16 +2,18 @@
 // outcome rules, and the learner simulations (guesser, masher, honest learner, memorizer).
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { type StudentState, level, newStudent, recall } from '../src/core/engine';
+import { PARAMS, type StudentState, level, newStudent, recall } from '../src/core/engine';
 import { ITEMS, TEACHING_ORDER } from '../src/core/items';
 import { LETTERS, type Letter, noteId } from '../src/core/music';
 import { SESSION_LENGTH, isFinished, nextQuestion, startSession, submit } from '../src/core/session';
 import {
   CANONICAL_ORDER,
+  SILVER_NEEDED,
   WORD_ITEMS,
   WORD_MODE,
   WORD_SET,
   chooseNotes,
+  clearNameItSource,
   clefReady,
   setNameItSource,
   silverNotes,
@@ -101,12 +103,24 @@ describe('the word list', () => {
 // ───────────────────────────── the availability gate ─────────────────────────────
 
 describe('availability', () => {
-  it('a clef is ready with 4 silver Name It notes in it', () => {
+  it('a clef is ready with 5 silver Name It notes that cover the words open from the start', () => {
     expect(clefReady(undefined, 'treble')).toBe(false);
     expect(clefReady(newStudent(), 'treble')).toBe(false);
-    expect(clefReady(nameWith(firstTaught('treble', 3)), 'treble')).toBe(false);
-    expect(clefReady(nameWith(firstTaught('treble', 4)), 'treble')).toBe(true);
-    expect(clefReady(nameWith(firstTaught('treble', 4)), 'bass')).toBe(false);
+    expect(clefReady(nameWith(firstTaught('treble', 4)), 'treble')).toBe(false);
+    expect(clefReady(nameWith(firstTaught('treble', SILVER_NEEDED)), 'treble')).toBe(true);
+    expect(clefReady(nameWith(firstTaught('treble', SILVER_NEEDED)), 'bass')).toBe(false);
+    // Five silver notes that are not the ones the first words need are not enough.
+    const other = ['name:treble:G4', 'name:treble:C4', 'name:treble:A4', 'name:treble:F4', 'name:treble:D4'];
+    expect(clefReady(nameWith(other), 'treble')).toBe(false);
+  });
+
+  it('the words open from the start are readable from exactly the first SILVER_NEEDED silver notes, in each clef', () => {
+    for (const clef of CLEFS) {
+      const name = nameWith(firstTaught(clef, SILVER_NEEDED));
+      for (const item of WORD_SET.groups[clef]!.slice(0, PARAMS.initialUnlock)) expect(wordReadable(name, item), `${clef} ${item.word}`).toBe(true);
+      // And one note fewer is not enough for the mode (so a word is never shown with an unearned note).
+      expect(clefReady(nameWith(firstTaught(clef, SILVER_NEEDED - 1)), clef), clef).toBe(false);
+    }
   });
 
   it('gold counts as silver; a learning (not yet silver) note does not', () => {
@@ -145,6 +159,43 @@ describe('availability', () => {
     practiceAll();
     expect(state.items['word:treble:CAB']!.unlocked).toBe(true);
     expect(state.items['word:treble:ADD']!.unlocked).toBe(false); // D is still not silver
+  });
+});
+
+describe('the gate fails closed, and time is judged per note', () => {
+  it('with no Name It source, a fresh Word Decoder model opens nothing beyond the starters, however well it does', () => {
+    setNameItSource(null);
+    const state = wordEngine.newStudent();
+    let t = T0;
+    for (let round = 0; round < 12; round++) {
+      for (const item of WORD_ITEMS.filter((i) => state.items[i.id]!.unlocked)) wordEngine.recordAnswer(state, item.id, 'correct', item.word, 1500, (t += 60_000));
+    }
+    const open = WORD_ITEMS.filter((i) => state.items[i.id]!.unlocked);
+    expect(open.length).toBe(2 * PARAMS.initialUnlock);
+  });
+
+  it('clearNameItSource only clears its own source', () => {
+    const a = () => newStudent();
+    const b = () => newStudent();
+    setNameItSource(b);
+    clearNameItSource(a);
+    expect(WORD_SET.canUnlock!(wordItem('word:treble:ACE'))).toBe(false); // b is set, but its model has no silver notes
+    setNameItSource(() => everySilver());
+    expect(WORD_SET.canUnlock!(wordItem('word:treble:ACE'))).toBe(true);
+    const c = () => everySilver();
+    setNameItSource(c);
+    clearNameItSource(c);
+    expect(WORD_SET.canUnlock!(wordItem('word:treble:ACE'))).toBe(false);
+  });
+
+  it('response time is divided by the number of notes, so word length does not skew fluency', () => {
+    const short = wordEngine.newStudent();
+    const long = wordEngine.newStudent();
+    wordEngine.recordAnswer(short, 'word:treble:ACE', 'correct', 'ACE', 3 * 1500, T0);
+    wordEngine.recordAnswer(long, 'word:treble:CABBAGE', 'correct', 'CABBAGE', 7 * 1500, T0);
+    expect(short.items['word:treble:ACE']!.rt).toBeCloseTo(1500);
+    expect(long.items['word:treble:CABBAGE']!.rt).toBeCloseTo(1500);
+    expect(long.rtBaseline).toBeCloseTo(short.rtBaseline);
   });
 });
 
@@ -190,12 +241,13 @@ describe('chooseNotes', () => {
     expect([...ids(ledger)].join(' ')).toMatch(/[AB]3/);
   });
 
-  it('falls back to a note the kid has opened, then to any note taught for the letter', () => {
-    const name = newStudent(); // only the first three notes are open: G4 C4 A4
-    const notes = chooseNotes(wordItem('word:treble:ACE'), name, seededRng(1));
-    expect(notes.map(noteId).slice(0, 2)).toEqual(['A4', 'C4']);
-    expect(['E4', 'E5']).toContain(noteId(notes[2]!)); // E is not open yet: any note taught for it
-    expect(chooseNotes(wordItem('word:treble:ACE'), undefined, seededRng(1)).map((n) => n.letter).join('')).toBe('ACE');
+  it('never draws a note the kid has not earned: a letter with no silver note throws', () => {
+    expect(() => chooseNotes(wordItem('word:treble:ACE'), newStudent(), seededRng(1))).toThrow(/No silver treble note/);
+    expect(() => chooseNotes(wordItem('word:treble:ACE'), undefined, seededRng(1))).toThrow();
+    // Opened but not silver is not enough either.
+    const opened = nameWith(firstTaught('treble', 4));
+    opened.items['name:treble:E4']!.unlocked = true;
+    expect(() => chooseNotes(wordItem('word:treble:ACE'), opened, seededRng(1))).toThrow();
   });
 });
 

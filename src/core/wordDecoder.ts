@@ -12,12 +12,13 @@
 //  3. Rewards come only from the shared engine, once per word (silver, then gold on another day);
 //     replaying a mastered word earns nothing (D12), so repeating a known word cannot farm anything.
 //
+// The Name It evidence is a module-level source that fails closed (see `setNameItSource`); the play screen sets it and clears it on dispose.
 // Name It's learner model is only READ here (silver notes per clef); it is never changed.
 
-import { type StudentState, createEngine, level } from './engine';
+import { PARAMS, type StudentState, createEngine, level } from './engine';
 import { defineItemSet } from './itemset';
-import { ITEMS, TEACHING_ORDER } from './items';
-import { type Clef, type Letter, type Note, noteId, parseNote } from './music';
+import { ITEMS } from './items';
+import { type Clef, type Letter, type Note, noteId } from './music';
 import type { SessionMode } from './session';
 import { WORD_LISTS } from './words';
 
@@ -41,7 +42,7 @@ export const CANONICAL_ORDER: readonly string[] = [
   'word:treble:ACE', 'word:treble:AGE', 'word:treble:FACE', 'word:treble:CAFE', 'word:treble:CAB',
   'word:treble:BED', 'word:treble:FED', 'word:treble:BAG', 'word:treble:BEE', 'word:treble:EGG',
   'word:treble:ADD', 'word:treble:BEAD', 'word:treble:BEEF', 'word:treble:FADE', 'word:treble:EDGE',
-  'word:treble:BADGE', 'word:treble:DECAF', 'word:treble:FACED', 'word:treble:DECADE', 'word:treble:FACADE',
+  'word:treble:BADGE', 'word:treble:FACED', 'word:treble:DECADE', 'word:treble:FACADE',
   'word:treble:CABBAGE', 'word:treble:BAGGAGE',
   // bass
   'word:bass:AGED', 'word:bass:FED', 'word:bass:ADD', 'word:bass:FADE', 'word:bass:EDGED',
@@ -54,12 +55,16 @@ const build = (clef: Clef): WordItem[] => WORD_LISTS[clef].map((word) => ({ id: 
 // ───────────────────── what the kid has learned in Name It (read only) ─────────────────────
 
 /** Silver notes a clef needs in Name It before Word Decoder is offered for it. */
-export const SILVER_NEEDED = 4;
+export const SILVER_NEEDED = 5;
 
 /** Where Word Decoder reads the Name It learner model from; the app sets it when a play starts. */
 let nameItSource: (() => StudentState | undefined) | null = null;
 export function setNameItSource(source: (() => StudentState | undefined) | null): void {
   nameItSource = source;
+}
+/** Clear the source, but only if it is still `source` (a newer play screen may have set its own). */
+export function clearNameItSource(source: () => StudentState | undefined): void {
+  if (nameItSource === source) nameItSource = null;
 }
 
 const isSilver = (name: StudentState, id: string) => {
@@ -73,8 +78,13 @@ export function silverNotes(name: StudentState | undefined, clef: Clef): Note[] 
   return ITEMS.filter((i) => i.clef === clef && name.items[i.id] && isSilver(name, i.id)).map((i) => i.note);
 }
 
-/** Can the kid play Word Decoder in this clef yet? */
-export const clefReady = (name: StudentState | undefined, clef: Clef) => silverNotes(name, clef).length >= SILVER_NEEDED;
+/**
+ * Can the kid play Word Decoder in this clef yet? They need SILVER_NEEDED silver notes AND the words
+ * open from the start (`newStudent` opens them without asking `canUnlock`) must be readable from
+ * them, so no word is ever offered with a note the kid has not earned.
+ */
+export const clefReady = (name: StudentState | undefined, clef: Clef) =>
+  silverNotes(name, clef).length >= SILVER_NEEDED && WORD_SET.groups[clef]!.slice(0, PARAMS.initialUnlock).every((i) => wordReadable(name, i));
 
 /** Does every letter of the word have a silver Name It note in its clef? */
 export function wordReadable(name: StudentState | undefined, item: WordItem): boolean {
@@ -88,8 +98,10 @@ export const WORD_SET = defineItemSet<WordItem, string>({
   order: CANONICAL_ORDER,
   groupOf: (i) => i.clef,
   answerOf: (i) => i.word,
-  // The availability gate. With no Name It source (tests of other parts) nothing is held back.
-  canUnlock: (item) => !nameItSource || wordReadable(nameItSource(), item),
+  // The availability gate. It fails CLOSED: with no Name It source set, no word opens.
+  canUnlock: (item) => nameItSource !== null && wordReadable(nameItSource(), item),
+  // Response time is judged per note, so word length does not skew the speed baseline or silver's fluency check.
+  rtUnits: (i) => i.word.length,
 });
 
 export const wordItem = (id: string) => WORD_SET.get(id);
@@ -102,16 +114,15 @@ export const WORD_MODE: SessionMode<string> = { engine: wordEngine };
 /**
  * The notes to draw for a word: one per letter, each from the Name It notes of that letter the kid
  * has at silver (any octave: they vary from play to play), and a different note for a repeated letter
- * when the kid has more than one. A letter with no silver note (only possible for the few words open
- * from the start) falls back to a Name It note they have opened, then to any note taught for it.
+ * when the kid has more than one. A note the kid has not earned is NEVER drawn: a letter with no silver
+ * note throws (the gate and `clefReady` make that unreachable for any word that is offered).
  */
 export function chooseNotes(item: WordItem, name: StudentState | undefined, rng: () => number): Note[] {
   const silver = silverNotes(name, item.clef);
-  const opened = name ? ITEMS.filter((i) => i.clef === item.clef && name.items[i.id]?.unlocked).map((i) => i.note) : [];
-  const taught = TEACHING_ORDER[item.clef].map(parseNote);
   const used = new Set<string>();
   return [...item.word].map((letter) => {
-    const pool = [silver, opened, taught].map((p) => p.filter((n) => n.letter === letter)).find((p) => p.length > 0)!;
+    const pool = silver.filter((n) => n.letter === letter);
+    if (pool.length === 0) throw new Error(`No silver ${item.clef} note for ${letter} in ${item.word}`);
     const fresh = pool.filter((n) => !used.has(noteId(n)));
     const from = fresh.length > 0 ? fresh : pool;
     const note = from[Math.floor(rng() * from.length)]!;

@@ -2,13 +2,15 @@
 // guessers and button-mashers gain nothing, honest effort pays, early play is varied, and only new
 // mastery is rewarded (decisions D10, D12, D14, D33, D34, D56). A new mode adds one line to CASES.
 
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { NAME_IT_MODE, type SessionMode } from '../src/core/session';
 import { LETTER_GROUP, LETTER_MATH_MODE } from '../src/core/letters';
 import { LETTERS } from '../src/core/music';
 import { PARAMS, recall } from '../src/core/engine';
 import { CORE_MODES } from '../src/core/modes';
-import { WORD_MODE } from '../src/core/wordDecoder';
+import { newStudent } from '../src/core/engine';
+import { ITEMS } from '../src/core/items';
+import { WORD_MODE, setNameItSource } from '../src/core/wordDecoder';
 import { WORD_LISTS } from '../src/core/words';
 import { MOVES, MOVE_MODE } from './fixtures/moves';
 import { T0 } from './helpers';
@@ -31,12 +33,21 @@ interface Case {
 const CASES: Case[] = [
   { name: 'Name It', mode: NAME_IT_MODE, groups: ['treble', 'bass'], space: LETTERS, luckySilver: 0 },
   { name: 'Letter Math', mode: LETTER_MATH_MODE, groups: [LETTER_GROUP], space: LETTERS, luckySilver: 0 },
-  // The answer is the whole typed word, so a guess is almost never right. Per-note guessing and mashing
-  // (what a kid's thumbs do) are proven against the real note flow in tests/word-decoder.test.ts.
+  // The answer is the whole typed word, so a guess here is a whole-word guess: almost never right, which
+  // is easier than what a kid's thumbs can do. The REAL coverage is the note-level suite in
+  // tests/word-decoder.test.ts (a kid guessing or mashing one letter per note, "?" on every note, an honest
+  // learner, a memorizer, the Name It gate). This line only proves the shared engine rules for the mode
+  // (asymmetric scoring, variety, selection) with the Name It gate open (see the setNameItSource below).
   { name: 'Word Decoder', mode: WORD_MODE, groups: ['treble', 'bass'], space: [...new Set([...WORD_LISTS.treble, ...WORD_LISTS.bass])], luckySilver: 0 },
   { name: 'a mode with three answers', mode: MOVE_MODE, groups: ['a', 'b'], space: MOVES, luckySilver: 1 },
 ];
 const SEEDS = [1, 2, 3, 4, 5];
+
+// Word Decoder's gate fails closed; open it with a Name It model whose every note is silver (made up).
+const allSilverName = newStudent();
+for (const i of ITEMS) Object.assign(allSilverName.items[i.id]!, { unlocked: true, best: 1, n: 6, c: 6 });
+beforeAll(() => setNameItSource(() => allSilverName));
+afterAll(() => setNameItSource(null));
 
 /**
  * Modes (by CORE_MODES id) that skip the suite, each with the reason. Empty is the goal: a new mode

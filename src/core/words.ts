@@ -25,7 +25,7 @@ export const WORD_LISTS: Record<Clef, readonly string[]> = {
     // adds B
     'CAB', 'BAG', 'BEE', 'BEEF',
     // adds D
-    'ADD', 'FED', 'BED', 'BEAD', 'FADE', 'EDGE', 'BADGE', 'DECAF', 'FACED',
+    'ADD', 'FED', 'BED', 'BEAD', 'FADE', 'EDGE', 'BADGE', 'FACED',
     // six and seven letters
     'DECADE', 'FACADE', 'BAGGAGE', 'CABBAGE',
   ],

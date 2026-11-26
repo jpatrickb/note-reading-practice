@@ -47,6 +47,12 @@ export interface ItemSet<I extends PracticeItem = PracticeItem, A extends string
    */
   canUnlock?(item: I): boolean;
   /**
+   * How many "units" of work one answer to this item covers (default 1). The engine divides the
+   * response time by it, so the speed baseline and the silver fluency check compare like with like
+   * (Word Decoder: a word's time per note, so a 7-letter word is not slower than a 3-letter one).
+   */
+  rtUnits?(item: I): number;
+  /**
    * The answer this item is taught with. It is also the item's "answer key": the engine discourages
    * asking two items with the same one in a row, so one button can't carry a streak.
    */
@@ -74,6 +80,7 @@ export interface ItemSetSpec<I extends PracticeItem, A extends string = Letter> 
   pacing?: Partial<Pacing>;
   groupOf(item: I): string;
   canUnlock?(item: I): boolean;
+  rtUnits?(item: I): number;
   answerOf(item: I): A;
   isCorrect?(item: I, answer: A): boolean;
 }
@@ -102,6 +109,7 @@ export function defineItemSet<I extends PracticeItem, A extends string = Letter>
     pacing: spec.pacing,
     groupOf: spec.groupOf,
     canUnlock: spec.canUnlock,
+    rtUnits: spec.rtUnits,
     answerOf: spec.answerOf,
     isCorrect: spec.isCorrect,
     get(id: string): I {

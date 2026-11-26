@@ -31,7 +31,7 @@ export type Availability = { ok: true } | { ok: false; reason: string };
 export interface ModeEnv {
   synth: Synth;
   /** The kid's learner models, for a mode that reads another mode's progress (Word Decoder reads Name It). */
-  profile?: Profile;
+  profile: Profile;
 }
 
 /** The mode's kid-facing nouns, for toasts and the summary. */

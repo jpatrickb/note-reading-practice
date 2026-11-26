@@ -13,6 +13,7 @@ import {
   WORD_ITEMS,
   WORD_MODE,
   chooseNotes,
+  clearNameItSource,
   clefReady,
   setNameItSource,
   submission,
@@ -46,8 +47,9 @@ interface Decode {
 
 const ordinal = (n: number) => ['1st', '2nd', '3rd'][n] ?? `${n + 1}th`;
 
-export function wordDecoderPlay(host: PlayHost<string>, synth: Synth, profile?: Profile): PlayShell<string> {
-  setNameItSource(profile ? () => profile.name : null);
+export function wordDecoderPlay(host: PlayHost<string>, synth: Synth, profile: Profile): PlayShell<string> {
+  const nameSource = () => profile.name;
+  setNameItSource(nameSource);
   const staffEl = h('div', { class: 'wd-staff' });
   const blanksEl = h('ol', { class: 'wd-blanks', 'data-testid': 'wd-blanks', 'aria-live': 'polite' });
   const hintEl = h('div', { class: 'wd-hint-slot' });
@@ -157,6 +159,7 @@ export function wordDecoderPlay(host: PlayHost<string>, synth: Synth, profile?: 
         enabled = on;
         pad.setEnabled(on && !cur?.pending);
       },
+      dispose: () => clearNameItSource(nameSource),
       markRight: () => staffEl,
       markWrong: () => null,
       fromKey(e) {
@@ -186,7 +189,7 @@ export function wordDecoderPlay(host: PlayHost<string>, synth: Synth, profile?: 
     },
     renderPrompt: (id) => {
       const item = wordItem(id);
-      const notes = chooseNotes(item, profile?.name, Math.random);
+      const notes = chooseNotes(item, profile.name, Math.random);
       const n = notes.length;
       const states: NoteState[] = Array(n).fill('idle');
       const labels: (string | undefined)[] = Array(n).fill(undefined);
@@ -294,8 +297,9 @@ export const wordDecoderMode = defineMode<string>({
   },
   // Only the clefs where the kid has enough silver notes; the kid's pick still decides among those.
   groups: (clefs, profile) => {
-    const ready = profile ? clefs.filter((c) => clefReady(profile.name, c)) : [...clefs];
-    return ready.length > 0 ? ready : (['treble', 'bass'] as Clef[]).filter((c) => !profile || clefReady(profile.name, c));
+    if (!profile) return []; // fail closed: no Name It evidence, no words
+    const ready = clefs.filter((c) => clefReady(profile.name, c));
+    return ready.length > 0 ? ready : (['treble', 'bass'] as Clef[]).filter((c) => clefReady(profile.name, c));
   },
   createPlay: (host, env) => wordDecoderPlay(host, env.synth, env.profile),
   renderMap: renderWordMap,

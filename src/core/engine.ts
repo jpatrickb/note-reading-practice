@@ -516,6 +516,7 @@ export function createEngine<I extends PracticeItem, A extends string = Letter>(
     rtMs: number,
     now: number,
   ): AnswerResult {
+    rtMs /= Math.max(1, set.rtUnits?.(set.get(itemId)) ?? 1);
     const group = set.groupOf(set.get(itemId));
     const it = state.items[itemId];
     const runBefore = state.runs?.[group] ?? 0;

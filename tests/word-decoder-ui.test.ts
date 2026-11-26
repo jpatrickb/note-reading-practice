@@ -214,7 +214,7 @@ describe('Word Decoder registration', () => {
     for (const i of ITEMS.filter((n) => n.clef === 'bass')) p.name.items[i.id]!.best = 0;
     expect(wordDecoderMode.groups(['treble', 'bass'], p)).toEqual(['treble']);
     expect(wordDecoderMode.groups(['bass'], p)).toEqual(['treble']); // none of the pick is ready: any ready clef
-    expect(wordDecoderMode.groups(['treble', 'bass'])).toEqual(['treble', 'bass']);
+    expect(wordDecoderMode.groups(['treble', 'bass'])).toEqual([]); // no profile: fail closed
   });
 
   it('draws its progress map, with locked words left out until they open', () => {

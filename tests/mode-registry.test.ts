@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Synth } from '../src/audio/synth';
 import { decodeProfile, encodeProfile } from '../src/core/codec';
 import { type StudentState, level } from '../src/core/engine';
+import { ITEMS } from '../src/core/items';
 import { CORE_MODES, type CoreMode, coreMode } from '../src/core/modes';
 import { isFinished, nextQuestion, startSession, submit } from '../src/core/session';
 import {
@@ -262,6 +263,12 @@ describe('legacy saves of a mode still load when read through loadState', () => 
 
 describe('the UI mode registry', () => {
   const profile = () => loadProfile(memoryStore());
+  /** A profile whose every Name It note is silver, for modes that build on Name It (made up). */
+  const silverProfile = () => {
+    const p = profile();
+    for (const i of ITEMS) Object.assign(p.name.items[i.id]!, { unlocked: true, best: 1, n: 6, c: 6 });
+    return p;
+  };
 
   it('registers Name It, Letter Math and Word Decoder, each backed by a core mode', () => {
     expect(MODES.map((m) => m.id)).toEqual(['name', 'letters', 'words']);
@@ -286,8 +293,8 @@ describe('the UI mode registry', () => {
     expect(m.availability(profile())).toEqual(m.id === 'words' ? { ok: false, reason: 'Learn a few more notes in Name It first!' } : { ok: true });
     expect(m.counts(state)).toEqual({ gold: 0, silver: 0 });
     for (const item of m.core.engine.set.items.slice(0, 40)) expect(m.itemLabel(item.id).length, item.id).toBeGreaterThan(0);
-    expect(m.groups(['treble']).length).toBeGreaterThan(0);
-    for (const g of m.groups(['treble', 'bass'])) expect(Object.keys(m.core.engine.set.groups), g).toContain(g);
+    expect(m.groups(['treble'], silverProfile()).length).toBeGreaterThan(0);
+    for (const g of m.groups(['treble', 'bass'], silverProfile())) expect(Object.keys(m.core.engine.set.groups), g).toContain(g);
     // Both the summary form and the My progress form draw.
     expect(m.renderMap(state, T0)).toBeInstanceOf(HTMLElement);
     expect(m.renderMap(state, T0, { legend: true, lanes: ['bass'] })).toBeInstanceOf(HTMLElement);
@@ -304,7 +311,7 @@ describe('the UI mode registry', () => {
 
   it('plays: createPlay builds a screen that asks a question', () => {
     for (const m of MODES) {
-      const session = startSession(m.groups(['treble']), 3, m.session);
+      const session = startSession(m.groups(['treble'], silverProfile()), 3, m.session);
       const state = m.core.engine.newStudent();
       const host = {
         session,
@@ -317,7 +324,7 @@ describe('the UI mode registry', () => {
         finish: vi.fn(),
         stopSound: vi.fn(),
       };
-      const shell = m.createPlay(host, { synth: { note: vi.fn(), stopAll: vi.fn() } as unknown as Synth });
+      const shell = m.createPlay(host, { synth: { note: vi.fn(), stopAll: vi.fn() } as unknown as Synth, profile: silverProfile() });
       document.body.append(shell.render());
       shell.dispose();
       expect(host.stopSound, `${m.id} stops sound when its screen closes`).toHaveBeenCalled();
