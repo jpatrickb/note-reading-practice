@@ -34,12 +34,13 @@ async function playSome(page: Page, mode: 'name' | 'letters', questions = 4) {
 test('home shows a card per mode, grouped under headings, with the chosen one marked', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('mode-chooser')).toBeVisible();
-  await expect(page.locator('.mode-card')).toHaveCount(4);
+  await expect(page.locator('.mode-card')).toHaveCount(5);
   await expect(page.getByRole('heading', { name: 'Read notes' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Find keys' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Alphabet & theory' })).toBeVisible();
   await expect(card(page, 'name')).toContainText('Read the note, tap its name');
   await expect(card(page, 'letters')).toContainText('Next letter, skips and intervals');
+  await expect(card(page, 'words')).toContainText('Word Decoder'); // locked on a fresh profile, so it shows its reason
   // Name It is chosen by default, and says so without relying on color.
   await expect(card(page, 'name')).toHaveAttribute('aria-checked', 'true');
   await expect(card(page, 'name').locator('.icon--check')).toBeVisible();

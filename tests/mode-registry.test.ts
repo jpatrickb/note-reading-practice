@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Synth } from '../src/audio/synth';
 import { decodeProfile, encodeProfile } from '../src/core/codec';
 import { type StudentState, level } from '../src/core/engine';
+import { ITEMS } from '../src/core/items';
 import { CORE_MODES, type CoreMode, coreMode } from '../src/core/modes';
 import { isFinished, nextQuestion, startSession, submit } from '../src/core/session';
 import {
@@ -68,6 +69,7 @@ describe('the core mode registry', () => {
       ['letters', 2],
       ['place', 3],
       ['catch', 4],
+      ['words', 7],
     ]);
   });
 
@@ -83,7 +85,7 @@ describe('profile storage', () => {
     const profile = loadProfile(store, [...CORE_MODES, MOVES_CORE]);
     for (const m of [...CORE_MODES, MOVES_CORE]) play(m, profile[m.id]!, T0, 20);
     saveProfile(store, profile, [...CORE_MODES, MOVES_CORE]);
-    expect([...store.data.keys()].sort()).toEqual(['nrp:v1:state', 'nrp:v1:state:catch', 'nrp:v1:state:letters', 'nrp:v1:state:moves', 'nrp:v1:state:place']);
+    expect([...store.data.keys()].sort()).toEqual(['nrp:v1:state', 'nrp:v1:state:catch', 'nrp:v1:state:letters', 'nrp:v1:state:moves', 'nrp:v1:state:place', 'nrp:v1:state:words']);
 
     const back = loadProfile(store, [...CORE_MODES, MOVES_CORE]);
     for (const m of [...CORE_MODES, MOVES_CORE]) expect(back[m.id], m.id).toEqual(profile[m.id]);
@@ -116,12 +118,13 @@ describe('profile storage', () => {
     expect(back.letters).toEqual(CORE_MODES[1]!.engine.newStudent());
   });
 
-  it('a profile exported after playing two modes imports with both restored (the code round trip)', () => {
+  it('a profile exported after playing every mode imports with both restored (the code round trip)', () => {
     const profile = loadProfile(memoryStore());
     let now = play(coreMode('name'), profile.name, T0 - 3 * DAY, 30);
     now = play(coreMode('letters'), profile.letters, now, 30);
     now = play(coreMode('place'), profile.place!, now, 30);
     now = play(coreMode('catch'), profile.catch!, now, 30);
+    now = play(coreMode('words'), profile.words!, now, 30);
     const code = encodeProfile(profile, now);
 
     const restored = decodeProfile(code, now);
@@ -264,9 +267,15 @@ describe('legacy saves of a mode still load when read through loadState', () => 
 
 describe('the UI mode registry', () => {
   const profile = () => loadProfile(memoryStore());
+  /** A profile whose every Name It note is silver, for modes that build on Name It (made up). */
+  const silverProfile = () => {
+    const p = profile();
+    for (const i of ITEMS) Object.assign(p.name.items[i.id]!, { unlocked: true, best: 1, n: 6, c: 6 });
+    return p;
+  };
 
-  it('registers Name It and Letter Math first, both backed by a core mode', () => {
-    expect(MODES.map((m) => m.id)).toEqual(['name', 'letters', 'place', 'catch']);
+  it('registers every mode, each backed by a core mode', () => {
+    expect(MODES.map((m) => m.id)).toEqual(['name', 'letters', 'place', 'catch', 'words']);
     for (const m of MODES) {
       expect(m.core, m.id).toBe(coreMode(m.id));
       expect(m.session.engine, m.id).toBe(m.core.engine);
@@ -284,11 +293,12 @@ describe('the UI mode registry', () => {
     expect(m.blurb.split(/\s+/).length, `"${m.blurb}" is more than 8 words`).toBeLessThanOrEqual(8);
     expect(MODE_GROUPS.map((g) => g.id)).toContain(m.group);
     const state = m.core.engine.newStudent();
-    expect(m.availability(profile())).toEqual({ ok: true });
+    // Open from the start, except a mode that builds on another (Word Decoder needs Name It notes).
+    expect(m.availability(profile())).toEqual(m.id === 'words' ? { ok: false, reason: 'Learn a few more notes in Name It first!' } : { ok: true });
     expect(m.counts(state)).toEqual({ gold: 0, silver: 0 });
     for (const item of m.core.engine.set.items.slice(0, 40)) expect(m.itemLabel(item.id).length, item.id).toBeGreaterThan(0);
-    expect(m.groups(['treble']).length).toBeGreaterThan(0);
-    for (const g of m.groups(['treble', 'bass'])) expect(Object.keys(m.core.engine.set.groups), g).toContain(g);
+    expect(m.groups(['treble'], silverProfile()).length).toBeGreaterThan(0);
+    for (const g of m.groups(['treble', 'bass'], silverProfile())) expect(Object.keys(m.core.engine.set.groups), g).toContain(g);
     // Both the summary form and the My progress form draw.
     expect(m.renderMap(state, T0)).toBeInstanceOf(HTMLElement);
     expect(m.renderMap(state, T0, { legend: true, lanes: ['bass'] })).toBeInstanceOf(HTMLElement);
@@ -305,7 +315,7 @@ describe('the UI mode registry', () => {
 
   it('plays: createPlay builds a screen that asks a question', () => {
     for (const m of MODES) {
-      const session = startSession(m.groups(['treble']), 3, m.session);
+      const session = startSession(m.groups(['treble'], silverProfile()), 3, m.session);
       const state = m.core.engine.newStudent();
       const host = {
         session,
@@ -318,7 +328,7 @@ describe('the UI mode registry', () => {
         finish: vi.fn(),
         stopSound: vi.fn(),
       };
-      const shell = m.createPlay(host, { synth: { note: vi.fn(), stopAll: vi.fn() } as unknown as Synth });
+      const shell = m.createPlay(host, { synth: { note: vi.fn(), stopAll: vi.fn() } as unknown as Synth, profile: silverProfile() });
       document.body.append(shell.render());
       shell.dispose();
       expect(host.stopSound, `${m.id} stops sound when its screen closes`).toHaveBeenCalled();
@@ -327,8 +337,8 @@ describe('the UI mode registry', () => {
   });
 
   it('the test-only locked mode exists only behind debug, and is locked with a reason', () => {
-    expect(registeredModes().map((m) => m.id)).toEqual(['name', 'letters', 'place', 'catch']);
-    expect(registeredModes(true).map((m) => m.id)).toEqual(['name', 'letters', 'place', 'catch', 'demo-locked']);
+    expect(registeredModes().map((m) => m.id)).toEqual(['name', 'letters', 'place', 'catch', 'words']);
+    expect(registeredModes(true).map((m) => m.id)).toEqual(['name', 'letters', 'place', 'catch', 'words', 'demo-locked']);
     expect(lockedDemoMode.availability(profile())).toEqual({ ok: false, reason: 'Learn 7 notes in Name It first!' });
     expect(() => lockedDemoMode.createPlay({} as never, {} as never)).toThrow();
     // Its model is not a registered one: nothing about it is saved or put in a code.
@@ -410,7 +420,7 @@ describe('the home mode chooser', () => {
   });
 
   it('is one radio group with a single tab stop, and arrow keys move through the open cards', () => {
-    const { el, onSelect } = render([...MODES.filter((m) => m.id !== 'catch'), sample('lock', 'music', true)], 'name');
+    const { el, onSelect } = render([...MODES.filter((m) => m.id !== 'catch' && m.id !== 'words'), sample('lock', 'music', true)], 'name');
     expect(el.getAttribute('role')).toBe('radiogroup');
     expect(el.getAttribute('aria-label')).toBe('Game');
     expect(document.querySelectorAll('.mode-card[role="radio"]')).toHaveLength(4);

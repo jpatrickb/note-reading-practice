@@ -489,7 +489,7 @@ export function createEngine<I extends PracticeItem, A extends string = Letter>(
     const items = set.groups[group] ?? [];
     const open = items.filter((i) => state.items[i.id]!.unlocked);
     const next = items.find((i) => !state.items[i.id]!.unlocked);
-    if (!next) return null;
+    if (!next || set.canUnlock?.(next) === false) return null;
     const cruising = (state.runs?.[group] ?? 0) >= pacing.cruiseRun;
     const weak = open.filter((i) => {
       const it = state.items[i.id]!;
@@ -516,6 +516,7 @@ export function createEngine<I extends PracticeItem, A extends string = Letter>(
     rtMs: number,
     now: number,
   ): AnswerResult {
+    rtMs /= Math.max(1, set.rtUnits?.(set.get(itemId)) ?? 1);
     const group = set.groupOf(set.get(itemId));
     const it = state.items[itemId];
     const runBefore = state.runs?.[group] ?? 0;

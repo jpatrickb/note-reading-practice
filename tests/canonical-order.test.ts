@@ -11,6 +11,7 @@ import { NAME_IT, TEACHING_ORDER } from '../src/core/items';
 import { LETTER_MATH } from '../src/core/letters';
 import { PLACE_IT } from '../src/core/placeIt';
 import type { CoreMode } from '../src/core/modes';
+import { WORD_SET } from '../src/core/wordDecoder';
 import { T0 } from './helpers';
 
 /** Name It: index 0..33 (the original 26, then the #24 ledger notes). */
@@ -49,6 +50,20 @@ const LETTER_MATH_GOLDEN = [
   'lm:down7:C', 'lm:down7:G', 'lm:down7:D', 'lm:down7:A', 'lm:down7:E', 'lm:down7:B', 'lm:down7:F',
 ];
 
+/** Word Decoder: index 0..32 (21 treble words, then 12 bass words). */
+const WORD_DECODER_GOLDEN = [
+  // treble
+  'word:treble:ACE', 'word:treble:AGE', 'word:treble:FACE', 'word:treble:CAFE', 'word:treble:CAB',
+  'word:treble:BED', 'word:treble:FED', 'word:treble:BAG', 'word:treble:BEE', 'word:treble:EGG',
+  'word:treble:ADD', 'word:treble:BEAD', 'word:treble:BEEF', 'word:treble:FADE', 'word:treble:EDGE',
+  'word:treble:BADGE', 'word:treble:FACED', 'word:treble:DECADE', 'word:treble:FACADE',
+  'word:treble:CABBAGE', 'word:treble:BAGGAGE',
+  // bass
+  'word:bass:AGED', 'word:bass:FED', 'word:bass:ADD', 'word:bass:FADE', 'word:bass:EDGED',
+  'word:bass:FEED', 'word:bass:FADED', 'word:bass:ADDED', 'word:bass:ACE', 'word:bass:FACE',
+  'word:bass:BAGGED', 'word:bass:BADGE',
+];
+
 /** Place It: index 0..23 (12 notes per clef; append new ones at the end). */
 const PLACE_IT_GOLDEN = [
   'place:treble:G4', 'place:treble:C4', 'place:treble:A4', 'place:treble:F4',
@@ -72,6 +87,13 @@ describe('canonical item order is pinned', () => {
   it('Letter Math: every item keeps its index', () => {
     expect(LETTER_MATH.items.map((i) => i.id)).toEqual(LETTER_MATH_GOLDEN);
     LETTER_MATH_GOLDEN.forEach((id, idx) => expect(LETTER_MATH.items.indexOf(LETTER_MATH.get(id)), id).toBe(idx));
+  });
+
+  it('Word Decoder: every item keeps its index (and the word lists may be reordered freely)', () => {
+    expect(WORD_SET.items.map((i) => i.id)).toEqual(WORD_DECODER_GOLDEN);
+    WORD_DECODER_GOLDEN.forEach((id, idx) => expect(WORD_SET.items.indexOf(WORD_SET.get(id)), id).toBe(idx));
+    // The teaching order is a different list: here the first treble words are not the first indices.
+    expect(WORD_SET.groups.treble!.map((i) => i.id)).not.toEqual(WORD_DECODER_GOLDEN.slice(0, 21));
   });
 
   it('the canonical order is independent of the teaching order', () => {

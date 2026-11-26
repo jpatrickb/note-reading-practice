@@ -6,6 +6,7 @@ import { type Engine, type ItemState, PARAMS, type StudentState, createEngine, d
 import { nameEngine as liveNameEngine } from '../src/core/engine';
 import { defineItemSet } from '../src/core/itemset';
 import { letterEngine } from '../src/core/letters';
+import { wordEngine } from '../src/core/wordDecoder';
 import { CORE_MODES, type CoreMode } from '../src/core/modes';
 import { codeFromHash, codeFromPasted, progressQr } from '../src/core/progress-qr';
 import { isFinished, nextQuestion, startSession, submit } from '../src/core/session';
@@ -189,6 +190,7 @@ describe('progress code v3', () => {
       ['letters', 2],
       ['place', 3],
       ['catch', 4],
+      ['words', 7],
     ]);
     expect(new Set(CORE_MODES.map((m) => m.tag)).size).toBe(CORE_MODES.length);
   });
@@ -222,6 +224,7 @@ describe('progress code v3', () => {
         const v3 = decodeProfile(encodeProfile(expected, now), now);
         for (const mode of CORE_MODES.filter((m) => m.id in expected)) {
           const a = expected[mode.id as 'name' | 'letters'];
+          if (!a) continue; // modes added after the golden codes were made
           const b = v3[mode.id]!;
           expectSameBehavior(mode.engine, a, b, now);
           expect(selectionAgreement(mode.engine, a, b, now), key).toBeGreaterThanOrEqual(0.95);
@@ -248,6 +251,7 @@ describe('progress code v3', () => {
     const profile = {
       name: fullyPlayed(nameEngine, now, 1),
       letters: fullyPlayed(letterEngine, now, 2),
+      words: fullyPlayed(wordEngine, now, 4),
       big: fullyPlayed(bigEngine, now, 3),
     };
     // A locked, unplayed item is left out of the code (bitmap only).

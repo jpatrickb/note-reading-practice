@@ -319,12 +319,12 @@ export class App {
     const clefs = lanesFor(this.settings, mode.id);
     this.active = { mode, clefs };
     this.placing = null;
-    const lane = offer && mode.placement ? placementLane(mode.core.engine, this.profile[mode.core.id], mode.groups(clefs)) : null;
+    const lane = offer && mode.placement ? placementLane(mode.core.engine, this.profile[mode.core.id], mode.groups(clefs, this.profile)) : null;
     if (lane) {
       this.placing = { run: startPlacement(mode.core.engine, lane), lane, applied: false };
       return this.go('offer');
     }
-    this.session = startSession(mode.groups(clefs), undefined, mode.session);
+    this.session = startSession(mode.groups(clefs, this.profile), undefined, mode.session);
     this.go('play');
   }
 
@@ -342,7 +342,7 @@ export class App {
       stopSound: () => this.synth.stopAll(),
     };
     if (this.placing && !this.placing.applied) host.placement = { run: this.placing.run, done: () => this.finishPlacement() };
-    this.play = mode.createPlay(host, { synth: this.synth });
+    this.play = mode.createPlay(host, { synth: this.synth, profile: this.profile });
     return this.play.render();
   }
 
