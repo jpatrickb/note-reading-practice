@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { PARAMS, type StudentState, level, newStudent, recall } from '../src/core/engine';
 import { ITEMS, TEACHING_ORDER } from '../src/core/items';
-import { LETTERS, type Letter, noteId } from '../src/core/music';
+import { LETTERS, type Letter, noteId, staffPosition } from '../src/core/music';
 import { SESSION_LENGTH, isFinished, nextQuestion, startSession, submit } from '../src/core/session';
 import {
   CANONICAL_ORDER,
@@ -15,6 +15,7 @@ import {
   chooseNotes,
   clearNameItSource,
   clefReady,
+  goldShare,
   setNameItSource,
   silverNotes,
   submission,
@@ -45,6 +46,25 @@ function nameWith(ids: readonly string[]): StudentState {
 }
 const firstTaught = (clef: 'treble' | 'bass', n: number) => TEACHING_ORDER[clef].slice(0, n).map((id) => `name:${clef}:${id}`);
 const everySilver = () => nameWith(ITEMS.map((i) => i.id));
+/** A beginner: eleven contiguous treble notes (C4 to F5) at silver, none gold. */
+const beginner = () => nameWith(['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5', 'D5', 'E5', 'F5'].map((n) => `name:treble:${n}`));
+/** An advanced kid: every Name It note at gold. */
+const advanced = () => {
+  const s = nameWith(ITEMS.map((i) => i.id));
+  for (const it of Object.values(s.items)) it.best = 2;
+  return s;
+};
+/** Absolute staff-step intervals between consecutive notes over these words and seeds. */
+const intervals = (name: StudentState, words: readonly string[], seeds: number) => {
+  const out: number[] = [];
+  for (const w of words) {
+    for (let seed = 1; seed <= seeds; seed++) {
+      const p = chooseNotes(wordItem(`word:treble:${w}`), name, seededRng(seed)).map((n) => staffPosition(n, 'treble'));
+      for (let k = 1; k < p.length; k++) out.push(Math.abs(p[k]! - p[k - 1]!));
+    }
+  }
+  return out;
+};
 
 // ───────────────────────────── the word list ─────────────────────────────
 
@@ -213,16 +233,113 @@ describe('chooseNotes', () => {
     }
   });
 
-  it('varies the octave from play to play, and uses different notes for a repeated letter when it can', () => {
-    const name = nameWith([...firstTaught('treble', 7), 'name:treble:C5', 'name:treble:D5', 'name:treble:E5']);
+  it('an advanced kid still gets varied notes, and sometimes a different note for a repeated letter', () => {
+    const name = advanced();
     const item = wordItem('word:treble:BEEF');
     const seen = new Set<string>();
-    for (let seed = 1; seed <= 30; seed++) {
+    let differ = 0;
+    for (let seed = 1; seed <= 60; seed++) {
       const notes = chooseNotes(item, name, seededRng(seed));
-      expect(noteId(notes[1]!)).not.toBe(noteId(notes[2]!)); // E and E: E4 and E5 are both silver
+      if (noteId(notes[1]!) !== noteId(notes[2]!)) differ++;
       seen.add(notes.map(noteId).join(' '));
     }
+    expect(differ).toBeGreaterThan(0);
     expect(seen.size).toBeGreaterThan(1);
+  });
+
+  it('small jumps: a beginner has small average and maximum intervals, and starts near the middle', () => {
+    const name = beginner();
+    const words = WORD_LISTS.treble.filter((w) => wordReadable(name, wordItem(`word:treble:${w}`)));
+    const iv = intervals(name, words, 20);
+    expect(iv.length).toBeGreaterThan(100);
+    expect(Math.max(...iv)).toBeLessThanOrEqual(5);
+    expect(iv.reduce((a, b) => a + b, 0) / iv.length).toBeLessThanOrEqual(2);
+    for (let seed = 1; seed <= 20; seed++) {
+      const first = chooseNotes(wordItem('word:treble:BAG'), name, seededRng(seed))[0]!;
+      expect(Math.abs(staffPosition(first, 'treble') - 4)).toBeLessThanOrEqual(3);
+    }
+  });
+
+  it('small jumps for real kid profiles: the biggest jump is within 1 step of the smallest possible', () => {
+    // The smallest possible biggest-jump over every silver choice, found by brute force (any start).
+    const minWorst = (pools: number[][]): number => {
+      let best = Infinity;
+      const go = (i: number, prev: number, worst: number): void => {
+        if (worst >= best) return;
+        if (i === pools.length) { best = worst; return; }
+        for (const p of pools[i]!) go(i + 1, p, i === 0 ? 0 : Math.max(worst, Math.abs(p - prev)));
+      };
+      go(0, 0, 0);
+      return best;
+    };
+    for (const clef of CLEFS) {
+      for (let n = 5; n <= 13; n++) {
+        const name = nameWith(firstTaught(clef, n));
+        const silver = silverNotes(name, clef);
+        for (const word of WORD_LISTS[clef]) {
+          const item = wordItem(`word:${clef}:${word}`);
+          if (!wordReadable(name, item)) continue;
+          const pools = [...word].map((l) => silver.filter((s) => s.letter === l).map((s) => staffPosition(s, clef)));
+          const reach = pools[0]!.filter((p) => Math.abs(p - 4) <= 3); // the first note starts near the middle
+          pools[0] = reach.length > 0 ? reach : pools[0]!.filter((p) => Math.abs(p - 4) === Math.min(...pools[0]!.map((q) => Math.abs(q - 4))));
+          const min = minWorst(pools);
+          for (let seed = 1; seed <= 10; seed++) {
+            const p = chooseNotes(item, name, seededRng(seed)).map((x) => staffPosition(x, clef));
+            const worst = Math.max(0, ...p.slice(1).map((v, k) => Math.abs(v - p[k]!)));
+            expect(worst, `${clef} ${word} with ${n} silver`).toBeLessThanOrEqual(min + 1);
+          }
+        }
+      }
+    }
+    // FADE with the first 9 treble notes: the best possible is 4 steps, never the 6 of a careless draw.
+    const nine = nameWith(firstTaught('treble', 9));
+    for (let seed = 1; seed <= 40; seed++) {
+      const p = chooseNotes(wordItem('word:treble:FADE'), nine, seededRng(seed)).map((x) => staffPosition(x, 'treble'));
+      expect(Math.max(...p.slice(1).map((v, k) => Math.abs(v - p[k]!)))).toBeLessThanOrEqual(4);
+    }
+  });
+
+  it('beginner variety: no gold and 10 silver notes still give different pictures, all starting near the middle', () => {
+    const name = nameWith(firstTaught('treble', 10));
+    expect(goldShare(name, 'treble')).toBe(0);
+    for (const word of ['ADD', 'DECADE', 'EDGE']) {
+      const pictures = new Set<string>();
+      for (let seed = 1; seed <= 40; seed++) {
+        const notes = chooseNotes(wordItem(`word:treble:${word}`), name, seededRng(seed));
+        expect(Math.abs(staffPosition(notes[0]!, 'treble') - 4)).toBeLessThanOrEqual(3);
+        pictures.add(notes.map(noteId).join(' '));
+      }
+      expect(pictures.size, word).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it('is deterministic for the same seed', () => {
+    const name = advanced();
+    const item = wordItem('word:treble:CABBAGE');
+    expect(chooseNotes(item, name, seededRng(7)).map(noteId)).toEqual(chooseNotes(item, name, seededRng(7)).map(noteId));
+  });
+
+  it('an advanced kid is allowed bigger leaps, but never beyond an octave', () => {
+    const adv = intervals(advanced(), WORD_LISTS.treble, 20);
+    const bn = beginner();
+    const beg = intervals(bn, WORD_LISTS.treble.filter((w) => wordReadable(bn, wordItem(`word:treble:${w}`))), 20);
+    expect(Math.max(...adv)).toBeGreaterThanOrEqual(5);
+    expect(Math.max(...adv)).toBeLessThanOrEqual(7);
+    expect(Math.max(...adv)).toBeGreaterThan(Math.max(...beg));
+    expect(adv.reduce((a, b) => a + b, 0) / adv.length).toBeGreaterThan(beg.reduce((a, b) => a + b, 0) / beg.length);
+    expect(goldShare(advanced(), 'treble')).toBe(1);
+    expect(goldShare(bn, 'treble')).toBe(0);
+  });
+
+  it('only silver notes are ever drawn, for a beginner and an advanced kid alike', () => {
+    for (const name of [beginner(), advanced()]) {
+      const silver = new Set(silverNotes(name, 'treble').map(noteId));
+      for (const w of WORD_LISTS.treble) {
+        const item = wordItem(`word:treble:${w}`);
+        if (!wordReadable(name, item)) continue;
+        for (let seed = 1; seed <= 10; seed++) for (const n of chooseNotes(item, name, seededRng(seed))) expect(silver.has(noteId(n))).toBe(true);
+      }
+    }
   });
 
   it('a repeated letter with only one silver note repeats it', () => {
@@ -234,9 +351,9 @@ describe('chooseNotes', () => {
 
   it('draws ledger-line notes only once they are silver', () => {
     const plain = nameWith(firstTaught('treble', 7));
-    const ledger = nameWith([...firstTaught('treble', 7), 'name:treble:B3', 'name:treble:A3']);
-    const item = wordItem('word:treble:BAG');
-    const ids = (name: StudentState) => new Set(Array.from({ length: 40 }, (_, k) => chooseNotes(item, name, seededRng(k + 1)).map(noteId).join(' ')).values());
+    const ledger = advanced(); // leaps can reach the low ledger notes once they are silver (a beginner stays near the middle)
+    const item = wordItem('word:treble:CABBAGE');
+    const ids = (name: StudentState) => new Set(Array.from({ length: 200 }, (_, k) => chooseNotes(item, name, seededRng(k + 1)).map(noteId).join(' ')).values());
     expect([...ids(plain)].join(' ')).not.toMatch(/[AB]3/);
     expect([...ids(ledger)].join(' ')).toMatch(/[AB]3/);
   });
