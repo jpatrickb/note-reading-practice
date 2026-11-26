@@ -6,7 +6,6 @@ import { type Engine, type ItemState, PARAMS, type StudentState, createEngine, d
 import { nameEngine as liveNameEngine } from '../src/core/engine';
 import { defineItemSet } from '../src/core/itemset';
 import { letterEngine } from '../src/core/letters';
-import { catcherEngine } from '../src/core/noteCatcher';
 import { CORE_MODES, type CoreMode } from '../src/core/modes';
 import { codeFromHash, codeFromPasted, progressQr } from '../src/core/progress-qr';
 import { isFinished, nextQuestion, startSession, submit } from '../src/core/session';
