@@ -22,10 +22,11 @@ iPad (served over a tunnel during early work).
 Done 2026-11-24: Letter Math; Word Decoder; generic multi-mode engine; 6 themes; installable offline PWA; CI/CD +
 Terraform (staging live).
 
+Done 2026-11-26: Place It; Note Catcher; Word Decoder; placement round; mode registry; per-mode import.
+
 Remaining:
 
-- Place It, Find All (Note Catcher: built, see #27)
-- Placement round
+- Find All
 - Ledger lines, then accidentals and enharmonics
 - **Placement / fast track** (needed: Letter Math pacing, see open questions)
 - First production release (`release/0.1.0`)
