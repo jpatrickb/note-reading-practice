@@ -5,6 +5,7 @@
 
 import { type Engine, nameEngine } from './engine';
 import { letterEngine } from './letters';
+import { placeEngine } from './placeIt';
 import { catcherEngine } from './noteCatcher';
 
 export interface CoreMode {
@@ -18,6 +19,7 @@ export interface CoreMode {
 export const CORE_MODES: readonly CoreMode[] = [
   { id: 'name', tag: 1, engine: nameEngine },
   { id: 'letters', tag: 2, engine: letterEngine },
+  { id: 'place', tag: 3, engine: placeEngine },
   { id: 'catch', tag: 4, engine: catcherEngine },
 ];
 

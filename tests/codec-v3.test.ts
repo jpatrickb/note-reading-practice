@@ -188,6 +188,7 @@ describe('progress code v3', () => {
     expect(CORE_MODES.map((m) => [m.id, m.tag])).toEqual([
       ['name', 1],
       ['letters', 2],
+      ['place', 3],
       ['catch', 4],
     ]);
     expect(new Set(CORE_MODES.map((m) => m.tag)).size).toBe(CORE_MODES.length);
@@ -253,8 +254,7 @@ describe('progress code v3', () => {
     // A locked, unplayed item is left out of the code (bitmap only).
     profile.big.items['big:150'] = { ...bigEngine.newStudent().items['big:150']!, unlocked: false };
     const back = decodeProfile(encodeProfile(profile, now, WITH_BIG), now, WITH_BIG);
-    expect(Object.keys(back).sort()).toEqual(['big', 'catch', 'letters', 'name']);
-    expect(back.catch).toEqual(catcherEngine.newStudent()); // a mode never played stays fresh
+    expect(Object.keys(back).sort()).toEqual(WITH_BIG.map((m) => m.id).sort());
     for (const mode of WITH_BIG.filter((m) => m.id in profile)) expectSameBehavior(mode.engine, profile[mode.id as keyof typeof profile], back[mode.id]!, now);
     expect(back.big!.items['big:299']!.n).toBe(15);
     expect(back.big!.items['big:150']).toEqual({ ...bigEngine.newStudent().items['big:150']!, unlocked: false });

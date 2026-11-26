@@ -66,6 +66,7 @@ describe('the core mode registry', () => {
     expect(CORE_MODES.map((m) => [m.id, m.tag])).toEqual([
       ['name', 1],
       ['letters', 2],
+      ['place', 3],
       ['catch', 4],
     ]);
   });
@@ -82,7 +83,7 @@ describe('profile storage', () => {
     const profile = loadProfile(store, [...CORE_MODES, MOVES_CORE]);
     for (const m of [...CORE_MODES, MOVES_CORE]) play(m, profile[m.id]!, T0, 20);
     saveProfile(store, profile, [...CORE_MODES, MOVES_CORE]);
-    expect([...store.data.keys()].sort()).toEqual(['nrp:v1:state', 'nrp:v1:state:catch', 'nrp:v1:state:letters', 'nrp:v1:state:moves']);
+    expect([...store.data.keys()].sort()).toEqual(['nrp:v1:state', 'nrp:v1:state:catch', 'nrp:v1:state:letters', 'nrp:v1:state:moves', 'nrp:v1:state:place']);
 
     const back = loadProfile(store, [...CORE_MODES, MOVES_CORE]);
     for (const m of [...CORE_MODES, MOVES_CORE]) expect(back[m.id], m.id).toEqual(profile[m.id]);
@@ -119,6 +120,7 @@ describe('profile storage', () => {
     const profile = loadProfile(memoryStore());
     let now = play(coreMode('name'), profile.name, T0 - 3 * DAY, 30);
     now = play(coreMode('letters'), profile.letters, now, 30);
+    now = play(coreMode('place'), profile.place!, now, 30);
     now = play(coreMode('catch'), profile.catch!, now, 30);
     const code = encodeProfile(profile, now);
 
@@ -264,7 +266,7 @@ describe('the UI mode registry', () => {
   const profile = () => loadProfile(memoryStore());
 
   it('registers Name It and Letter Math first, both backed by a core mode', () => {
-    expect(MODES.map((m) => m.id)).toEqual(['name', 'letters', 'catch']);
+    expect(MODES.map((m) => m.id)).toEqual(['name', 'letters', 'place', 'catch']);
     for (const m of MODES) {
       expect(m.core, m.id).toBe(coreMode(m.id));
       expect(m.session.engine, m.id).toBe(m.core.engine);
@@ -325,8 +327,8 @@ describe('the UI mode registry', () => {
   });
 
   it('the test-only locked mode exists only behind debug, and is locked with a reason', () => {
-    expect(registeredModes().map((m) => m.id)).toEqual(['name', 'letters', 'catch']);
-    expect(registeredModes(true).map((m) => m.id)).toEqual(['name', 'letters', 'catch', 'demo-locked']);
+    expect(registeredModes().map((m) => m.id)).toEqual(['name', 'letters', 'place', 'catch']);
+    expect(registeredModes(true).map((m) => m.id)).toEqual(['name', 'letters', 'place', 'catch', 'demo-locked']);
     expect(lockedDemoMode.availability(profile())).toEqual({ ok: false, reason: 'Learn 7 notes in Name It first!' });
     expect(() => lockedDemoMode.createPlay({} as never, {} as never)).toThrow();
     // Its model is not a registered one: nothing about it is saved or put in a code.
@@ -411,17 +413,18 @@ describe('the home mode chooser', () => {
     const { el, onSelect } = render([...MODES.filter((m) => m.id !== 'catch'), sample('lock', 'music', true)], 'name');
     expect(el.getAttribute('role')).toBe('radiogroup');
     expect(el.getAttribute('aria-label')).toBe('Game');
-    expect(document.querySelectorAll('.mode-card[role="radio"]')).toHaveLength(3);
+    expect(document.querySelectorAll('.mode-card[role="radio"]')).toHaveLength(4);
     expect([...document.querySelectorAll('.mode-card')].filter((c) => c.getAttribute('tabindex') === '0').map((c) => (c as HTMLElement).dataset.mode)).toEqual(['name']);
 
     const press = (key: string) => card('name').dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
     card('name').focus();
+    // Cards sit in their home groups: Name It, Place It (Read notes), Letter Math, then the locked one.
     press('ArrowRight');
-    expect(onSelect).toHaveBeenLastCalledWith('letters');
+    expect(onSelect).toHaveBeenLastCalledWith('place');
     press('ArrowLeft'); // wraps past the locked card back to the last open one
     expect(onSelect).toHaveBeenLastCalledWith('letters');
     press('ArrowDown');
-    expect(onSelect).toHaveBeenLastCalledWith('letters');
+    expect(onSelect).toHaveBeenLastCalledWith('place');
     press('ArrowUp');
     expect(onSelect).toHaveBeenLastCalledWith('letters');
     onSelect.mockClear();

@@ -1,4 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
+import { GOLDEN_CODES } from '../tests/fixtures/codes';
 
 // The home mode chooser, the per-mode profile, and the mode-by-mode save/load of progress.
 
@@ -67,6 +68,8 @@ test('the keyboard focus ring shows on the chosen card, and arrow keys move the 
   await expect(name).toHaveCSS('outline-color', 'rgb(28, 126, 214)');
   await expect(name).toHaveCSS('outline-style', 'solid');
   // Arrow keys choose the next mode and keep focus on it.
+  await page.keyboard.press('ArrowRight'); // Place It shares the Read notes group
+  await expect(card(page, 'place')).toHaveAttribute('aria-checked', 'true');
   await page.keyboard.press('ArrowRight');
   await expect(card(page, 'catch')).toHaveAttribute('aria-checked', 'true'); // cards follow the group order
   await page.keyboard.press('ArrowRight');
@@ -183,4 +186,25 @@ test('a minimal saved state { version: 1, items: {} } still plays Name It and Le
   await answerOne(page);
   await page.getByRole('button', { name: 'Stop and go home' }).click();
   expect(errors).toEqual([]);
+});
+
+// Issue #77: a code only replaces the modes it contains. This v1 code (Name It only) must not
+// touch the Letter Math progress already on the device.
+test('importing a code without a mode keeps that mode’s progress', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto('/');
+  await playSome(page, 'letters', 2);
+  const lettersBefore = await page.evaluate(() => localStorage.getItem('nrp:v1:state:letters'));
+  expect(lettersBefore).not.toBeNull();
+
+  await page.goto('about:blank');
+  await page.goto(`/#import=${GOLDEN_CODES.v1Played!.code}`);
+  await expect(page.getByTestId('import-modes').locator('li')).toHaveCount(1);
+  await expect(page.getByTestId('import-effect')).toHaveText('This adds Name It. Your Letter Math progress stays.');
+  await page.getByTestId('confirm-import').click();
+
+  expect(await page.evaluate(() => localStorage.getItem('nrp:v1:state:letters'))).toBe(lettersBefore);
+  await page.getByRole('button', { name: /My progress/ }).click();
+  await expect(page.locator('.map section[data-mode="name"]')).toBeVisible();
+  await expect(page.locator('.map section[data-mode="letters"]')).toBeVisible();
 });

@@ -8,6 +8,7 @@ import { LETTER_GROUP, LETTER_MATH_MODE } from '../src/core/letters';
 import { NOTE_CATCHER_MODE } from '../src/core/noteCatcher';
 import { pianoKeys } from '../src/ui/piano';
 import { LETTERS } from '../src/core/music';
+import { PLACE_IT_MODE, placeAnswerSpace } from '../src/core/placeIt';
 import { PARAMS, recall } from '../src/core/engine';
 import { CORE_MODES } from '../src/core/modes';
 import { MOVES, MOVE_MODE } from './fixtures/moves';
@@ -36,6 +37,7 @@ const CATCHER_PHONE_KEYS = pianoKeys('C4', 'B4').filter((k) => !k.black).map((k)
 const CASES: Case[] = [
   { name: 'Name It', mode: NAME_IT_MODE, groups: ['treble', 'bass'], space: LETTERS, luckySilver: 0 },
   { name: 'Letter Math', mode: LETTER_MATH_MODE, groups: [LETTER_GROUP], space: LETTERS, luckySilver: 0 },
+  { name: 'Place It', mode: PLACE_IT_MODE, groups: ['treble', 'bass'], space: placeAnswerSpace('treble'), luckySilver: 0 },
   { name: 'Note Catcher', mode: NOTE_CATCHER_MODE, groups: ['treble', 'bass'], space: CATCHER_KEYS, luckySilver: 0 },
   { name: 'Note Catcher (phone window)', mode: NOTE_CATCHER_MODE, groups: ['treble', 'bass'], space: CATCHER_PHONE_KEYS, luckySilver: 0 },
   { name: 'a mode with three answers', mode: MOVE_MODE, groups: ['a', 'b'], space: MOVES, luckySilver: 1 },
