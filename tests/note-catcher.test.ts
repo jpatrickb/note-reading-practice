@@ -326,6 +326,22 @@ describe('the Note Catcher play screen', () => {
     expect(Object.keys(LESSONS).sort()).toEqual(['clefSwap:bass', 'clefSwap:treble', 'neighbor']);
   });
 
+  it('shows its own octave lesson through the shell after three octave slips, then Name It lessons stay separate', async () => {
+    const s = setup();
+    s.session.length = 8;
+    await tick();
+    for (let i = 0; i < 3; i++) {
+      const want = answerOf(s);
+      const up = `${want[0]}${Number(want.slice(1)) + 1}`;
+      press(up);
+      cont()!.click();
+      if (i < 2) await tick();
+    }
+    const dialog = document.querySelector('[data-testid=lesson]');
+    expect(dialog).not.toBeNull();
+    expect(dialog!.textContent).toContain('Right letter, different key!');
+  });
+
   it('is registered as a Find keys mode with its own map', () => {
     expect(noteCatcherMode.group).toBe('keys');
     expect(noteCatcherMode.core.tag).toBe(4);

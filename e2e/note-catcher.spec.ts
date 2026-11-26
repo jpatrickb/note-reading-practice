@@ -1,4 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
+import { skipPlacement } from './skipPlacement';
 
 // Note Catcher: a note on the staff, tap its exact key on the on-screen piano.
 
@@ -9,6 +10,7 @@ async function start(page: Page) {
   await page.goto('/');
   await page.getByRole('radio', { name: /Note Catcher/ }).click();
   await page.getByRole('button', { name: /Start/ }).click();
+  await skipPlacement(page); // a no-op: Note Catcher offers no placement round
 }
 
 /** Wait for an answerable question; its note is on the staff's data-note. */
