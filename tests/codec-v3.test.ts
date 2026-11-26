@@ -13,8 +13,14 @@ import * as frozen from './fixtures/codec-v3-frozen';
 import { GOLDEN_CODES } from './fixtures/codes';
 import { DAY, HOUR, T0, seededRng } from './helpers';
 
-/** Size budget for a fully played profile: keeps the Save screen's QR code easy to scan iPad-to-iPad. */
-const CODE_BUDGET = 1200;
+/**
+ * Size budget for a fully played profile: keeps the Save screen's QR code easy to scan iPad-to-iPad.
+ * Set from a real two-iPad camera test (2026-11-25): codes up to 2,200 chars / QR v32 all scanned;
+ * the budget keeps one step of margin below that (1,800 / v29) for kids, dim screens, older iPads.
+ */
+const CODE_BUDGET = 1800;
+/** Largest Save-screen QR version allowed (see CODE_BUDGET). */
+const QR_VERSION_BUDGET = 29;
 /** The Save screen's QR code (src/ui/app.ts renderSave) on the production host. */
 const saveQr = (code: string) => progressQr('https://notepractice.jpatrickbeal.com/', code);
 /** QR version (1..40) of a code with this many modules per side. */
@@ -418,9 +424,9 @@ describe('progress code v3', () => {
       expect(code.length).toBeLessThanOrEqual(CODE_BUDGET);
     });
 
-    it('the Save-screen QR code for a fully played profile is at most version 22 at level L', () => {
+    it(`the Save-screen QR code for a fully played profile is at most version ${QR_VERSION_BUDGET} at level L`, () => {
       const qr = saveQr(encodeProfile(fullProfile(CORE_MODES), now));
-      expect(qrVersion(qr.getModuleCount())).toBeLessThanOrEqual(22);
+      expect(qrVersion(qr.getModuleCount())).toBeLessThanOrEqual(QR_VERSION_BUDGET);
     });
 
     it('compact gold records shrink a profile of gold items a lot, and never grow one without any', () => {
