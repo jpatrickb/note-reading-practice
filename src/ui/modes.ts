@@ -10,8 +10,9 @@ import { DEFAULT_MODE } from '../core/storage';
 import { letterMathMode } from './letterMath';
 import { type UiMode, defineMode } from './mode';
 import { nameItMode } from './nameIt';
+import { placeItMode } from './placeIt';
 
-export const MODES: readonly UiMode[] = [nameItMode, letterMathMode];
+export const MODES: readonly UiMode[] = [nameItMode, letterMathMode, placeItMode];
 
 /**
  * A mode that is always locked. It exists only behind `?debug`, so the e2e suite can prove that a

@@ -1,0 +1,91 @@
+/* Place It. Uses the shared theme variables only (see styles.css :root). */
+
+.place-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.place-question {
+  padding: 12px 8px;
+  text-align: center;
+}
+.place-prompt {
+  margin: 0;
+  font-size: clamp(1.4rem, 4.5vw, 2.2rem);
+  font-weight: 700;
+  line-height: 1.3;
+}
+.place-letter {
+  display: inline-block;
+  min-width: 1.4em;
+  padding: 0 0.2em;
+  border-radius: 12px;
+  background: var(--secondary);
+  color: var(--primary);
+  font-size: 1.5em;
+  font-weight: 800;
+}
+.place-input {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+}
+.place-input [hidden] {
+  display: none;
+}
+.place-idk {
+  min-height: 44px;
+  align-self: center;
+  padding: 8px 18px;
+  border: 2px solid var(--silver-2);
+  border-radius: 12px;
+  background: var(--card);
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.place-idk:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Mastery grid: one row of squares per clef, in teaching order. */
+.place-map__cells {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
+  gap: 4px;
+  max-width: 640px;
+  margin: 4px auto 10px;
+}
+.place-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  max-height: 44px;
+  border-radius: 8px;
+  border: 1.5px solid var(--silver-2);
+  background: var(--card);
+  font-weight: 800;
+}
+.place-cell--learning {
+  background: linear-gradient(to top, var(--meter) var(--fill, 0%), var(--card) var(--fill, 0%));
+}
+.place-cell--silver {
+  background: var(--silver-2);
+}
+.place-cell--gold {
+  background: var(--gold-2);
+}
+.place-cell--locked {
+  background: var(--locked);
+  border-color: var(--locked);
+}
+.place-cell--dusty {
+  opacity: 0.45;
+}
