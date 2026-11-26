@@ -17,6 +17,7 @@ import {
   targetsOf,
 } from '../src/core/findAll';
 import { LETTERS } from '../src/core/music';
+import { MIN, THEMES, contrast, parseHex } from '../src/core/themes';
 import { type StudentState } from '../src/core/engine';
 import { startSession } from '../src/core/session';
 import { h } from '../src/ui/dom';
@@ -303,4 +304,36 @@ describe('the Find All registration', () => {
     expect(findAllMode.itemLabel('find:G')).toBe('G keys');
     expect(findAllMode.itemLabel('find:2oct:G')).toBe('G keys near middle C');
   });
+});
+
+// ───────────────────────── the stage-1 tint, in every theme ─────────────────────────
+
+/** `fg` at `alpha` over `bg`, as #rrggbb (the same maths as color-mix in srgb). */
+function blend(fg: string, bg: string, alpha: number): string {
+  const [a, b] = [parseHex(fg), parseHex(bg)];
+  return `#${a.map((v, i) => Math.round(v * alpha + b[i]! * (1 - alpha)).toString(16).padStart(2, '0')).join('')}`;
+}
+
+describe('the stage-1 zone tint in every theme', () => {
+  it('the percentage used here matches the stylesheet, and the stylesheet uses theme variables only', async () => {
+    const { readFileSync } = await import('node:fs');
+    const css = readFileSync(`${process.cwd()}/src/ui/findAll.css`, 'utf8');
+    expect(/\.is-zone[^{]*\{[^}]*color-mix\(in srgb, var\(--meter\) (\d+)%, var\(--key-white\)\)/.exec(css)![1]).toBe('14');
+    expect(css).toMatch(/inset 0 -8px 0 color-mix\(in srgb, var\(--meter\) 65%, var\(--key-ink\)\)/);
+    expect(css).not.toMatch(/#[0-9a-f]{3,8}\b|rgb\(|hsl\(/i);
+  });
+
+  for (const theme of THEMES) {
+    it(`${theme.id}: what sits on a tinted key stays readable, and the bar stands out from it`, () => {
+      const c = theme.colors;
+      const tint = blend(c.meter, c.keyWhite, 0.14);
+      // The tint only applies to keys with no mark (found/target/wrong keys draw their own, already-checked colors),
+      // so what can sit on it is: the middle-C label and dot, the focus ring, and the bar along the bottom.
+      expect(contrast(c.keyInk, tint), 'middle-C label (small text)').toBeGreaterThanOrEqual(MIN.text);
+      expect(contrast(c.keyDot, tint), 'middle-C dot').toBeGreaterThanOrEqual(MIN.large);
+      expect(contrast(c.keyInk, tint), 'focus ring').toBeGreaterThanOrEqual(MIN.large);
+      const bar = blend(c.meter, c.keyInk, 0.65); // box-shadow color in findAll.css
+      expect(contrast(bar, tint), 'bottom bar').toBeGreaterThanOrEqual(MIN.large);
+    });
+  }
 });
