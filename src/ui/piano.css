@@ -203,3 +203,42 @@
     }
   }
 }
+
+/* A keyboard wider than its box (Note Catcher): keys never shrink below 44px, the piano scrolls
+   sideways. The finger drags the keys; a tap still presses (see `scroll` in piano.ts). */
+.piano--scroll {
+  --fit: min(100vw - 32px, var(--whites) * 64px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+.piano--scroll .piano__keys {
+  width: max(100%, calc(var(--whites) * 44px));
+  touch-action: pan-x pan-y;
+}
+.piano--scroll .piano__key {
+  touch-action: pan-x pan-y;
+}
+@media (prefers-reduced-motion: reduce) {
+  .piano--scroll {
+    scroll-behavior: auto;
+  }
+}
+
+/* "Middle C": a quiet label beside the dot, the one reference point a screen keyboard lacks. */
+.piano__anchor {
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  color: var(--key-ink);
+  pointer-events: none;
+}
+.piano__key[data-mark] .piano__anchor {
+  padding: 2px 4px;
+  border-radius: 6px;
+  background: var(--key-white);
+}

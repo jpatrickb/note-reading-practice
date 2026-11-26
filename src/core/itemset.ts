@@ -30,6 +30,11 @@ export interface ItemSet<I extends PracticeItem = PracticeItem, A extends string
   readonly items: readonly I[];
   /** Unlock lanes (e.g. clefs), each in teaching order. Every item belongs to exactly one lane. */
   readonly groups: Readonly<Record<string, readonly I[]>>;
+  /**
+   * Retired items: still in `items` (so their canonical index, and every saved progress code, stays
+   * valid) but in no lane, so they are never asked, unlocked or counted toward unlocking.
+   */
+  readonly retired: readonly I[];
   /** Items open from the start in each lane. Defaults to PARAMS.initialUnlock. */
   readonly initialUnlock?: number;
   /**
@@ -69,6 +74,8 @@ export interface ItemSet<I extends PracticeItem = PracticeItem, A extends string
 export interface ItemSetSpec<I extends PracticeItem, A extends string = Letter> {
   id: string;
   groups: Record<string, I[]>;
+  /** Items taken out of play: they keep their place in `order` but belong to no lane (see ItemSet.retired). */
+  retired?: I[];
   /**
    * The canonical item ids, in progress-code order. Must list every item exactly once. Omit it and
    * the canonical order is the lanes flattened, which is only safe if no lane ever grows: appending
@@ -87,7 +94,9 @@ export interface ItemSetSpec<I extends PracticeItem, A extends string = Letter> 
 
 /** Build an item set; throws if ids repeat, or `order` isn't exactly the set of items. */
 export function defineItemSet<I extends PracticeItem, A extends string = Letter>(spec: ItemSetSpec<I, A>): ItemSet<I, A> {
-  const flat = Object.values(spec.groups).flat();
+  const active = Object.values(spec.groups).flat();
+  const retired = spec.retired ?? [];
+  const flat = [...active, ...retired];
   const byId = new Map(flat.map((i) => [i.id, i]));
   if (byId.size !== flat.length) throw new Error(`Duplicate item ids in set ${spec.id}`);
   let items = flat;
@@ -104,6 +113,7 @@ export function defineItemSet<I extends PracticeItem, A extends string = Letter>
     id: spec.id,
     items,
     groups: spec.groups,
+    retired,
     initialUnlock: spec.initialUnlock,
     skillOf: spec.skillOf,
     pacing: spec.pacing,

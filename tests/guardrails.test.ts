@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { NAME_IT_MODE, type SessionMode } from '../src/core/session';
 import { LETTER_GROUP, LETTER_MATH_MODE } from '../src/core/letters';
-import { NOTE_CATCHER_MODE } from '../src/core/noteCatcher';
+import { CATCHER_RANGE, NOTE_CATCHER_MODE } from '../src/core/noteCatcher';
 import { pianoKeys } from '../src/ui/piano';
 import { LETTERS } from '../src/core/music';
 import { PLACE_IT_MODE, placeAnswerSpace } from '../src/core/placeIt';
@@ -33,10 +33,13 @@ interface Case {
   luckySilver: number;
 }
 
-/** Every key that can be an answer on a wide screen: white keys C2-C6 (black keys are never submitted). */
-const CATCHER_KEYS = pianoKeys('C2', 'C6').filter((k) => !k.black).map((k) => k.id);
-/** On a phone the kid chooses among the 6-8 white keys of a window: model 7 (C4-B4), D63's floor is 5. */
-const CATCHER_PHONE_KEYS = pianoKeys('C4', 'B4').filter((k) => !k.black).map((k) => k.id);
+/**
+ * Every key a kid can tap as an answer: the one keyboard, white keys C2-C6, the same for both clefs
+ * (black keys are never submitted). Middle C is on it and tappable, though never asked, so it is
+ * part of the space a guesser or masher can hit. Scrolling changes what is on screen, not what is
+ * answerable, so there is no smaller "phone window" case any more.
+ */
+const CATCHER_KEYS = pianoKeys(CATCHER_RANGE.low, CATCHER_RANGE.high).filter((k) => !k.black).map((k) => k.id);
 
 const CASES: Case[] = [
   { name: 'Name It', mode: NAME_IT_MODE, groups: ['treble', 'bass'], space: LETTERS, luckySilver: 0 },
@@ -49,7 +52,6 @@ const CASES: Case[] = [
   { name: 'Word Decoder', mode: WORD_MODE, groups: ['treble', 'bass'], space: [...new Set([...WORD_LISTS.treble, ...WORD_LISTS.bass])], luckySilver: 0 },
   { name: 'Place It', mode: PLACE_IT_MODE, groups: ['treble', 'bass'], space: placeAnswerSpace('treble'), luckySilver: 0 },
   { name: 'Note Catcher', mode: NOTE_CATCHER_MODE, groups: ['treble', 'bass'], space: CATCHER_KEYS, luckySilver: 0 },
-  { name: 'Note Catcher (phone window)', mode: NOTE_CATCHER_MODE, groups: ['treble', 'bass'], space: CATCHER_PHONE_KEYS, luckySilver: 0 },
   { name: 'a mode with three answers', mode: MOVE_MODE, groups: ['a', 'b'], space: MOVES, luckySilver: 1 },
 ];
 const SEEDS = [1, 2, 3, 4, 5];

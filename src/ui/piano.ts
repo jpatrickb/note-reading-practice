@@ -17,6 +17,14 @@ export interface PianoOptions {
   /** 'middleC' (default) puts a small dot on C4; 'all' names every key; 'none' shows nothing. */
   labels?: PianoLabels;
   onPress: (midi: number, id: string) => void;
+  /**
+   * A keyboard wider than its box: keys stay at least 44px and the piano scrolls sideways. A touch
+   * press then fires on release, and only if the finger didn't travel: a swipe scrolls and never
+   * answers. A mouse still presses on the way down.
+   */
+  scroll?: boolean;
+  /** Write "Middle C" on C4 (with the labels:'middleC' dot): a quiet reference point. */
+  anchorText?: boolean;
 }
 
 export interface Piano {
@@ -26,6 +34,11 @@ export interface Piano {
   setEnabled(enabled: boolean): void;
   /** Read-only glow on one key (Key to Staff, Echo); null clears it. Independent of marks. */
   highlight(midi: number | null): void;
+  /**
+   * Scroll a `scroll` piano so these keys are in view, centered together (the first one wins when they
+   * don't all fit). `smooth` animates (unless the kid prefers reduced motion); otherwise it jumps.
+   */
+  reveal(midis: readonly number[], smooth: boolean): void;
   dispose(): void;
 }
 
@@ -81,6 +94,8 @@ export function pianoKeys(low: string, high: string): PianoKey[] {
  * the release is not the pointer's (e.g. VoiceOver activating a key).
  */
 const CLICK_AFTER_RELEASE_MS = 600;
+/** A finger that moves farther than this (px) is scrolling, not tapping. */
+const TAP_SLOP_PX = 10;
 const ACTIVATE_KEYS = new Set(['Enter', ' ']);
 
 export function createPiano(options: PianoOptions): Piano {
@@ -99,7 +114,7 @@ export function createPiano(options: PianoOptions): Piano {
   let swallowUntil = -Infinity;
 
   const el = document.createElement('div');
-  el.className = `piano piano--labels-${labels}`;
+  el.className = `piano piano--labels-${labels}${options.scroll ? ' piano--scroll' : ''}`;
   el.setAttribute('role', 'group');
   el.setAttribute('aria-label', 'Piano keyboard');
   const deck = document.createElement('div');
@@ -116,6 +131,13 @@ export function createPiano(options: PianoOptions): Piano {
     b.tabIndex = -1;
     b.setAttribute('aria-label', keyName(key));
     b.style.setProperty('--x', String(key.black ? key.white + 1 : key.white));
+    if (options.anchorText && labels === 'middleC' && key.id === 'C4') {
+      const t = document.createElement('span');
+      t.className = 'piano__anchor';
+      t.setAttribute('aria-hidden', 'true');
+      t.textContent = 'Middle C';
+      b.append(t);
+    }
     if (labels === 'all') {
       const t = document.createElement('span');
       t.className = 'piano__label';
@@ -153,17 +175,30 @@ export function createPiano(options: PianoOptions): Piano {
     b.focus();
   }
 
+  /** A touch on a scrolling piano waits for its release: where it started, and whether it turned into a swipe. */
+  let pending: { b: HTMLButtonElement; x: number; y: number; left: number; moved: boolean } | null = null;
+
   function onPointerDown(e: PointerEvent) {
     const b = keyOf(e.target);
     if (!b) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    e.preventDefault(); // no text selection / compatibility mouse events
+    const deferred = !!options.scroll && e.pointerType !== 'mouse';
+    if (!deferred) e.preventDefault(); // no text selection / compatibility mouse events
     downPointers.add(e.pointerId);
     if (activePointer !== null) return; // a second simultaneous finger is ignored
     activePointer = e.pointerId;
     for (const o of order) o.tabIndex = o === b ? 0 : -1;
     b.classList.add('is-down');
-    press(b);
+    if (deferred) pending = { b, x: e.clientX, y: e.clientY, left: el.scrollLeft, moved: false };
+    else press(b);
+  }
+
+  function onPointerMove(e: PointerEvent) {
+    if (!pending || e.pointerId !== activePointer) return;
+    if (Math.hypot(e.clientX - pending.x, e.clientY - pending.y) > TAP_SLOP_PX) {
+      pending.moved = true;
+      pending.b.classList.remove('is-down');
+    }
   }
 
   function onPointerEnd(e: PointerEvent) {
@@ -176,6 +211,11 @@ export function createPiano(options: PianoOptions): Piano {
     if (e.pointerId !== activePointer) return;
     activePointer = null;
     for (const o of order) o.classList.remove('is-down');
+    const tap = pending;
+    pending = null;
+    // A tap, not a swipe: the finger stayed put, the browser didn't take the gesture for a scroll
+    // (that sends pointercancel), and the piano didn't move under it.
+    if (tap && e.type === 'pointerup' && !tap.moved && el.scrollLeft === tap.left) press(tap.b);
   }
 
   // Assistive tech (VoiceOver, switch access) activates buttons with a bare click. A pointer press already
@@ -219,6 +259,7 @@ export function createPiano(options: PianoOptions): Piano {
   deck.addEventListener('keydown', onKeyDown);
   deck.addEventListener('keyup', onKeyUp);
   deck.addEventListener('contextmenu', noMenu);
+  deck.addEventListener('pointermove', onPointerMove);
   // Pointer capture can't be relied on for mouse, so the release is watched document-wide.
   document.addEventListener('pointerup', onPointerEnd);
   document.addEventListener('pointercancel', onPointerEnd);
@@ -259,6 +300,19 @@ export function createPiano(options: PianoOptions): Piano {
       if (glow !== null) buttons.get(glow)?.classList.remove('piano__key--glow');
       glow = m !== null && buttons.has(m) ? m : null;
       if (glow !== null) buttons.get(glow)!.classList.add('piano__key--glow');
+    },
+    reveal(midis, smooth) {
+      const bs = midis.map((m) => buttons.get(m)).filter((b): b is HTMLButtonElement => !!b);
+      if (!options.scroll || bs.length === 0) return;
+      const edge = (b: HTMLButtonElement) => [b.offsetLeft, b.offsetLeft + b.offsetWidth] as const;
+      const spans = bs.map(edge);
+      let lo = Math.min(...spans.map((x) => x[0]));
+      let hi = Math.max(...spans.map((x) => x[1]));
+      if (hi - lo > el.clientWidth) [lo, hi] = edge(bs[0]!); // they don't all fit: keep the first in view
+      const left = Math.max(0, Math.round((lo + hi) / 2 - el.clientWidth / 2));
+      const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (typeof el.scrollTo === 'function') el.scrollTo({ left, behavior: smooth && !reduce ? 'smooth' : ('instant' as ScrollBehavior) });
+      else el.scrollLeft = left;
     },
     dispose() {
       document.removeEventListener('pointerup', onPointerEnd);

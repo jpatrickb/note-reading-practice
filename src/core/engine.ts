@@ -448,6 +448,7 @@ export function createEngine<I extends PracticeItem, A extends string = Letter>(
   };
   const grade = (itemId: string, answer: A | null): Outcome =>
     answer === null ? 'idk' : isCorrect(itemId, answer) ? 'correct' : 'wrong';
+  const retired = new Set(set.retired.map((i) => i.id));
   const skillOf = (item: I) => set.skillOf?.(item) ?? item.id;
 
   function newStudent(): StudentState {
@@ -577,7 +578,7 @@ export function createEngine<I extends PracticeItem, A extends string = Letter>(
     recent: RecentAnswer[] = [],
     mode: 'normal' | 'finish' = 'normal',
   ): string {
-    let candidates = set.items.filter((i) => groups.includes(set.groupOf(i)) && state.items[i.id]!.unlocked);
+    let candidates = set.items.filter((i) => !retired.has(i.id) && groups.includes(set.groupOf(i)) && state.items[i.id]!.unlocked);
     if (candidates.length === 0) throw new Error('No unlocked items for these groups');
     const avoid = recent.slice(-2).map((r) => r.itemId);
     if (candidates.length > avoid.length + 1) candidates = candidates.filter((i) => !avoid.includes(i.id));
