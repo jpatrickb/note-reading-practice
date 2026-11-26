@@ -6,6 +6,7 @@
 import { type Engine, nameEngine } from './engine';
 import { letterEngine } from './letters';
 import { placeEngine } from './placeIt';
+import { catcherEngine } from './noteCatcher';
 
 export interface CoreMode {
   /** Key of this mode's learner model in a profile. */
@@ -19,6 +20,7 @@ export const CORE_MODES: readonly CoreMode[] = [
   { id: 'name', tag: 1, engine: nameEngine },
   { id: 'letters', tag: 2, engine: letterEngine },
   { id: 'place', tag: 3, engine: placeEngine },
+  { id: 'catch', tag: 4, engine: catcherEngine },
 ];
 
 /** A registered mode by id; throws on an unknown id (for a mode file looking up its own entry). */

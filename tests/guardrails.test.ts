@@ -5,6 +5,8 @@
 import { describe, expect, it } from 'vitest';
 import { NAME_IT_MODE, type SessionMode } from '../src/core/session';
 import { LETTER_GROUP, LETTER_MATH_MODE } from '../src/core/letters';
+import { NOTE_CATCHER_MODE } from '../src/core/noteCatcher';
+import { pianoKeys } from '../src/ui/piano';
 import { LETTERS } from '../src/core/music';
 import { PLACE_IT_MODE, placeAnswerSpace } from '../src/core/placeIt';
 import { PARAMS, recall } from '../src/core/engine';
@@ -27,10 +29,17 @@ interface Case {
   luckySilver: number;
 }
 
+/** Every key that can be an answer on a wide screen: white keys C2-C6 (black keys are never submitted). */
+const CATCHER_KEYS = pianoKeys('C2', 'C6').filter((k) => !k.black).map((k) => k.id);
+/** On a phone the kid chooses among the 6-8 white keys of a window: model 7 (C4-B4), D63's floor is 5. */
+const CATCHER_PHONE_KEYS = pianoKeys('C4', 'B4').filter((k) => !k.black).map((k) => k.id);
+
 const CASES: Case[] = [
   { name: 'Name It', mode: NAME_IT_MODE, groups: ['treble', 'bass'], space: LETTERS, luckySilver: 0 },
   { name: 'Letter Math', mode: LETTER_MATH_MODE, groups: [LETTER_GROUP], space: LETTERS, luckySilver: 0 },
   { name: 'Place It', mode: PLACE_IT_MODE, groups: ['treble', 'bass'], space: placeAnswerSpace('treble'), luckySilver: 0 },
+  { name: 'Note Catcher', mode: NOTE_CATCHER_MODE, groups: ['treble', 'bass'], space: CATCHER_KEYS, luckySilver: 0 },
+  { name: 'Note Catcher (phone window)', mode: NOTE_CATCHER_MODE, groups: ['treble', 'bass'], space: CATCHER_PHONE_KEYS, luckySilver: 0 },
   { name: 'a mode with three answers', mode: MOVE_MODE, groups: ['a', 'b'], space: MOVES, luckySilver: 1 },
 ];
 const SEEDS = [1, 2, 3, 4, 5];

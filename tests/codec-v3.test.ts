@@ -188,6 +188,7 @@ describe('progress code v3', () => {
       ['name', 1],
       ['letters', 2],
       ['place', 3],
+      ['catch', 4],
     ]);
     expect(new Set(CORE_MODES.map((m) => m.tag)).size).toBe(CORE_MODES.length);
   });

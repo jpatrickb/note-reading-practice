@@ -17,6 +17,10 @@ up and down, skips, then 2nd–8th intervals. It uses the same adaptive engine: 
 an item set (`src/core/itemset.ts`) and gets its own engine from `createEngine` in
 `src/core/engine.ts`. The Letter Math ladder lives in `src/core/letters.ts` for teacher review.
 
+**Note Catcher** shows a note on the staff and the kid taps its exact key on an on-screen piano
+(octave matters; a right letter in the wrong octave is a kind, specific miss). Its items live in
+`src/core/noteCatcher.ts`.
+
 ## Quick start
 
 ```bash
