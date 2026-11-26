@@ -101,6 +101,11 @@ export const nameItMode = defineMode<Letter>({
   },
   createPlay: (host, env) => nameItPlay(host, env.synth),
   renderMap: renderNameItMap,
+  placement: true,
+  placedLine: (id) => {
+    const item = itemById(id);
+    return `You're starting at ${item.note.letter} in the ${item.clef} clef.`;
+  },
   itemLabel: (id) => {
     const item = itemById(id);
     return `${item.note.letter} (${item.clef} clef)`;

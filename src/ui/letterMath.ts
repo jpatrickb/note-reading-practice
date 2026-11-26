@@ -101,6 +101,8 @@ export const letterMathMode = defineMode<Letter>({
   },
   createPlay: (host, env) => letterMathPlay(host, env.synth),
   renderMap: (state, now) => renderLetterMap(state, now),
+  placement: true,
+  placedLine: (id) => `You're starting with “${letterLabel(id)}” questions.`,
   itemLabel: letterLabel,
 });
 
