@@ -578,7 +578,16 @@ export function createEngine<I extends PracticeItem, A extends string = Letter>(
     recent: RecentAnswer[] = [],
     mode: 'normal' | 'finish' = 'normal',
   ): string {
-    let candidates = set.items.filter((i) => !retired.has(i.id) && groups.includes(set.groupOf(i)) && state.items[i.id]!.unlocked);
+    const open = () => set.items.filter((i) => !retired.has(i.id) && groups.includes(set.groupOf(i)) && state.items[i.id]!.unlocked);
+    let candidates = open();
+    if (candidates.length === 0) {
+      // A malformed or old save can have only retired items open: re-open the first live item of each lane.
+      for (const g of groups) {
+        const first = (set.groups[g] ?? [])[0];
+        if (first) state.items[first.id]!.unlocked = true;
+      }
+      candidates = open();
+    }
     if (candidates.length === 0) throw new Error('No unlocked items for these groups');
     const avoid = recent.slice(-2).map((r) => r.itemId);
     if (candidates.length > avoid.length + 1) candidates = candidates.filter((i) => !avoid.includes(i.id));

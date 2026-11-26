@@ -35,11 +35,23 @@ interface Case {
 
 /**
  * Every key a kid can tap as an answer: the one keyboard, white keys C2-C6, the same for both clefs
- * (black keys are never submitted). Middle C is on it and tappable, though never asked, so it is
- * part of the space a guesser or masher can hit. Scrolling changes what is on screen, not what is
- * answerable, so there is no smaller "phone window" case any more.
+ * (black keys are never submitted). Middle C is on it and tappable though never asked, so it is
+ * part of the space a guesser or masher can hit. This is the real answer space for a kid who scrolls.
  */
 const CATCHER_KEYS = pianoKeys(CATCHER_RANGE.low, CATCHER_RANGE.high).filter((k) => !k.black).map((k) => k.id);
+/**
+ * What a kid who never scrolls can choose among: the keys on screen at the start, centered on middle C.
+ * About 7 white keys on a phone, about 21 on an iPad landscape (the answers outside it are simply
+ * unreachable for them, so this is the smaller space a guesser or masher works in).
+ */
+const visibleAround = (n: number) => {
+  const all = CATCHER_KEYS;
+  const c = all.indexOf('C4');
+  const from = Math.max(0, c - Math.floor(n / 2));
+  return all.slice(from, from + n);
+};
+const CATCHER_PHONE_VIEW = visibleAround(7);
+const CATCHER_IPAD_VIEW = visibleAround(21);
 
 const CASES: Case[] = [
   { name: 'Name It', mode: NAME_IT_MODE, groups: ['treble', 'bass'], space: LETTERS, luckySilver: 0 },
@@ -52,6 +64,8 @@ const CASES: Case[] = [
   { name: 'Word Decoder', mode: WORD_MODE, groups: ['treble', 'bass'], space: [...new Set([...WORD_LISTS.treble, ...WORD_LISTS.bass])], luckySilver: 0 },
   { name: 'Place It', mode: PLACE_IT_MODE, groups: ['treble', 'bass'], space: placeAnswerSpace('treble'), luckySilver: 0 },
   { name: 'Note Catcher', mode: NOTE_CATCHER_MODE, groups: ['treble', 'bass'], space: CATCHER_KEYS, luckySilver: 0 },
+  { name: 'Note Catcher (visible window, phone)', mode: NOTE_CATCHER_MODE, groups: ['treble', 'bass'], space: CATCHER_PHONE_VIEW, luckySilver: 0 },
+  { name: 'Note Catcher (visible window, iPad)', mode: NOTE_CATCHER_MODE, groups: ['treble', 'bass'], space: CATCHER_IPAD_VIEW, luckySilver: 0 },
   { name: 'a mode with three answers', mode: MOVE_MODE, groups: ['a', 'b'], space: MOVES, luckySilver: 1 },
 ];
 const SEEDS = [1, 2, 3, 4, 5];

@@ -147,7 +147,7 @@ test.describe('on a phone', () => {
     await expect(piano(page).locator('.piano__key--white')).toHaveCount(29);
     const box = (await piano(page).locator('.piano__key--white').first().boundingBox())!;
     expect(box.width).toBeGreaterThanOrEqual(44);
-    const scroll = await piano(page).evaluate((el) => ({ w: el.scrollWidth, c: el.clientWidth }));
+    const scroll = await piano(page).locator('.piano__scroller').evaluate((el) => ({ w: el.scrollWidth, c: el.clientWidth }));
     expect(scroll.w).toBeGreaterThan(scroll.c);
     const p = (await piano(page).boundingBox())!;
     const c = (await key(page, 'C4').boundingBox())!;
@@ -168,7 +168,7 @@ test.describe('on a phone', () => {
     let last = -1;
     await expect
       .poll(async () => {
-        const now = await piano(page).evaluate((el) => el.scrollLeft);
+        const now = await piano(page).locator('.piano__scroller').evaluate((el) => el.scrollLeft);
         const still = now === last;
         last = now;
         return still;
@@ -186,6 +186,21 @@ test.describe('on a phone', () => {
         return (await inView(note)) && (await inView(slip));
       })
       .toBe(true);
+  });
+
+  test('edge chevrons show where there are more keys, are 44px or more, and scroll an octave', async ({ page }) => {
+    await start(page);
+    await shownNote(page);
+    const left = page.getByRole('button', { name: 'Show keys to the left' });
+    const right = page.getByRole('button', { name: 'Show keys to the right' });
+    await expect(left).toBeVisible(); // centered on middle C: more keys both ways
+    await expect(right).toBeVisible();
+    const box = (await right.boundingBox())!;
+    expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(44);
+    const before = await piano(page).locator('.piano__scroller').evaluate((el) => el.scrollLeft);
+    await right.tap();
+    await expect.poll(() => piano(page).locator('.piano__scroller').evaluate((el) => el.scrollLeft)).toBeGreaterThan(before + 200);
+    await expect(page.locator('.piano__key[data-mark]')).toHaveCount(0); // a chevron tap is never an answer
   });
 
   test('at 320px keys are still 44px wide', async ({ page }) => {

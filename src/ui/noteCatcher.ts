@@ -10,7 +10,6 @@ import { type Clef, frequency, midi, noteId, parseNote } from '../core/music';
 import {
   BLACK_KEY_TIP,
   CATCHER_RANGE,
-
   MIDDLE_C,
   NOTE_CATCHER,
   NOTE_CATCHER_MODE,
@@ -40,6 +39,13 @@ export function neutralKeyLabels(keys: readonly PianoKey[]): Map<number, string>
     labels.set(k.midi, k.black ? `Black key after white key ${k.white + 1}` : `Piano key ${k.white + 1} of ${whites}${k.id === MIDDLE_C ? ', middle C' : ''}`);
   }
   return labels;
+}
+
+const retiredIds = new Set(NOTE_CATCHER.retired.map((i) => i.id));
+
+/** Medal counts without the retired middle-C items, which are no longer on the map or asked. */
+export function catcherCounts(state: StudentState): { gold: number; silver: number } {
+  return medalCounts({ ...state, items: Object.fromEntries(Object.entries(state.items).filter(([id]) => !retiredIds.has(id))) });
 }
 
 interface CatcherInput extends AnswerInput<string> {
@@ -152,7 +158,7 @@ export function noteCatcherPlay(host: PlayHost<string>, synth: Synth): PlayShell
     newBadge: '✨ New note! Know its key? If not, tap ?',
     correctMs: 700,
     mastered: (state) => {
-      const c = medalCounts(state);
+      const c = catcherCounts(state);
       return c.gold + c.silver;
     },
     renderPrompt: (id) => {
@@ -246,6 +252,8 @@ export const noteCatcherMode = defineMode<string>({
     encourage: 'Every practice helps your fingers find the notes. Keys turn silver when you know them well, and gold when you still know them on another day!',
   },
   createPlay: (host, env) => noteCatcherPlay(host, env.synth),
+  // Retired middle-C items aren't on the map, so their old medals aren't counted in the pill or the weekly goal either.
+  counts: catcherCounts,
   renderMap: renderCatcherMap,
   itemLabel: (id) => {
     const item = catchItem(id);

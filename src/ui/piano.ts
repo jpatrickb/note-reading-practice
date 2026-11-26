@@ -106,6 +106,7 @@ export function createPiano(options: PianoOptions): Piano {
   const order: HTMLButtonElement[] = [];
   let enabled = true;
   let glow: number | null = null;
+  const cleanups: Array<() => void> = [];
   let activePointer: number | null = null;
   /** Pointers that went down on a key; their release is followed by a click to swallow. */
   const downPointers = new Set<number>();
@@ -120,7 +121,14 @@ export function createPiano(options: PianoOptions): Piano {
   const deck = document.createElement('div');
   deck.className = 'piano__keys';
   el.style.setProperty('--whites', String(whites));
-  el.append(deck);
+  // A scrolling piano keeps its keys in a scroller inside `el`, so the edge cues can sit outside the scroll.
+  const scroller = options.scroll ? document.createElement('div') : null;
+  if (scroller) {
+    scroller.className = 'piano__scroller';
+    scroller.append(deck);
+    el.append(scroller);
+  } else el.append(deck);
+  const view = scroller ?? el;
 
   for (const key of keys) {
     const b = document.createElement('button');
@@ -189,7 +197,7 @@ export function createPiano(options: PianoOptions): Piano {
     activePointer = e.pointerId;
     for (const o of order) o.tabIndex = o === b ? 0 : -1;
     b.classList.add('is-down');
-    if (deferred) pending = { b, x: e.clientX, y: e.clientY, left: el.scrollLeft, moved: false };
+    if (deferred) pending = { b, x: e.clientX, y: e.clientY, left: view.scrollLeft, moved: false };
     else press(b);
   }
 
@@ -215,7 +223,7 @@ export function createPiano(options: PianoOptions): Piano {
     pending = null;
     // A tap, not a swipe: the finger stayed put, the browser didn't take the gesture for a scroll
     // (that sends pointercancel), and the piano didn't move under it.
-    if (tap && e.type === 'pointerup' && !tap.moved && el.scrollLeft === tap.left) press(tap.b);
+    if (tap && e.type === 'pointerup' && !tap.moved && view.scrollLeft === tap.left) press(tap.b);
   }
 
   // Assistive tech (VoiceOver, switch access) activates buttons with a bare click. A pointer press already
@@ -270,6 +278,56 @@ export function createPiano(options: PianoOptions): Piano {
     b.setAttribute('aria-label', mark ? `${keyName(key)}, ${MARK_WORDS[mark]}` : keyName(key));
   }
 
+  /** Scroll the keys to `left`: an animation, or (smooth false) an instant jump that never animates, even on old Safari. */
+  function scrollTo(left: number, smooth: boolean) {
+    if (!scroller) return;
+    const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (smooth && !reduce && typeof scroller.scrollTo === 'function') {
+      scroller.scrollTo({ left, behavior: 'smooth' });
+    } else {
+      scroller.style.scrollBehavior = 'auto'; // beats the stylesheet's smooth, so the jump is a jump
+      scroller.scrollLeft = left;
+      scroller.style.scrollBehavior = '';
+    }
+    updateCues();
+  }
+
+  // Scroll cues: a fade and a chevron on each side that has more keys. They follow only the scroll
+  // position (which always starts centered on middle C), so they say nothing about the answer.
+  let chevLeft: HTMLButtonElement | null = null;
+  let chevRight: HTMLButtonElement | null = null;
+  function updateCues() {
+    if (!scroller) return;
+    const left = scroller.scrollLeft > 4;
+    const right = scroller.scrollLeft + scroller.clientWidth < scroller.scrollWidth - 4;
+    el.classList.toggle('piano--more-left', left);
+    el.classList.toggle('piano--more-right', right);
+    if (chevLeft) chevLeft.hidden = !left;
+    if (chevRight) chevRight.hidden = !right;
+  }
+  function chevron(dir: -1 | 1): HTMLButtonElement {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `piano__more piano__more--${dir < 0 ? 'left' : 'right'}`;
+    b.setAttribute('aria-label', dir < 0 ? 'Show keys to the left' : 'Show keys to the right');
+    b.textContent = dir < 0 ? '‹' : '›';
+    b.hidden = true;
+    // One octave (7 white keys) per tap.
+    b.addEventListener('click', () => scrollTo(scroller!.scrollLeft + (dir * 7 * scroller!.scrollWidth) / whites, true));
+    el.append(b);
+    return b;
+  }
+  if (scroller) {
+    chevLeft = chevron(-1);
+    chevRight = chevron(1);
+    scroller.addEventListener('scroll', updateCues, { passive: true });
+    if (typeof ResizeObserver === 'function') {
+      const ro = new ResizeObserver(updateCues);
+      ro.observe(scroller);
+      cleanups.push(() => ro.disconnect());
+    }
+  }
+
   return {
     el,
     mark(m, kind) {
@@ -303,20 +361,18 @@ export function createPiano(options: PianoOptions): Piano {
     },
     reveal(midis, smooth) {
       const bs = midis.map((m) => buttons.get(m)).filter((b): b is HTMLButtonElement => !!b);
-      if (!options.scroll || bs.length === 0) return;
+      if (!scroller || bs.length === 0) return;
       const edge = (b: HTMLButtonElement) => [b.offsetLeft, b.offsetLeft + b.offsetWidth] as const;
       const spans = bs.map(edge);
       let lo = Math.min(...spans.map((x) => x[0]));
       let hi = Math.max(...spans.map((x) => x[1]));
-      if (hi - lo > el.clientWidth) [lo, hi] = edge(bs[0]!); // they don't all fit: keep the first in view
-      const left = Math.max(0, Math.round((lo + hi) / 2 - el.clientWidth / 2));
-      const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-      if (typeof el.scrollTo === 'function') el.scrollTo({ left, behavior: smooth && !reduce ? 'smooth' : ('instant' as ScrollBehavior) });
-      else el.scrollLeft = left;
+      if (hi - lo > scroller.clientWidth) [lo, hi] = edge(bs[0]!); // they don't all fit: keep the first in view
+      scrollTo(Math.max(0, Math.round((lo + hi) / 2 - scroller.clientWidth / 2)), smooth);
     },
     dispose() {
       document.removeEventListener('pointerup', onPointerEnd);
       document.removeEventListener('pointercancel', onPointerEnd);
+      for (const c of cleanups) c();
       el.remove();
     },
   };

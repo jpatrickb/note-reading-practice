@@ -25,7 +25,7 @@ import {
 } from '../src/core/noteCatcher';
 import { startSession } from '../src/core/session';
 import { h } from '../src/ui/dom';
-import { neutralKeyLabels, noteCatcherMode, noteCatcherPlay, renderCatcherMap } from '../src/ui/noteCatcher';
+import { catcherCounts, neutralKeyLabels, noteCatcherMode, noteCatcherPlay, renderCatcherMap } from '../src/ui/noteCatcher';
 import { pianoKeys } from '../src/ui/piano';
 import { DAY, T0 } from './helpers';
 
@@ -81,6 +81,22 @@ describe('the Note Catcher item set', () => {
     expect(keys[0]).toBe('C2');
     expect(keys.at(-1)).toBe('C6');
     for (const item of NOTE_CATCHER.items) expect(keys, item.id).toContain(noteId(item.note));
+  });
+
+  it('never throws when only the retired C4 items are open (a malformed save): it re-opens the first live item', () => {
+    const state = catcherEngine.newStudent();
+    for (const it of Object.values(state.items)) it.unlocked = false;
+    for (const id of ['catch:treble:C4', 'catch:bass:C4']) state.items[id]!.unlocked = true;
+    const id = catcherEngine.selectItem(state, ['treble', 'bass'], T0, () => 0.5);
+    expect(['catch:treble:G4', 'catch:bass:F3']).toContain(id);
+    expect(state.items[id]!.unlocked).toBe(true);
+  });
+
+  it('does not count retired C4 medals in the pill or weekly goal (the map does not show them)', () => {
+    const state = catcherEngine.newStudent();
+    Object.assign(state.items['catch:treble:C4']!, { unlocked: true, best: 1, n: 6, c: 6 });
+    expect(catcherCounts(state)).toEqual({ gold: 0, silver: 0 });
+    expect(noteCatcherMode.counts(state)).toEqual({ gold: 0, silver: 0 });
   });
 
   it('opens different answers first, so one key cannot carry early play (D33)', () => {
@@ -334,17 +350,39 @@ describe('the Note Catcher play screen', () => {
     }
   });
 
-  it('each question starts centered on middle C (a jump), and a miss scrolls smoothly to the tapped and right keys', async () => {
+  it('each question starts centered on middle C by a jump (never an animation), and a miss scrolls smoothly to the tapped and right keys', async () => {
     const calls: ScrollToOptions[] = [];
     (HTMLElement.prototype as unknown as { scrollTo: unknown }).scrollTo = (o: ScrollToOptions) => calls.push(o);
     const s = setup();
     await tick();
-    expect(calls).toHaveLength(1);
-    expect(calls[0]!.behavior).toBe('instant'); // never an animation that shows where it came from
+    expect(calls).toHaveLength(0); // the jump sets scrollLeft with scroll-behavior off, so it can't animate
+    expect(document.querySelector<HTMLElement>('.piano__scroller')!.style.scrollBehavior).toBe('');
     const want = answerOf(s);
     press(want === 'D3' ? 'E3' : 'D3');
-    expect(calls).toHaveLength(2);
-    expect(calls[1]!.behavior).toBe('smooth');
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.behavior).toBe('smooth');
+    delete (HTMLElement.prototype as unknown as { scrollTo?: unknown }).scrollTo;
+  });
+
+  it('shows a chevron (44px or more) only on a side with more keys, and a tap scrolls one octave', async () => {
+    setup();
+    await tick();
+    const scroller = document.querySelector<HTMLElement>('.piano__scroller')!;
+    const left = document.querySelector<HTMLButtonElement>('.piano__more--left')!;
+    const right = document.querySelector<HTMLButtonElement>('.piano__more--right')!;
+    expect(left.hidden && right.hidden).toBe(true); // nothing to scroll in jsdom
+    Object.defineProperty(scroller, 'clientWidth', { value: 300, configurable: true });
+    Object.defineProperty(scroller, 'scrollWidth', { value: 1305, configurable: true });
+    scroller.scrollLeft = 0;
+    scroller.dispatchEvent(new Event('scroll'));
+    expect(left.hidden).toBe(true);
+    expect(right.hidden).toBe(false);
+    expect(document.querySelector('.piano')!.classList.contains('piano--more-right')).toBe(true);
+    expect(right.getAttribute('aria-label')).toBe('Show keys to the right'); // no key names, no answer
+    const calls: ScrollToOptions[] = [];
+    (HTMLElement.prototype as unknown as { scrollTo: unknown }).scrollTo = (o: ScrollToOptions) => calls.push(o);
+    right.click();
+    expect(calls[0]).toEqual({ left: 7 * 45, behavior: 'smooth' });
     delete (HTMLElement.prototype as unknown as { scrollTo?: unknown }).scrollTo;
   });
 
