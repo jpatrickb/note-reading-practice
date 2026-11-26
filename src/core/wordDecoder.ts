@@ -127,36 +127,69 @@ export const leapMax = (share: number) => 3 + Math.round(share * 4);
 /** The middle line of the staff (position 4): the first note of a word is drawn near it. */
 const MIDDLE = 4;
 
+/** How far from the middle line (in staff steps) the first note of a word may be. */
+const START_REACH = 3;
+/** Paths whose biggest jump is within this many steps of the smallest possible are all equally likely. */
+const SLACK = 1;
+
 /**
  * The notes to draw for a word: one per letter, each from the Name It notes of that letter the kid
  * has at silver (any octave). A note the kid has not earned is NEVER drawn: a letter with no silver
  * note throws (the gate and `clefReady` make that unreachable for any word that is offered).
  *
- * SMALL JUMPS (issue #88): the first note is the one nearest the middle of the staff, and each next
- * note is the silver note of its letter CLOSEST to the previous one (ties at random), so a beginner
- * reads stepwise melodies. As the kid advances (`goldShare`: the share of the clef's Name It notes at
- * gold) a note sometimes (`leapChance`) takes a bigger leap instead, to any silver note of its letter
- * within `leapMax` steps, so reading across the staff is still practiced. A beginner (no gold) never leaps.
+ * SMALL JUMPS WITH VARIETY (issue #88; amends D161):
+ *  1. The first note is any silver note of the first letter within START_REACH steps of the middle
+ *     line (or the nearest one if none is that close).
+ *  2. A dynamic program over each letter's silver choices finds the smallest possible BIGGEST jump
+ *     between consecutive notes. Every path whose biggest jump is within SLACK steps of that
+ *     minimum is equally likely, so a beginner reads gentle melodies that still differ from play to play.
+ *  3. As the kid advances (`goldShare`: the share of the clef's Name It notes at gold), a note
+ *     sometimes (`leapChance`) takes a bigger leap instead, to a silver note of its letter within
+ *     `leapMax` steps of both neighbours, so reading across the staff is still practiced. (Gold
+ *     arrives late and a small share rarely fires; a leap may also pick the same note again.)
  * Deterministic for a seeded `rng`.
  */
 export function chooseNotes(item: WordItem, name: StudentState | undefined, rng: () => number): Note[] {
   const silver = silverNotes(name, item.clef);
-  const share = goldShare(name, item.clef);
-  const out: Note[] = [];
-  let prev = MIDDLE; // staff position the next note is measured from
-  for (const [i, letter] of [...item.word].entries()) {
+  const pos = (n: Note) => staffPosition(n, item.clef);
+  const pools = [...item.word].map((letter) => {
     const pool = silver.filter((n) => n.letter === letter);
     if (pool.length === 0) throw new Error(`No silver ${item.clef} note for ${letter} in ${item.word}`);
-    const dist = (n: Note) => Math.abs(staffPosition(n, item.clef) - prev);
-    const nearest = Math.min(...pool.map(dist));
-    let choices = pool.filter((n) => dist(n) === nearest);
-    if (i > 0 && rng() < leapChance(share)) {
-      const far = pool.filter((n) => dist(n) <= leapMax(share));
-      if (far.length > 0) choices = far;
+    return pool;
+  });
+  const near = pools[0]!.filter((n) => Math.abs(pos(n) - MIDDLE) <= START_REACH);
+  const best = Math.min(...pools[0]!.map((n) => Math.abs(pos(n) - MIDDLE)));
+  pools[0] = near.length > 0 ? near : pools[0]!.filter((n) => Math.abs(pos(n) - MIDDLE) === best);
+
+  // minWorst[i][k]: the smallest possible biggest jump over the notes from pools[i][k] to the end
+  const minWorst: number[][] = pools.map((p) => p.map(() => 0));
+  for (let i = pools.length - 2; i >= 0; i--) {
+    pools[i]!.forEach((a, k) => {
+      minWorst[i]![k] = Math.min(...pools[i + 1]!.map((b, j) => Math.max(Math.abs(pos(a) - pos(b)), minWorst[i + 1]![j]!)));
+    });
+  }
+  const limit = Math.min(...minWorst[0]!) + SLACK;
+
+  // every path whose biggest jump is within the limit (word lengths and pools keep this small)
+  const paths: Note[][] = [];
+  const walk = (i: number, path: Note[]): void => {
+    if (i === pools.length) {
+      paths.push(path);
+      return;
     }
-    const note = choices[Math.floor(rng() * choices.length)]!;
-    out.push(note);
-    prev = staffPosition(note, item.clef);
+    for (const n of pools[i]!) {
+      if (i === 0 || Math.abs(pos(n) - pos(path[i - 1]!)) <= limit) walk(i + 1, [...path, n]);
+    }
+  };
+  walk(0, []);
+  const out = paths[Math.floor(rng() * paths.length)]!;
+
+  const share = goldShare(name, item.clef);
+  const reach = leapMax(share);
+  for (let i = 1; i < out.length; i++) {
+    if (rng() >= leapChance(share)) continue;
+    const ok = pools[i]!.filter((n) => Math.abs(pos(n) - pos(out[i - 1]!)) <= reach && (i + 1 >= out.length || Math.abs(pos(n) - pos(out[i + 1]!)) <= reach));
+    if (ok.length > 0) out[i] = ok[Math.floor(rng() * ok.length)]!;
   }
   return out;
 }

@@ -260,6 +260,65 @@ describe('chooseNotes', () => {
     }
   });
 
+  it('small jumps for real kid profiles: the biggest jump is within 1 step of the smallest possible', () => {
+    // The smallest possible biggest-jump over every silver choice, found by brute force (any start).
+    const minWorst = (pools: number[][]): number => {
+      let best = Infinity;
+      const go = (i: number, prev: number, worst: number): void => {
+        if (worst >= best) return;
+        if (i === pools.length) { best = worst; return; }
+        for (const p of pools[i]!) go(i + 1, p, i === 0 ? 0 : Math.max(worst, Math.abs(p - prev)));
+      };
+      go(0, 0, 0);
+      return best;
+    };
+    for (const clef of CLEFS) {
+      for (let n = 5; n <= 13; n++) {
+        const name = nameWith(firstTaught(clef, n));
+        const silver = silverNotes(name, clef);
+        for (const word of WORD_LISTS[clef]) {
+          const item = wordItem(`word:${clef}:${word}`);
+          if (!wordReadable(name, item)) continue;
+          const pools = [...word].map((l) => silver.filter((s) => s.letter === l).map((s) => staffPosition(s, clef)));
+          const reach = pools[0]!.filter((p) => Math.abs(p - 4) <= 3); // the first note starts near the middle
+          pools[0] = reach.length > 0 ? reach : pools[0]!.filter((p) => Math.abs(p - 4) === Math.min(...pools[0]!.map((q) => Math.abs(q - 4))));
+          const min = minWorst(pools);
+          for (let seed = 1; seed <= 10; seed++) {
+            const p = chooseNotes(item, name, seededRng(seed)).map((x) => staffPosition(x, clef));
+            const worst = Math.max(0, ...p.slice(1).map((v, k) => Math.abs(v - p[k]!)));
+            expect(worst, `${clef} ${word} with ${n} silver`).toBeLessThanOrEqual(min + 1);
+          }
+        }
+      }
+    }
+    // FADE with the first 9 treble notes: the best possible is 4 steps, never the 6 of a careless draw.
+    const nine = nameWith(firstTaught('treble', 9));
+    for (let seed = 1; seed <= 40; seed++) {
+      const p = chooseNotes(wordItem('word:treble:FADE'), nine, seededRng(seed)).map((x) => staffPosition(x, 'treble'));
+      expect(Math.max(...p.slice(1).map((v, k) => Math.abs(v - p[k]!)))).toBeLessThanOrEqual(4);
+    }
+  });
+
+  it('beginner variety: no gold and 10 silver notes still give different pictures, all starting near the middle', () => {
+    const name = nameWith(firstTaught('treble', 10));
+    expect(goldShare(name, 'treble')).toBe(0);
+    for (const word of ['ADD', 'DECADE', 'EDGE']) {
+      const pictures = new Set<string>();
+      for (let seed = 1; seed <= 40; seed++) {
+        const notes = chooseNotes(wordItem(`word:treble:${word}`), name, seededRng(seed));
+        expect(Math.abs(staffPosition(notes[0]!, 'treble') - 4)).toBeLessThanOrEqual(3);
+        pictures.add(notes.map(noteId).join(' '));
+      }
+      expect(pictures.size, word).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it('is deterministic for the same seed', () => {
+    const name = advanced();
+    const item = wordItem('word:treble:CABBAGE');
+    expect(chooseNotes(item, name, seededRng(7)).map(noteId)).toEqual(chooseNotes(item, name, seededRng(7)).map(noteId));
+  });
+
   it('an advanced kid is allowed bigger leaps, but never beyond an octave', () => {
     const adv = intervals(advanced(), WORD_LISTS.treble, 20);
     const bn = beginner();
