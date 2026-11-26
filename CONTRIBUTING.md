@@ -112,7 +112,7 @@ Workflows: [`ci.yml`](.github/workflows/ci.yml) (PRs) and [`deploy.yml`](.github
 
 | Trigger | What runs |
 |---|---|
-| PR → `develop` or `main` | One pipeline: install (cached) → typecheck/lint → unit + coverage → build → e2e (Chromium + WebKit). Terraform `fmt`/`validate`/`plan` **only if `infra/**` changed**. |
+| PR → `develop` or `main` | install (cached) → typecheck/lint → unit + coverage → build, with e2e running in parallel jobs, one per browser (desktop Chromium, iPad WebKit). Terraform `fmt`/`validate`/`plan` **only if `infra/**` changed**. |
 | Merge → `develop` | `terraform apply` (staging; a no-op if nothing changed) → build → deploy to **staging** → `@smoke` e2e against the live URL. The full suite already ran on the PR, so it isn't repeated. |
 | Merge → `main` | Same, for **production**, then tag `v<package.json version>`. |
 
