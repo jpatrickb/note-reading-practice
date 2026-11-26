@@ -580,8 +580,8 @@ export function createEngine<I extends PracticeItem, A extends string = Letter>(
   ): string {
     const open = () => set.items.filter((i) => !retired.has(i.id) && groups.includes(set.groupOf(i)) && state.items[i.id]!.unlocked);
     let candidates = open();
-    if (candidates.length === 0) {
-      // A malformed or old save can have only retired items open: re-open the first live item of each lane.
+    if (candidates.length === 0 && set.retired.some((i) => groups.includes(set.groupOf(i)) && state.items[i.id]!.unlocked)) {
+      // A malformed or old save can have only retired items open (nothing else is a bug, below): re-open the first live item of each lane.
       for (const g of groups) {
         const first = (set.groups[g] ?? [])[0];
         if (first) state.items[first.id]!.unlocked = true;
