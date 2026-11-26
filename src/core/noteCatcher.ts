@@ -82,7 +82,7 @@ export type Miss =
   | { kind: 'other'; note: Note };
 
 /** Why an answer is wrong. */
-export function classifyMiss(item: CatchItem, answer: string): Miss {
+export function classifyMiss(item: { note: Note }, answer: string): Miss {
   const note = parseNote(answer);
   if (note.acc) return { kind: 'black' };
   if (note.letter === item.note.letter) return { kind: 'octave', octaves: note.octave - item.note.octave };

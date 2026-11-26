@@ -10,6 +10,7 @@ import { defineItemSet } from '../src/core/itemset';
 import { NAME_IT, TEACHING_ORDER } from '../src/core/items';
 import { LETTER_MATH } from '../src/core/letters';
 import { PLACE_IT } from '../src/core/placeIt';
+import { KEY_TO_STAFF } from '../src/core/keyToStaff';
 import type { CoreMode } from '../src/core/modes';
 import { WORD_SET } from '../src/core/wordDecoder';
 import { T0 } from './helpers';
@@ -74,7 +75,21 @@ const PLACE_IT_GOLDEN = [
   'place:bass:A2', 'place:bass:C4', 'place:bass:B3', 'place:bass:F2',
 ];
 
+/** Key to Staff: index 0..23 (same 12 notes per clef as Place It; append new ones at the end). */
+const KEY_TO_STAFF_GOLDEN = [
+  'k2s:treble:G4', 'k2s:treble:C4', 'k2s:treble:A4', 'k2s:treble:F4',
+  'k2s:treble:E4', 'k2s:treble:B4', 'k2s:treble:D4', 'k2s:treble:C5',
+  'k2s:treble:D5', 'k2s:treble:E5', 'k2s:treble:F5', 'k2s:treble:G5',
+  'k2s:bass:F3', 'k2s:bass:G3', 'k2s:bass:E3', 'k2s:bass:A3',
+  'k2s:bass:D3', 'k2s:bass:C3', 'k2s:bass:B2', 'k2s:bass:G2',
+  'k2s:bass:A2', 'k2s:bass:C4', 'k2s:bass:B3', 'k2s:bass:F2',
+];
+
 describe('canonical item order is pinned', () => {
+  it('Key to Staff: every item keeps its index', () => {
+    expect(KEY_TO_STAFF.items.map((i) => i.id)).toEqual(KEY_TO_STAFF_GOLDEN);
+  });
+
   it('Place It: every item keeps its index', () => {
     expect(PLACE_IT.items.map((i) => i.id)).toEqual(PLACE_IT_GOLDEN);
   });

@@ -69,6 +69,7 @@ describe('the core mode registry', () => {
       ['letters', 2],
       ['place', 3],
       ['catch', 4],
+      ['k2s', 6],
       ['words', 7],
     ]);
   });
@@ -85,7 +86,7 @@ describe('profile storage', () => {
     const profile = loadProfile(store, [...CORE_MODES, MOVES_CORE]);
     for (const m of [...CORE_MODES, MOVES_CORE]) play(m, profile[m.id]!, T0, 20);
     saveProfile(store, profile, [...CORE_MODES, MOVES_CORE]);
-    expect([...store.data.keys()].sort()).toEqual(['nrp:v1:state', 'nrp:v1:state:catch', 'nrp:v1:state:letters', 'nrp:v1:state:moves', 'nrp:v1:state:place', 'nrp:v1:state:words']);
+    expect([...store.data.keys()].sort()).toEqual(['nrp:v1:state', 'nrp:v1:state:catch', 'nrp:v1:state:k2s', 'nrp:v1:state:letters', 'nrp:v1:state:moves', 'nrp:v1:state:place', 'nrp:v1:state:words']);
 
     const back = loadProfile(store, [...CORE_MODES, MOVES_CORE]);
     for (const m of [...CORE_MODES, MOVES_CORE]) expect(back[m.id], m.id).toEqual(profile[m.id]);
@@ -124,6 +125,7 @@ describe('profile storage', () => {
     now = play(coreMode('letters'), profile.letters, now, 30);
     now = play(coreMode('place'), profile.place!, now, 30);
     now = play(coreMode('catch'), profile.catch!, now, 30);
+    now = play(coreMode('k2s'), profile.k2s!, now, 30);
     now = play(coreMode('words'), profile.words!, now, 30);
     const code = encodeProfile(profile, now);
 
@@ -275,7 +277,7 @@ describe('the UI mode registry', () => {
   };
 
   it('registers every mode, each backed by a core mode', () => {
-    expect(MODES.map((m) => m.id)).toEqual(['name', 'letters', 'place', 'catch', 'words']);
+    expect(MODES.map((m) => m.id)).toEqual(['name', 'letters', 'place', 'catch', 'k2s', 'words']);
     for (const m of MODES) {
       expect(m.core, m.id).toBe(coreMode(m.id));
       expect(m.session.engine, m.id).toBe(m.core.engine);
@@ -337,8 +339,8 @@ describe('the UI mode registry', () => {
   });
 
   it('the test-only locked mode exists only behind debug, and is locked with a reason', () => {
-    expect(registeredModes().map((m) => m.id)).toEqual(['name', 'letters', 'place', 'catch', 'words']);
-    expect(registeredModes(true).map((m) => m.id)).toEqual(['name', 'letters', 'place', 'catch', 'words', 'demo-locked']);
+    expect(registeredModes().map((m) => m.id)).toEqual(['name', 'letters', 'place', 'catch', 'k2s', 'words']);
+    expect(registeredModes(true).map((m) => m.id)).toEqual(['name', 'letters', 'place', 'catch', 'k2s', 'words', 'demo-locked']);
     expect(lockedDemoMode.availability(profile())).toEqual({ ok: false, reason: 'Learn 7 notes in Name It first!' });
     expect(() => lockedDemoMode.createPlay({} as never, {} as never)).toThrow();
     // Its model is not a registered one: nothing about it is saved or put in a code.
@@ -420,7 +422,7 @@ describe('the home mode chooser', () => {
   });
 
   it('is one radio group with a single tab stop, and arrow keys move through the open cards', () => {
-    const { el, onSelect } = render([...MODES.filter((m) => m.id !== 'catch' && m.id !== 'words'), sample('lock', 'music', true)], 'name');
+    const { el, onSelect } = render([...MODES.filter((m) => m.id !== 'catch' && m.id !== 'k2s' && m.id !== 'words'), sample('lock', 'music', true)], 'name');
     expect(el.getAttribute('role')).toBe('radiogroup');
     expect(el.getAttribute('aria-label')).toBe('Game');
     expect(document.querySelectorAll('.mode-card[role="radio"]')).toHaveLength(4);
