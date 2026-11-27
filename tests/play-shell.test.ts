@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Synth } from '../src/audio/synth';
 import { newStudent } from '../src/core/engine';
 import { itemById } from '../src/core/items';
-import type { Letter } from '../src/core/music';
 import { NAME_IT_MODE, type SessionMode, startSession } from '../src/core/session';
 import { letterPad } from '../src/ui/letterPad';
 import { h } from '../src/ui/dom';
@@ -15,7 +14,7 @@ import { T0 } from './helpers';
 
 const synth = { note: vi.fn() } as unknown as Synth;
 
-function setup(length = 3, mode: SessionMode<Letter> = NAME_IT_MODE) {
+function setup(length = 3, mode: SessionMode<string> = NAME_IT_MODE) {
   const session = startSession(['treble'], length, mode);
   const host = {
     session,
@@ -27,7 +26,7 @@ function setup(length = 3, mode: SessionMode<Letter> = NAME_IT_MODE) {
     quit: vi.fn(),
     finish: vi.fn(), stopSound: vi.fn(),
   };
-  const shell: PlayShell<Letter> = nameItPlay(host, synth);
+  const shell: PlayShell<string> = nameItPlay(host, synth);
   document.body.append(shell.render());
   return { shell, host, session };
 }
@@ -54,7 +53,7 @@ describe('play shell', () => {
     await tick();
     expect(s.session.current).not.toBeNull();
     expect(document.querySelector('.banner')!.textContent).toContain('New note');
-    expect(document.querySelectorAll('.pad__key')).toHaveLength(8);
+    expect(document.querySelectorAll('.pad .pad__key')).toHaveLength(8);
   });
 
   it('auto-advances 700 ms after a correct answer, with no Got it button', async () => {
@@ -172,7 +171,7 @@ describe('play shell', () => {
   });
 });
 
-const medalMode = (kind: 'silver' | 'gold'): SessionMode<Letter> => ({
+const medalMode = (kind: 'silver' | 'gold'): SessionMode<string> => ({
   ...NAME_IT_MODE,
   engine: { ...NAME_IT_MODE.engine, recordAnswer: (...a) => ({ ...NAME_IT_MODE.engine.recordAnswer(...a), events: [{ kind, itemId: a[1] }] }) },
 });
@@ -200,7 +199,7 @@ describe('play shell: medals, lessons, dispose', () => {
     expect(s.host.finish).not.toHaveBeenCalled();
   });
 
-  const lessonMode: SessionMode<Letter> = { ...NAME_IT_MODE, diagnose: () => 'neighbor' };
+  const lessonMode: SessionMode<string> = { ...NAME_IT_MODE, diagnose: () => 'neighbor' };
 
   it('a wrong answer with a diagnosis shows the lesson after Got it, then the next question', async () => {
     const s = setup(3, lessonMode);

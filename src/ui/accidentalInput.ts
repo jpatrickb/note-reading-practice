@@ -16,7 +16,18 @@
 // submitted at once, so there is never a half-typed answer that could be submitted by mistake: the only
 // pending state is '♯ armed', shown on the key, on every letter, in words, and to screen readers.
 
-import { type Accidental, type AnswerName, type Letter, displayName, midi, parseAnswerName } from '../core/music';
+import {
+  type AccidentalAnswer,
+  type AccidentalGrade,
+  type InputStyle,
+  answerToken,
+  enharmonicFeedback,
+  gradeAccidental,
+  gradeToken,
+  parseAnswerToken,
+  pitchClassOf,
+} from '../core/accidentals';
+import { type Accidental, type AnswerName, parseAnswerName } from '../core/music';
 import { h } from './dom';
 import type { AnswerInput } from './letterPad';
 import { neutralKeyLabels } from './noteCatcher';
@@ -26,52 +37,16 @@ import './accidentalInput.css';
 const LETTER_ROW = ['A', 'B', 'C', 'D', 'E', 'F', 'G'] as const;
 const isLetter = (k: string) => (LETTER_ROW as readonly string[]).includes(k);
 
-export type InputStyle = 'pad' | 'keys';
-
-/** What these inputs answer: the style, then the octave-less note name. 'pad:Db', 'keys:C#'. */
-export type AccidentalAnswer = `${InputStyle}:${AnswerName}`;
-
-export const answerToken = (style: InputStyle, name: AnswerName): AccidentalAnswer => `${style}:${name}`;
-
-/** Splits a token; null for anything that isn't one (including a bare note name). */
-export function parseAnswerToken(token: string): { style: InputStyle; name: AnswerName; letter: Letter; acc: Accidental } | null {
-  const m = /^(pad|keys):(.+)$/.exec(token);
-  const p = m ? parseAnswerName(m[2]!) : null;
-  return m && p ? { style: m[1] as InputStyle, name: m[2] as AnswerName, letter: p.letter, acc: p.acc } : null;
-}
-
-/** Grading of an accidental answer: 'enharmonic' is the right key under another spelling (it counts as wrong). */
-export type AccidentalGrade = 'correct' | 'enharmonic' | 'wrong';
-
-const pitchClass = (p: { letter: Letter; acc: Accidental }) => midi({ letter: p.letter, octave: 4, acc: p.acc }) % 12;
-
-/** `pad`: the spelling must match. `keys`: the pitch must match (a key has no spelling). */
-export function gradeAccidental(style: InputStyle, answer: string, target: string): AccidentalGrade {
-  const a = parseAnswerName(answer);
-  const t = parseAnswerName(target);
-  if (!a || !t) return 'wrong';
-  const samePitch = pitchClass(a) === pitchClass(t);
-  if (style === 'keys') return samePitch ? 'correct' : 'wrong';
-  if (a.letter === t.letter && a.acc === t.acc) return 'correct';
-  return samePitch ? 'enharmonic' : 'wrong';
-}
-
-/** Pure grading of an answer token against the spelled target ('Db'): the helper for a mode's isCorrect/grade. */
-export function gradeToken(token: string, target: string): AccidentalGrade {
-  const t = parseAnswerToken(token);
-  return t ? gradeAccidental(t.style, t.name, target) : 'wrong';
-}
-
-const shown = (name: string) => {
-  const p = parseAnswerName(name);
-  return p ? displayName({ letter: p.letter, octave: 4, acc: p.acc }) : name;
+export {
+  type AccidentalAnswer,
+  type AccidentalGrade,
+  type InputStyle,
+  answerToken,
+  enharmonicFeedback,
+  gradeAccidental,
+  gradeToken,
+  parseAnswerToken,
 };
-
-/** Gentle wording for an enharmonic answer: same key, different name. */
-export function enharmonicFeedback(answer: string, target: string): string {
-  const a = parseAnswerToken(answer)?.name ?? answer;
-  return `${shown(a)} and ${shown(target)} are the same key with different names. This note is written as ${shown(target)}.`;
-}
 
 export type Modifier = 'sharp' | 'flat';
 const MOD_ID: Record<Modifier, string> = { sharp: '#', flat: 'b' };
@@ -122,7 +97,10 @@ export function accidentalPad(opts: AccidentalPadOptions): AccidentalPad {
   const el = h('div', { class: 'apad', role: 'group', 'aria-label': opts.label }, mods, h('div', { class: 'pad' }, ...letters, idk));
 
   function paint() {
-    mods.hidden = !on;
+    // Absent, not just hidden, while accidentals are locked: a hidden ♯ must not be the first "pad key" a
+    // test, a screen reader or a focus ring finds.
+    if (on) el.prepend(mods);
+    else mods.remove();
     el.classList.toggle('apad--armed', armed !== null);
     for (const b of modButtons) {
       const active = b.dataset.modifier === armed;
@@ -266,7 +244,7 @@ export function keyboardInput(opts: KeyboardInputOptions): AnswerInput<Accidenta
   const mark = (name: string, kind: PianoMark) => {
     const p = parseAnswerToken(name) ?? parseAnswerName(name);
     if (!p) return null;
-    const m = 60 + pitchClass(p);
+    const m = 60 + pitchClassOf(p);
     piano.mark(m, kind);
     return el.querySelector<HTMLElement>(`.piano__key[data-midi="${m}"]`);
   };
@@ -332,12 +310,14 @@ export function switchableInput(opts: SwitchableInputOptions): SwitchableInput {
     h('button', { class: 'ainput__tab', type: 'button', 'data-style': s, onClick: () => choose(s) }, s === 'pad' ? 'Letters' : 'Keys'),
   );
   const switcher = h('div', { class: 'ainput__switch', role: 'group', 'aria-label': 'Answer with' }, ...tabs);
-  const el = h('div', { class: 'ainput' }, switcher, pad.el, keys.el);
+  const el = h('div', { class: 'ainput' }, switcher);
   const active = () => (style() === 'pad' ? pad : keys);
 
   function paint() {
-    pad.el.hidden = style() !== 'pad';
-    keys.el.hidden = style() !== 'keys';
+    // Only the active input is in the page, so its "?" and letter keys are the only ones anything can find.
+    const [shown, other] = style() === 'pad' ? [pad.el, keys.el] : [keys.el, pad.el];
+    other.remove();
+    if (!shown.isConnected) el.append(shown);
     switcher.hidden = !opts.kidChoice || forced !== undefined;
     for (const t of tabs) t.setAttribute('aria-pressed', String(t.dataset.style === style()));
   }

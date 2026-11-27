@@ -1,7 +1,8 @@
 // Name It practice items. An item = (task, clef, note): staff → name.
 
+import { gradeToken, parseAnswerToken } from './accidentals';
 import { defineItemSet } from './itemset';
-import { type Clef, type Note, parseNote } from './music';
+import { type Clef, type Note, answerName, noteId, parseNote } from './music';
 
 export type Task = 'name';
 
@@ -27,6 +28,33 @@ export const TEACHING_ORDER: Record<Clef, string[]> = {
 };
 
 /**
+ * Sharps and flats (issue #34, owner decision on #10): taught AFTER every natural and ledger note of the clef,
+ * sharps and flats ALTERNATING, so neither modifier button can carry play, and with a different letter each time
+ * (F B C E G A) so one letter key cannot either (D33). Natural signs come later (#10).
+ * Kept apart from TEACHING_ORDER because Place It and Note Catcher derive their notes from that list.
+ */
+export const ACCIDENTAL_ORDER: Record<Clef, string[]> = {
+  treble: ['F#4', 'Bb4', 'C#5', 'Eb5', 'G#4', 'Ab5'],
+  bass: ['F#3', 'Bb2', 'C#3', 'Eb3', 'G#2', 'Ab3'],
+};
+
+/**
+ * Which answer input an item uses (issue #34). THE MODE DECIDES, per item; the kid does not choose.
+ * Naturals: the letter pad. Sharps and flats go [pad, pad, keys, keys] down ACCIDENTAL_ORDER: the first
+ * two are spelled (the name and the symbol come first), the next two are answered on the 12-key keyboard
+ * (the key relationship), and so on. Sharps and flats alternate, so each style meets both kinds.
+ * A pure function of the item, so a saved or replayed session always shows the same input.
+ */
+export function inputStyleOf(item: Item): 'pad' | 'keys' {
+  if (!item.note.acc) return 'pad';
+  const at = ACCIDENTAL_ORDER[item.clef].indexOf(noteId(item.note));
+  return at >= 0 && at % 4 >= 2 ? 'keys' : 'pad';
+}
+
+/** Does this item ask for a sharp or flat? */
+export const isAccidental = (i: Item) => !!i.note.acc;
+
+/**
  * The CANONICAL order of Name It items: progress codes store one record per item by its index here.
  * APPEND-ONLY: never reorder or remove (tests/canonical-order.test.ts pins every index). It is
  * separate from TEACHING_ORDER on purpose: notes can be added to any clef, or taught in a different
@@ -46,19 +74,28 @@ export const CANONICAL_ORDER: readonly string[] = [
   // two ledger lines (#24), appended so every earlier index stays put
   'name:treble:B5', 'name:treble:C6', 'name:treble:B3', 'name:treble:A3',
   'name:bass:D4', 'name:bass:E4', 'name:bass:D2', 'name:bass:C2',
+  // sharps and flats (#34)
+  'name:treble:F#4', 'name:treble:Bb4', 'name:treble:C#5', 'name:treble:Eb5', 'name:treble:G#4', 'name:treble:Ab5',
+  'name:bass:F#3', 'name:bass:Bb2', 'name:bass:C#3', 'name:bass:Eb3', 'name:bass:G#2', 'name:bass:Ab3',
 ];
 
 function build(clef: Clef): Item[] {
-  return TEACHING_ORDER[clef].map((id) => ({ id: `name:${clef}:${id}`, task: 'name' as const, clef, note: parseNote(id) }));
+  return [...TEACHING_ORDER[clef], ...ACCIDENTAL_ORDER[clef]].map((id) => ({ id: `name:${clef}:${id}`, task: 'name' as const, clef, note: parseNote(id) }));
 }
 
 /** The Name It item set: one unlock lane per clef; the answer is the note's letter. */
-export const NAME_IT = defineItemSet<Item>({
+export const NAME_IT = defineItemSet<Item, string>({
   id: 'name',
   groups: { treble: build('treble'), bass: build('bass') },
   order: CANONICAL_ORDER,
   groupOf: (i) => i.clef,
-  answerOf: (i) => i.note.letter,
+  // The answer is the spelled name ('C', 'F#', 'Bb'). The pad and the keyboard answer with TOKENS ('pad:Db',
+  // 'keys:C#'), graded by gradeToken (pad: exact spelling, an enharmonic is wrong; keys: by pitch). A bare name
+  // (the plain letter pad, old callers) must equal the spelling.
+  answerOf: (i) => answerName(i.note),
+  isCorrect: (i, answer) => (parseAnswerToken(answer) ? gradeToken(answer, answerName(i.note)) === 'correct' : answer === answerName(i.note)),
+  // Placement tests the naturals only: a kid is never placed onto sharps and flats.
+  placeable: (i) => !i.note.acc,
   // No transfer between notes (each is its own fact), so first-try credit is the only shortcut:
   // let it start one answer sooner.
   pacing: { firstTryRun: 1 },

@@ -7,14 +7,14 @@ import { describe, expect, it } from 'vitest';
 import { decodeProfile, encodeProfile } from '../src/core/codec';
 import { createEngine, recall } from '../src/core/engine';
 import { defineItemSet } from '../src/core/itemset';
-import { NAME_IT, TEACHING_ORDER } from '../src/core/items';
+import { ACCIDENTAL_ORDER, NAME_IT, TEACHING_ORDER } from '../src/core/items';
 import { LETTER_MATH } from '../src/core/letters';
 import { PLACE_IT } from '../src/core/placeIt';
 import type { CoreMode } from '../src/core/modes';
 import { WORD_SET } from '../src/core/wordDecoder';
 import { T0 } from './helpers';
 
-/** Name It: index 0..33 (the original 26, then the #24 ledger notes). */
+/** Name It: index 0..45 (the original 26, the #24 ledger notes, then the #34 sharps and flats). */
 const NAME_IT_GOLDEN = [
   'name:treble:G4', 'name:treble:C4', 'name:treble:A4', 'name:treble:F4',
   'name:treble:E4', 'name:treble:B4', 'name:treble:D4', 'name:treble:C5',
@@ -26,6 +26,9 @@ const NAME_IT_GOLDEN = [
   // appended by #24 (two ledger lines)
   'name:treble:B5', 'name:treble:C6', 'name:treble:B3', 'name:treble:A3',
   'name:bass:D4', 'name:bass:E4', 'name:bass:D2', 'name:bass:C2',
+  // appended by #34 (sharps and flats)
+  'name:treble:F#4', 'name:treble:Bb4', 'name:treble:C#5', 'name:treble:Eb5', 'name:treble:G#4', 'name:treble:Ab5',
+  'name:bass:F#3', 'name:bass:Bb2', 'name:bass:C#3', 'name:bass:Eb3', 'name:bass:G#2', 'name:bass:Ab3',
 ];
 
 /** Letter Math: index 0..125 (18 rungs of 7). */
@@ -98,7 +101,7 @@ describe('canonical item order is pinned', () => {
 
   it('the canonical order is independent of the teaching order', () => {
     // Teaching order is per lane and editable; the canonical list is its own thing.
-    expect(NAME_IT.groups.treble!.map((i) => i.id.split(':')[2])).toEqual(TEACHING_ORDER.treble);
+    expect(NAME_IT.groups.treble!.map((i) => i.id.split(':')[2])).toEqual([...TEACHING_ORDER.treble, ...ACCIDENTAL_ORDER.treble]);
     expect(NAME_IT.items.slice(0, 13).map((i) => i.id)).toEqual(NAME_IT.groups.treble!.slice(0, 13).map((i) => i.id));
   });
 });

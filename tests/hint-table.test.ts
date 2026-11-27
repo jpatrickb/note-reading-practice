@@ -43,6 +43,19 @@ const HINTS: [string, string, string | null, string][] = [
   ['name:bass:E4', "This note is on ledger line 2 above the staff.", null, "Count up from Middle C (on its own little line above the bass staff): C → D → E."],
   ['name:bass:D2', "This note is on under ledger line 1 below the staff.", null, "Count up from Low C (two ledger lines below the bass staff): C → D."],
   ['name:bass:C2', "This note is on ledger line 2 below the staff.", null, "This is a guide note: Low C, two ledger lines below the bass staff."],
+  // sharps and flats (#34): the hint counts from the natural letter's guide note
+  ["name:treble:F#4", "This note is on the 1st space.", "Spaces, bottom to top: F-A-C-E spells FACE. Number 1 is F.", "Count down from Treble G (the line the treble clef curls around): G → F."],
+  ["name:treble:Bb4", "This note is on the 3rd line.", "Lines, bottom to top: Every Good Boy Does Fine. Number 3 is B.", "Count up from Treble G (the line the treble clef curls around): G → A → B."],
+  ["name:treble:C#5", "This note is on the 3rd space.", "Spaces, bottom to top: F-A-C-E spells FACE. Number 3 is C.", "This is a guide note: Treble C, the 3rd space."],
+  ["name:treble:Eb5", "This note is on the 4th space.", "Spaces, bottom to top: F-A-C-E spells FACE. Number 4 is E.", "Count up from Treble C (the 3rd space): C → D → E."],
+  ["name:treble:G#4", "This note is on the 2nd line.", "Lines, bottom to top: Every Good Boy Does Fine. Number 2 is G.", "This is a guide note: Treble G, the line the treble clef curls around."],
+  ["name:treble:Ab5", "This note is on a ledger line above the staff.", null, "Count up from Treble C (the 3rd space): C → D → E → F → G → A."],
+  ["name:bass:F#3", "This note is on the 4th line.", "Lines, bottom to top: Good Boys Do Fine Always. Number 4 is F.", "This is a guide note: Bass F, the line between the bass clef's two dots."],
+  ["name:bass:Bb2", "This note is on the 2nd line.", "Lines, bottom to top: Good Boys Do Fine Always. Number 2 is B.", "Count down from Bass C (the 2nd space): C → B."],
+  ["name:bass:C#3", "This note is on the 2nd space.", "Spaces, bottom to top: All Cows Eat Grass. Number 2 is C.", "This is a guide note: Bass C, the 2nd space."],
+  ["name:bass:Eb3", "This note is on the 3rd space.", "Spaces, bottom to top: All Cows Eat Grass. Number 3 is E.", "Count down from Bass F (the line between the bass clef's two dots): F → E."],
+  ["name:bass:G#2", "This note is on the 1st line.", "Lines, bottom to top: Good Boys Do Fine Always. Number 1 is G.", "Count down from Bass C (the 2nd space): C → B → A → G."],
+  ["name:bass:Ab3", "This note is on the 5th line.", "Lines, bottom to top: Good Boys Do Fine Always. Number 5 is A.", "Count up from Bass F (the line between the bass clef's two dots): F → G → A."],
 ];
 
 describe('hint text for every Name It item', () => {
@@ -60,7 +73,8 @@ describe('hint text for every Name It item', () => {
     for (const item of ITEMS) {
       const order = TEACHING_ORDER[item.clef];
       const { landmark } = anchorFor(item.note, item.clef);
-      expect(order.indexOf(noteId(landmark.note)), item.id).toBeLessThanOrEqual(order.indexOf(noteId(item.note)));
+      const natural = noteId({ letter: item.note.letter, octave: item.note.octave }); // a sharp or flat is taught after its natural
+      expect(order.indexOf(noteId(landmark.note)), item.id).toBeLessThanOrEqual(order.indexOf(natural));
       expect(LANDMARKS[item.clef]).toContain(landmark);
     }
   });

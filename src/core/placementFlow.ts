@@ -10,7 +10,7 @@ export const MIN_PLACEMENT_ANSWERS = 5;
 
 /** How many different answers the lane's items have. */
 export function answerSpace(engine: Engine, group: string): number {
-  return new Set((engine.set.groups[group] ?? []).map((i) => engine.answerOf(i.id))).size;
+  return new Set((engine.set.groups[group] ?? []).filter((i) => engine.set.placeable?.(i) ?? true).map((i) => engine.answerOf(i.id))).size;
 }
 
 /**
