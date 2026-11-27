@@ -143,6 +143,7 @@ Rules that keep it lean:
 npm install
 npm run dev          # local dev server
 npm run tunnel       # HTTPS tunnel for testing on a real iPad (needs cloudflared)
+npx vite --port 4196 # then open /dev/answer-input.html: harness for the accidental answer inputs (options in its header)
 ```
 
 ## Local testing is light; CI is heavy

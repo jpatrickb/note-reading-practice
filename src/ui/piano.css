@@ -88,6 +88,11 @@
   font-weight: 700;
   line-height: 1;
 }
+/* Black keys naming both spellings: two short lines, so they fit the narrowest key. */
+.piano__key--black .piano__label {
+  white-space: pre-line;
+  text-align: center;
+}
 .piano__key--black .piano__label {
   font-size: clamp(0.65rem, 1.6cqw, 0.85rem);
 }
@@ -310,4 +315,13 @@
   padding: 2px 4px;
   border-radius: 6px;
   background: var(--key-white);
+}
+
+/* Black keys that are answers: the hit area (the button) is at least 44px wide; padding keeps the visible
+   key as wide as before (--bw minus the 6px of side padding). Black sits above white, so it wins overlaps. */
+.piano--big-black .piano__key--black {
+  --hit: max(var(--bw), 44px);
+  width: var(--hit);
+  left: calc(var(--x) * 100% / var(--whites) - var(--hit) / 2);
+  padding-inline: calc((var(--hit) - var(--bw) + 6px) / 2);
 }

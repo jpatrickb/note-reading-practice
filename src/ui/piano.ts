@@ -25,6 +25,13 @@ export interface PianoOptions {
   scroll?: boolean;
   /** Write "Middle C" on C4 (with the labels:'middleC' dot): a quiet reference point. */
   anchorText?: boolean;
+  /** With labels:'all': black keys name both spellings, "A♯ / B♭" (stacked, so they fit a phone). Default: the sharp only. */
+  blackLabels?: 'sharp' | 'both';
+  /**
+   * Black keys that are answers: each black key's hit area is at least 44px wide, though it still looks as
+   * wide as a piano key. Where a black key's hit area overlaps a white key's, the black key wins.
+   */
+  bigBlackHit?: boolean;
 }
 
 export interface Piano {
@@ -54,7 +61,8 @@ export interface PianoKey {
 }
 
 /** Spoken name: "C4, middle C", "C sharp 4", "D4". */
-export function keyName(key: PianoKey): string {
+export function keyName(key: PianoKey, both = false): string {
+  if (key.black && both) return `${key.letter} sharp or ${LETTERS[(LETTERS.indexOf(key.letter) + 1) % 7]} flat`;
   if (key.black) return `${key.letter} sharp ${key.octave}`;
   return key.id === 'C4' ? 'C4, middle C' : key.id;
 }
@@ -115,7 +123,9 @@ export function createPiano(options: PianoOptions): Piano {
   let swallowUntil = -Infinity;
 
   const el = document.createElement('div');
-  el.className = `piano piano--labels-${labels}${options.scroll ? ' piano--scroll' : ''}`;
+  el.className = `piano piano--labels-${labels}${options.scroll ? ' piano--scroll' : ''}${options.bigBlackHit ? ' piano--big-black' : ''}`;
+  const both = options.blackLabels === 'both';
+  const nameOf = (key: PianoKey) => keyName(key, both);
   el.setAttribute('role', 'group');
   el.setAttribute('aria-label', 'Piano keyboard');
   const deck = document.createElement('div');
@@ -137,7 +147,7 @@ export function createPiano(options: PianoOptions): Piano {
     b.dataset.midi = String(key.midi);
     b.dataset.note = key.id;
     b.tabIndex = -1;
-    b.setAttribute('aria-label', keyName(key));
+    b.setAttribute('aria-label', nameOf(key));
     b.style.setProperty('--x', String(key.black ? key.white + 1 : key.white));
     if (options.anchorText && labels === 'middleC' && key.id === 'C4') {
       const t = document.createElement('span');
@@ -150,7 +160,7 @@ export function createPiano(options: PianoOptions): Piano {
       const t = document.createElement('span');
       t.className = 'piano__label';
       t.setAttribute('aria-hidden', 'true');
-      t.textContent = key.black ? `${key.letter}♯` : key.letter;
+      t.textContent = key.black ? (both ? `${key.letter}♯\n${LETTERS[(LETTERS.indexOf(key.letter) + 1) % 7]}♭` : `${key.letter}♯`) : key.letter;
       b.append(t);
     } else if (labels === 'middleC' && key.id === 'C4') {
       const dot = document.createElement('span');
@@ -275,7 +285,7 @@ export function createPiano(options: PianoOptions): Piano {
   function relabel(b: HTMLButtonElement) {
     const key = keys.find((k) => k.midi === Number(b.dataset.midi))!;
     const mark = b.dataset.mark as PianoMark | undefined;
-    b.setAttribute('aria-label', mark ? `${keyName(key)}, ${MARK_WORDS[mark]}` : keyName(key));
+    b.setAttribute('aria-label', mark ? `${nameOf(key)}, ${MARK_WORDS[mark]}` : nameOf(key));
   }
 
   /** Scroll the keys to `left`: an animation, or (smooth false) an instant jump that never animates, even on old Safari. */
