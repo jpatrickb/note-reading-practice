@@ -215,4 +215,11 @@ export const keyToStaffMode = defineMode<string>({
   counts: keyToStaffCounts,
   renderMap: renderKeyToStaffMap,
   itemLabel: keyLabel,
+  // 16 notes per clef (D63), and the same staff input as Place It: the round marks and reveals nothing,
+  // and the piano only sounds the lit key (the question) and whatever the kid presses.
+  placement: true,
+  placedLine: (id) => {
+    const item = keyItem(id);
+    return `You're starting at the ${noteId(item.note)} key in the ${item.clef} clef.`;
+  },
 });

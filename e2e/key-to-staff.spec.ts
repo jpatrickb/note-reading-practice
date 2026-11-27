@@ -1,4 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
+import { skipPlacement } from './skipPlacement';
 
 // Key to Staff: a key lights up on the piano; tap where it goes on the staff.
 
@@ -11,6 +12,7 @@ async function start(page: Page, clef: 'Treble' | 'Bass' | 'Both' = 'Both') {
   await page.locator('.mode-card[data-mode="k2s"]').click();
   await page.getByRole('button', { name: clef, exact: true }).click();
   await page.getByRole('button', { name: /Start/ }).click();
+  await skipPlacement(page);
 }
 
 /** The lit key and where it goes on the visible staff. */

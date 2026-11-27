@@ -254,6 +254,9 @@ export const findAllMode = defineMode<string>({
   blurb: 'Find every key with that name',
   group: 'keys',
   core: coreMode('find'),
+  // No placement (#84): each question takes several taps and marks every found key as it goes (the
+  // round must mark nothing); the near and far lanes are stages, and the far one is gated on the
+  // near one's silver, so there is no single teaching order to search.
   words: {
     item: 'letter',
     medal: 'letter',

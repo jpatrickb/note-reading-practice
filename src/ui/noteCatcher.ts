@@ -259,4 +259,11 @@ export const noteCatcherMode = defineMode<string>({
     const item = catchItem(id);
     return `${noteId(item.note)} key (${item.clef} clef)`;
   },
+  // 16 keys per clef, so a knower can place high (D63). The round marks nothing: the pressed key
+  // sounds as it does in play (its own pitch, which says nothing about right or wrong).
+  placement: true,
+  placedLine: (id) => {
+    const item = catchItem(id);
+    return `You're starting at the ${noteId(item.note)} key in the ${item.clef} clef.`;
+  },
 });

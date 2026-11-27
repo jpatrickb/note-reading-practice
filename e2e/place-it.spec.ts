@@ -1,4 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
+import { skipPlacement } from './skipPlacement';
 
 // Place It: "Put a G on the staff". Tap a line or space; the answer is a position.
 
@@ -17,6 +18,7 @@ async function start(page: Page, clef: 'Treble' | 'Bass' | 'Both' = 'Both') {
   await page.locator('.mode-card[data-mode="place"]').click();
   await page.getByRole('button', { name: clef, exact: true }).click();
   await page.getByRole('button', { name: /Start/ }).click();
+  await skipPlacement(page);
 }
 
 async function question(page: Page): Promise<{ id: string; pos: number }> {
