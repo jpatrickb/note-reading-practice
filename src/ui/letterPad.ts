@@ -7,6 +7,8 @@ import { h } from './dom';
 export interface AnswerInput<A extends string = string> {
   el: HTMLElement;
   setEnabled(enabled: boolean): void;
+  /** Called with the item just before it is asked (optional): an input that varies per item (pad or keys) reads it here. */
+  ask?(itemId: string): void;
   /** Highlight the right answer for this item; returns the element to react on, if there is one. */
   markRight(itemId: string): HTMLElement | null;
   /** Highlight the student's wrong answer; returns its element, if there is one. */

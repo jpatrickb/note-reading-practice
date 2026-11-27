@@ -1,0 +1,82 @@
+/* Accidental answer inputs (src/ui/accidentalInput.ts). Theme tokens only; every state has a non-color cue. */
+
+.apad {
+  display: grid;
+  gap: 8px;
+}
+.apad__mods {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.apad__mods[hidden] {
+  display: none;
+}
+.apad__mod {
+  min-width: 72px;
+  min-height: 56px;
+  font-size: 1.8rem;
+}
+/* The armed modifier: filled, ticked and ringed. The letters below also change to "F♯". */
+.apad__mod--on,
+.apad__mod--on:disabled {
+  background: var(--primary);
+  color: var(--primary-ink);
+  box-shadow: 0 0 0 3px var(--card), 0 0 0 6px var(--primary);
+}
+.apad__mod--on::after {
+  content: ' ✓';
+  font-size: 1.1rem;
+}
+.apad__status {
+  margin: 0;
+  min-height: 1.4em;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.kpad {
+  display: grid;
+  gap: 8px;
+}
+.kpad__idk {
+  min-height: 56px;
+}
+.apad[hidden],
+.kpad[hidden] {
+  display: none;
+}
+
+.ainput {
+  display: grid;
+  gap: 10px;
+}
+.ainput__switch {
+  display: flex;
+  gap: 6px;
+  justify-self: start;
+}
+.ainput__switch[hidden] {
+  display: none;
+}
+.ainput__tab {
+  min-height: 44px;
+  min-width: 88px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--secondary);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+}
+.ainput__tab[aria-pressed='true'] {
+  background: var(--selected);
+  color: var(--selected-ink);
+}
+.ainput__tab[aria-pressed='true']::before {
+  content: '✓ ';
+}
+.ainput__tab:disabled {
+  opacity: 0.6;
+}

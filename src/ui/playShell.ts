@@ -128,6 +128,7 @@ export class PlayShell<A extends string = string> {
     this.isNew = false;
     this.phase = 'asking';
     this.mode.renderPrompt(id);
+    this.input.ask?.(id);
     this.input.setEnabled(true);
     this.chrome.asking(placement!.run.answers.length, this.card);
     this.askedAt = this.host.now();
@@ -156,6 +157,7 @@ export class PlayShell<A extends string = string> {
     if (this.isNew) this.banner.append(h('span', { class: 'badge' }, this.mode.newBadge));
     this.phase = 'asking';
     this.mode.renderPrompt(qn.itemId);
+    this.input.ask?.(qn.itemId);
     this.input.setEnabled(true);
     this.chrome.asking(session.results.length, this.card);
     this.mode.play?.(qn.itemId, 'ask');
