@@ -31,13 +31,13 @@ import {
 const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const letters = (mode: SessionMode, policy: Policy, sessions: number) =>
   SEEDS.map((seed) => simulate({ mode, groups: [LETTER_GROUP], policy, sessions, seed }));
-const treble = (mode: SessionMode, policy: Policy, sessions: number) =>
+const treble = (mode: SessionMode<string>, policy: Policy<string>, sessions: number) =>
   SEEDS.map((seed) => simulate({ mode, groups: ['treble'], policy, sessions, seed }));
 const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]!;
 const nextLetter = [...rungIds('after'), ...rungIds('before')];
-const trebleIds = ITEMS_BY_CLEF.treble.map((i) => i.id);
-const worstSession = (r: SimResult) => Math.min(...r.sessions.slice(1).map(successRate));
-const maxStruggling = (r: SimResult) => Math.max(...r.sessions.map((s) => s.maxStruggling));
+const trebleIds = ITEMS_BY_CLEF.treble.filter((i) => !i.note.acc).map((i) => i.id);
+const worstSession = (r: SimResult<string>) => Math.min(...r.sessions.slice(1).map(successRate));
+const maxStruggling = (r: SimResult<string>) => Math.max(...r.sessions.map((s) => s.maxStruggling));
 
 describe('pacing: a kid who already knows it flies', () => {
   const fast = letters(LETTER_MATH_MODE, knower(), 6);

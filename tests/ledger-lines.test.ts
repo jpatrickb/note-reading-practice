@@ -18,8 +18,7 @@ const NEW_IDS = [...NEW_TREBLE.map((n) => `name:treble:${n}`), ...NEW_BASS.map((
 
 describe('the two-ledger-line items', () => {
   it('exist with the expected ids, appended after the original 26', () => {
-    expect(ITEMS).toHaveLength(34);
-    expect(ITEMS.slice(26).map((i) => i.id)).toEqual(NEW_IDS);
+    expect(ITEMS.slice(26, 34).map((i) => i.id)).toEqual(NEW_IDS);
   });
 
   it('are taught after the 13 in-staff notes, guide C first, no letter twice in a row', () => {

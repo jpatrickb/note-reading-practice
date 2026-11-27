@@ -8,7 +8,7 @@
 //     here, so it is APPEND-ONLY: never reorder or remove, only add at the end. Pinned by
 //     tests/canonical-order.test.ts.
 
-import type { Pacing } from './engine';
+import type { Pacing, StudentState } from './engine';
 import type { Letter } from './music';
 
 export interface PracticeItem {
@@ -48,9 +48,10 @@ export interface ItemSet<I extends PracticeItem = PracticeItem, A extends string
   /**
    * An outside condition on opening an item (its turn in the lane has come, but is the kid ready?):
    * Word Decoder opens a word only once every letter is a silver Name It note. Return false to hold
-   * it (and so the rest of the lane) closed. Default: no condition. Must be cheap and pure.
+   * it (and so the rest of the lane) closed. Default: no condition. Must be cheap and pure; it may read the
+   * learner's `state` (Name It holds the sharps and flats until the clef's naturals are silver).
    */
-  canUnlock?(item: I): boolean;
+  canUnlock?(item: I, state: StudentState): boolean;
   /**
    * How many "units" of work one answer to this item covers (default 1). The engine divides the
    * response time by it, so the speed baseline and the silver fluency check compare like with like
@@ -67,6 +68,11 @@ export interface ItemSet<I extends PracticeItem = PracticeItem, A extends string
    * valid (the black key C♯4 can be answered "C♯" or "D♭").
    */
   isCorrect?(item: I, answer: A): boolean;
+  /**
+   * Can the placement round ask this item (and so place the kid past it)? Default: yes. Name It's sharps and
+   * flats say no: they come after the naturals are solid, never by placement. Must be a suffix of the lane.
+   */
+  placeable?(item: I): boolean;
   /** Look up an item; throws on unknown ids. */
   get(id: string): I;
 }
@@ -86,10 +92,11 @@ export interface ItemSetSpec<I extends PracticeItem, A extends string = Letter> 
   skillOf?(item: I): string;
   pacing?: Partial<Pacing>;
   groupOf(item: I): string;
-  canUnlock?(item: I): boolean;
+  canUnlock?(item: I, state: StudentState): boolean;
   rtUnits?(item: I): number;
   answerOf(item: I): A;
   isCorrect?(item: I, answer: A): boolean;
+  placeable?(item: I): boolean;
 }
 
 /** Build an item set; throws if ids repeat, or `order` isn't exactly the set of items. */
@@ -122,6 +129,7 @@ export function defineItemSet<I extends PracticeItem, A extends string = Letter>
     rtUnits: spec.rtUnits,
     answerOf: spec.answerOf,
     isCorrect: spec.isCorrect,
+    placeable: spec.placeable,
     get(id: string): I {
       const item = byId.get(id);
       if (!item) throw new Error(`Unknown item: ${id}`);

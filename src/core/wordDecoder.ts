@@ -73,10 +73,10 @@ const isSilver = (name: StudentState, id: string) => {
   return l === 'silver' || l === 'gold';
 };
 
-/** The Name It notes of a clef the kid has at silver or better, in teaching order. */
+/** The natural Name It notes of a clef the kid has at silver or better, in teaching order (a sharp or flat is not a letter for a word). */
 export function silverNotes(name: StudentState | undefined, clef: Clef): Note[] {
   if (!name) return [];
-  return ITEMS.filter((i) => i.clef === clef && name.items[i.id] && isSilver(name, i.id)).map((i) => i.note);
+  return ITEMS.filter((i) => i.clef === clef && !i.note.acc && name.items[i.id] && isSilver(name, i.id)).map((i) => i.note);
 }
 
 /**
@@ -115,7 +115,7 @@ export const WORD_MODE: SessionMode<string> = { engine: wordEngine };
 /** The Name It notes of a clef that are gold, as a share (0..1) of all that clef's Name It notes: how advanced the kid is there. */
 export function goldShare(name: StudentState | undefined, clef: Clef): number {
   if (!name) return 0;
-  const all = ITEMS.filter((i) => i.clef === clef);
+  const all = ITEMS.filter((i) => i.clef === clef && !i.note.acc);
   const gold = all.filter((i) => name.items[i.id] && level(name.items[i.id]!) === 'gold').length;
   return all.length === 0 ? 0 : gold / all.length;
 }

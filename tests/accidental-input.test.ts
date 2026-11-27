@@ -22,6 +22,11 @@ const target = (id: string) => id as AnswerName; // items in these tests are the
 const kb = (key: string) => new KeyboardEvent('keydown', { key });
 const q = (sel: string) => document.querySelector<HTMLButtonElement>(sel)!;
 const letter = (l: string) => q(`.pad [data-answer="${l}"]`);
+/** Is it in the page and not hidden? Inactive inputs are removed from the page, so nothing can find their keys. */
+const shown = (sel: string) => {
+  const el = document.querySelector<HTMLElement>(sel);
+  return !!el && !el.hidden;
+};
 const mod = (m: string) => q(`[data-modifier="${m}"]`);
 
 function mountPad(accidentals = true) {
@@ -34,7 +39,7 @@ function mountPad(accidentals = true) {
 describe('accidental pad', () => {
   it('hides the modifiers until accidentals unlock, and then behaves like the plain pad', () => {
     const { pad, onAnswer } = mountPad(false);
-    expect(mod('sharp').closest<HTMLElement>('.apad__mods')!.hidden).toBe(true);
+    expect(shown('.apad__mods')).toBe(false); // absent, not just hidden
     expect(pad.fromKey(kb('#'))).toBeUndefined();
     expect(pad.fromKey(kb('='))).toBeUndefined();
     expect(pad.fromKey(kb('-'))).toBeUndefined();
@@ -42,7 +47,7 @@ describe('accidental pad', () => {
     letter('G').click();
     expect(onAnswer).toHaveBeenCalledWith('pad:G');
     pad.setAccidentals(true);
-    expect(mod('sharp').closest<HTMLElement>('.apad__mods')!.hidden).toBe(false);
+    expect(shown('.apad__mods')).toBe(true);
   });
 
   it('tapping a modifier never answers; the letter after it does', () => {
@@ -251,12 +256,12 @@ describe('switchable input', () => {
     const { input } = mount({ styleFor: (id) => (id === 'F#' ? 'keys' : undefined) });
     input.ask?.('F#');
     expect(input.style()).toBe('keys');
-    expect(q('.kpad').hidden).toBe(false);
-    expect(q('.apad').hidden).toBe(true);
-    expect(q('.ainput__switch').hidden).toBe(true);
+    expect(shown('.kpad')).toBe(true);
+    expect(shown('.apad')).toBe(false);
+    expect(shown('.ainput__switch')).toBe(false);
     input.ask?.('C');
     expect(input.style()).toBe('pad');
-    expect(q('.ainput__switch').hidden).toBe(true); // still no kid switch: it is opt-in
+    expect(shown('.ainput__switch')).toBe(false); // still no kid switch: it is opt-in
     tab('keys').click(); // even a stray click is ignored
     expect(input.style()).toBe('pad');
   });
@@ -265,11 +270,11 @@ describe('switchable input', () => {
     const { input, onStyleChange } = mount({ kidChoice: true });
     input.ask?.('F#');
     expect(input.style()).toBe('pad');
-    expect(q('.ainput__switch').hidden).toBe(false);
+    expect(shown('.ainput__switch')).toBe(true);
     tab('keys').click();
     expect(input.style()).toBe('keys');
-    expect(q('.apad').hidden).toBe(true);
-    expect(q('.kpad').hidden).toBe(false);
+    expect(shown('.apad')).toBe(false);
+    expect(shown('.kpad')).toBe(true);
     expect(tab('keys').getAttribute('aria-pressed')).toBe('true');
     expect(onStyleChange).toHaveBeenLastCalledWith('keys');
     tab('pad').click();
@@ -282,10 +287,10 @@ describe('switchable input', () => {
     expect(input.style()).toBe('pad');
     input.ask?.('forced');
     expect(input.style()).toBe('keys');
-    expect(q('.ainput__switch').hidden).toBe(true);
+    expect(shown('.ainput__switch')).toBe(false);
     input.ask?.('free2');
     expect(input.style()).toBe('pad'); // the kid's own preference is back
-    expect(q('.ainput__switch').hidden).toBe(false);
+    expect(shown('.ainput__switch')).toBe(true);
     expect(onStyleChange).not.toHaveBeenCalled();
     // and a kid who prefers the keys still gets them after a forced pad item
     tab('keys').click();

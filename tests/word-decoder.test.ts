@@ -199,13 +199,13 @@ describe('the gate fails closed, and time is judged per note', () => {
     const b = () => newStudent();
     setNameItSource(b);
     clearNameItSource(a);
-    expect(WORD_SET.canUnlock!(wordItem('word:treble:ACE'))).toBe(false); // b is set, but its model has no silver notes
+    expect(WORD_SET.canUnlock!(wordItem('word:treble:ACE'), newStudent())).toBe(false); // b is set, but its model has no silver notes
     setNameItSource(() => everySilver());
-    expect(WORD_SET.canUnlock!(wordItem('word:treble:ACE'))).toBe(true);
+    expect(WORD_SET.canUnlock!(wordItem('word:treble:ACE'), newStudent())).toBe(true);
     const c = () => everySilver();
     setNameItSource(c);
     clearNameItSource(c);
-    expect(WORD_SET.canUnlock!(wordItem('word:treble:ACE'))).toBe(false);
+    expect(WORD_SET.canUnlock!(wordItem('word:treble:ACE'), newStudent())).toBe(false);
   });
 
   it('response time is divided by the number of notes, so word length does not skew fluency', () => {

@@ -46,7 +46,7 @@ describe('the Note Catcher item set', () => {
     expect(CANONICAL_ORDER).toEqual(GOLDEN);
     for (const clef of ['treble', 'bass'] as const) {
       expect(NOTE_CATCHER.groups[clef]!.map((i) => noteId(i.note))).toEqual(
-        NAME_IT.groups[clef]!.map((i) => noteId(i.note)).filter((n) => n !== MIDDLE_C),
+        NAME_IT.groups[clef]!.filter((i) => !i.note.acc).map((i) => noteId(i.note)).filter((n) => n !== MIDDLE_C),
       );
     }
   });
@@ -388,7 +388,7 @@ describe('the Note Catcher play screen', () => {
 
   it('has the octave lesson for itself, and Name It keeps its own lessons', () => {
     expect(NOTE_CATCHER_MODE.lessons!.octave!.body.join(' ')).toMatch(/middle C/);
-    expect(Object.keys(LESSONS).sort()).toEqual(['clefSwap:bass', 'clefSwap:treble', 'neighbor']);
+    expect(Object.keys(LESSONS).sort()).toEqual(['clefSwap:bass', 'clefSwap:treble', 'ignoresAccidental', 'neighbor']);
   });
 
   it('shows its own octave lesson through the shell after three octave slips, then Name It lessons stay separate', async () => {

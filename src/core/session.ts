@@ -25,7 +25,7 @@ export interface Lesson {
   body: readonly string[];
 }
 
-export const NAME_IT_MODE: SessionMode = { engine: nameEngine, diagnose };
+export const NAME_IT_MODE: SessionMode<string> = { engine: nameEngine, diagnose };
 
 export interface Question {
   itemId: string;
@@ -43,7 +43,7 @@ export interface Session<A extends string = Letter> {
 }
 
 /** Start a session. With no mode it is Name It; any other mode passes its own. */
-export function startSession(groups: string[], length?: number): Session;
+export function startSession(groups: string[], length?: number): Session<string>;
 export function startSession<A extends string>(groups: string[], length: number | undefined, mode: SessionMode<A>): Session<A>;
 export function startSession(groups: string[], length = SESSION_LENGTH, mode: SessionMode<string> = NAME_IT_MODE): Session<string> {
   return { mode, groups, length, results: [], events: [], current: null };

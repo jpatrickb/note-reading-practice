@@ -38,7 +38,7 @@ import { HOUR, T0, seededRng } from './helpers';
 
 /** The engines as they were before the fast track, for before/after comparisons. */
 export const STRICT_LETTERS: SessionMode = { engine: createEngine(LETTER_MATH, STRICT_PACING) };
-export const STRICT_NAME_IT: SessionMode = { engine: createEngine(NAME_IT, STRICT_PACING), diagnose };
+export const STRICT_NAME_IT: SessionMode<string> = { engine: createEngine(NAME_IT, STRICT_PACING), diagnose };
 
 /** A simulated kid. */
 export interface Policy<A extends string = Letter> {

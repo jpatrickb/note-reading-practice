@@ -472,6 +472,12 @@ h3 {
 .key--dusty .key__body {
   opacity: 0.45;
 }
+/* A sharp or flat is a real item once unlocked (#34): it keeps the level colours of the white keys, with the
+   heavy dark outline of a black key, so the same four colours tell its level and every theme's contrast checks apply. */
+.key--black .key__body {
+  stroke: var(--key-black);
+  stroke-width: 3;
+}
 .key__meter {
   fill: var(--meter);
 }

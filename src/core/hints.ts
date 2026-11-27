@@ -41,6 +41,8 @@ const MNEMONICS: Record<Clef, { lines: string; spaces: string }> = {
 
 export interface Hint {
   position: string;
+  /** For a sharp or flat: what the symbol does (the owner's wording, #10). */
+  accidental?: string;
   mnemonic?: string;
   landmark: string;
 }
@@ -65,7 +67,8 @@ export function isLandmark(note: Note, clef: Clef): boolean {
  */
 export function anchorFor(note: Note, clef: Clef): { landmark: Landmark; distance: number } {
   const order = TEACHING_ORDER[clef];
-  const at = order.indexOf(noteId(note));
+  // A sharp or flat is taught after every natural, so its guide notes are the ones its letter had.
+  const at = order.indexOf(noteId({ letter: note.letter, octave: note.octave }));
   if (at < 0) return nearestLandmark(note, clef);
   const known = LANDMARKS[clef].filter((l) => order.indexOf(noteId(l.note)) <= at);
   let best: { landmark: Landmark; distance: number } | undefined;
@@ -99,5 +102,11 @@ export function hintFor(note: Note, clef: Clef): Hint {
     landmarkText = `Count ${dir} from ${landmark.name} (${landmark.why}): ${walk}.`;
   }
 
-  return { position, mnemonic, landmark: landmarkText };
+  const accidental =
+    note.acc === 1
+      ? 'A sharp ♯ raises the note to the very next key up.'
+      : note.acc === -1
+        ? 'A flat ♭ lowers the note to the very next key down.'
+        : undefined;
+  return { position, accidental, mnemonic, landmark: landmarkText };
 }

@@ -2,31 +2,41 @@
 
 import type { Synth } from '../audio/synth';
 import { type StudentState, isDusty } from '../core/engine';
+import { gradeToken, parseAnswerToken } from '../core/accidentals';
 import { hintFor } from '../core/hints';
-import { ITEMS, itemById } from '../core/items';
+import { ITEMS, inputStyleOf, isAccidental, itemById } from '../core/items';
 import { coreMode } from '../core/modes';
-import { type Clef, type Letter, frequency } from '../core/music';
+import { type Clef, answerName, displayName, frequency, parseAnswerName } from '../core/music';
 import { NAME_IT_MODE } from '../core/session';
 import { masteryCounts, renderMasteryKeyboard } from '../render/keyboard';
 import { renderStaff } from '../render/staff';
 import { clear, h } from './dom';
-import { letterPad } from './letterPad';
+import { enharmonicFeedback, switchableInput } from './accidentalInput';
 import { defineMode } from './mode';
 import { type PlayHost, PlayShell } from './playShell';
 import { icon } from './world/icons';
 
-export function nameItPlay(host: PlayHost<Letter>, synth: Synth): PlayShell<Letter> {
+export function nameItPlay(host: PlayHost<string>, synth: Synth): PlayShell<string> {
   const promptEl = h('div', { class: 'staff-host' });
   const draw = (itemId: string, opts: Parameters<typeof renderStaff>[2] = {}) => {
     const item = itemById(itemId);
     clear(promptEl);
     promptEl.append(renderStaff(item.note, item.clef, opts));
   };
-  return new PlayShell<Letter>(host, {
+  return new PlayShell<string>(host, {
     unit: 'keys',
     cardClass: 'staff-card',
     promptEl,
-    input: (onAnswer) => letterPad('Note names', onAnswer, (id) => host.session.mode.engine.answerOf(id)),
+    // Sharps and flats: the pad (spelling) or the 12-key keyboard (the key), as the MODE decides per item.
+    // The kid's own switch is off: it would let them pick the one-tap keyboard and never learn to spell.
+    input: (onAnswer) =>
+      switchableInput({
+        label: 'Note names',
+        onAnswer,
+        target: (id) => answerName(itemById(id).note),
+        styleFor: (id) => inputStyleOf(itemById(id)),
+        accidentals: () => ITEMS.some((i) => isAccidental(i) && host.session.groups.includes(i.clef) && host.state.items[i.id]?.unlocked),
+      }),
     newBadge: '✨ New note! Know it? If not, tap ?',
     correctMs: 700,
     mastered: (state) => {
@@ -34,20 +44,29 @@ export function nameItPlay(host: PlayHost<Letter>, synth: Synth): PlayShell<Lett
       return c.gold + c.silver;
     },
     renderPrompt: (id) => draw(id),
-    reveal: (id, outcome, target) => draw(id, { label: target, state: outcome === 'correct' ? 'correct' : outcome === 'wrong' ? 'wrong' : 'reveal' }),
+    reveal: (id, outcome) => draw(id, { label: displayName(itemById(id).note), state: outcome === 'correct' ? 'correct' : outcome === 'wrong' ? 'wrong' : 'reveal' }),
     play: (id) => synth.note(frequency(itemById(id).note)),
     feedback: ({ itemId, outcome, answer, target, isNew }) => {
       const item = itemById(itemId);
       const hint = hintFor(item.note, item.clef);
-      const lead = isNew
-        ? `Meet ${target}! ${outcome === 'wrong' ? `(Not ${answer}.) ` : ''}`
-        : outcome === 'wrong'
-          ? `That one is ${target}, not ${answer}.`
-          : `That one is ${target}. Thanks for being honest!`;
+      const name = displayName(item.note);
+      const given = answer === null ? null : parseAnswerToken(answer)?.name ?? answer;
+      const parsed = given === null ? null : parseAnswerName(given);
+      const sayGiven = parsed ? displayName({ ...parsed, octave: 4 }) : (given ?? '');
+      // The same key under another spelling is wrong on the pad, but gentle: say so, then why.
+      const enharmonic = outcome === 'wrong' && answer !== null && gradeToken(answer, target) === 'enharmonic';
+      const lead = enharmonic
+        ? enharmonicFeedback(answer, target)
+        : isNew
+          ? `Meet ${name}! ${outcome === 'wrong' ? `(Not ${sayGiven}.) ` : ''}`
+          : outcome === 'wrong'
+            ? `That one is ${name}, not ${sayGiven}.`
+            : `That one is ${name}. Thanks for being honest!`;
       return h(
         'div',
         { class: `hint hint--${outcome}` },
         h('p', { class: 'hint__lead' }, lead, ' ', hint.position),
+        hint.accidental && h('p', {}, hint.accidental),
         hint.mnemonic && h('p', {}, '🧠 ', hint.mnemonic),
         h('p', {}, '🧭 ', hint.landmark),
       );
@@ -85,7 +104,7 @@ export function renderNameItMap(state: StudentState, now: number, opts: { lanes?
 }
 
 /** Name It's registration: its home card, and everything the app needs to play it and show its progress. */
-export const nameItMode = defineMode<Letter>({
+export const nameItMode = defineMode<string>({
   id: 'name',
   title: 'Name It',
   icon: 'note',
@@ -104,10 +123,10 @@ export const nameItMode = defineMode<Letter>({
   placement: true,
   placedLine: (id) => {
     const item = itemById(id);
-    return `You're starting at ${item.note.letter} in the ${item.clef} clef.`;
+    return `You're starting at ${displayName(item.note)} in the ${item.clef} clef.`;
   },
   itemLabel: (id) => {
     const item = itemById(id);
-    return `${item.note.letter} (${item.clef} clef)`;
+    return `${displayName(item.note)} (${item.clef} clef)`;
   },
 });

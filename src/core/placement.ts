@@ -94,9 +94,9 @@ export function startPlacement(engine: Engine, group: string): PlacementRun {
   if (!lane) throw new Error(`Unknown group: ${group}`);
   const run: PlacementRun = {
     group,
-    ids: lane.map((i) => i.id),
+    ids: lane.filter((i) => engine.set.placeable?.(i) ?? true).map((i) => i.id),
     lo: 0,
-    hi: lane.length,
+    hi: lane.filter((i) => engine.set.placeable?.(i) ?? true).length,
     answers: [],
     pending: null,
     passes: 0,
