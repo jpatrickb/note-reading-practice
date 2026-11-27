@@ -1,6 +1,7 @@
 // Name It practice items. An item = (task, clef, note): staff → name.
 
 import { gradeToken, parseAnswerToken } from './accidentals';
+import type { StudentState } from './engine';
 import { defineItemSet } from './itemset';
 import { type Clef, type Note, answerName, noteId, parseNote } from './music';
 
@@ -55,6 +56,15 @@ export function inputStyleOf(item: Item): 'pad' | 'keys' {
 export const isAccidental = (i: Item) => !!i.note.acc;
 
 /**
+ * Are the clef's natural and ledger notes solid, every one at silver or better? Sharps and flats open only
+ * then (owner decision on #10: they come after the naturals are solid), not merely after the naturals are open.
+ * Reads the learner's state; no globals.
+ */
+export function naturalsSolid(state: StudentState, clef: Clef): boolean {
+  return NAME_IT.groups[clef]!.every((i) => i.note.acc || (state.items[i.id]?.best ?? 0) >= 1);
+}
+
+/**
  * The CANONICAL order of Name It items: progress codes store one record per item by its index here.
  * APPEND-ONLY: never reorder or remove (tests/canonical-order.test.ts pins every index). It is
  * separate from TEACHING_ORDER on purpose: notes can be added to any clef, or taught in a different
@@ -94,6 +104,7 @@ export const NAME_IT = defineItemSet<Item, string>({
   // (the plain letter pad, old callers) must equal the spelling.
   answerOf: (i) => answerName(i.note),
   isCorrect: (i, answer) => (parseAnswerToken(answer) ? gradeToken(answer, answerName(i.note)) === 'correct' : answer === answerName(i.note)),
+  canUnlock: (i, state) => !i.note.acc || naturalsSolid(state, i.clef),
   // Placement tests the naturals only: a kid is never placed onto sharps and flats.
   placeable: (i) => !i.note.acc,
   // No transfer between notes (each is its own fact), so first-try credit is the only shortcut:

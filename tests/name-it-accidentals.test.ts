@@ -8,7 +8,7 @@ import { decodeProfile, encodeProfile } from '../src/core/codec';
 import { diagnose, LESSONS } from '../src/core/diagnose';
 import { type StudentState, nameEngine, recall } from '../src/core/engine';
 import { hintFor } from '../src/core/hints';
-import { ACCIDENTAL_ORDER, ITEMS, ITEMS_BY_CLEF, TEACHING_ORDER, inputStyleOf, itemById } from '../src/core/items';
+import { ACCIDENTAL_ORDER, ITEMS, ITEMS_BY_CLEF, TEACHING_ORDER, inputStyleOf, itemById, naturalsSolid } from '../src/core/items';
 import { canPlace, startPlacement } from '../src/core/placement';
 import { answerSpace } from '../src/core/placementFlow';
 import { NAME_IT_MODE } from '../src/core/session';
@@ -44,9 +44,19 @@ describe('the sharp and flat items', () => {
     }
   });
 
-  it('are drawn once the naturals are open: they start locked', () => {
+  it('start locked, and open only once every natural in the clef is silver (not merely open)', () => {
     const s = nameEngine.newStudent();
     for (const i of accidentals) expect(s.items[i.id]!.unlocked, i.id).toBe(false);
+    // Every natural open and well known, but one still only "learning": the first sharp stays closed.
+    for (const i of naturals) Object.assign(s.items[i.id]!, { unlocked: true, n: 12, c: 12, m: 4, s: 30, last: T0, best: 1 });
+    s.items[naturals[3]!.id]!.best = 0;
+    expect(nameEngine.maybeUnlock(s, 'treble', T0)).toBeNull();
+    expect(naturalsSolid(s, 'treble')).toBe(false);
+    s.items[naturals[3]!.id]!.best = 1;
+    expect(naturalsSolid(s, 'treble')).toBe(true);
+    expect(nameEngine.maybeUnlock(s, 'treble', T0)).toBe(accidentals[0]!.id);
+    // The bass clef is judged on its own naturals.
+    expect(naturalsSolid(s, 'bass')).toBe(false);
   });
 
   it('are never part of placement: a kid is not placed onto sharps and flats', () => {
@@ -168,10 +178,10 @@ describe('guardrails on the real answer space (naturals + sharps and flats)', ()
   });
 
   it('an honest learner who taps "?" when unsure unlocks the whole first lane, sharps and flats too, and earns silver', () => {
-    // Bound: the whole 23-note lane is open within 25 daily sessions of 20 questions (measured: 15-22), and every
-    // note has earned silver within 28 (measured: 22-26). The accidentals are the last 6 of the lane.
-    const OPEN_BY = 25;
-    const BOUND = 28;
+    // Bound: the whole 23-note lane is open within 26 daily sessions of 20 questions (measured: 21-24), and every
+    // note has earned silver within 30 (measured: 25-28). The accidentals are the last 6 of the lane.
+    const OPEN_BY = 26;
+    const BOUND = 30;
     for (const seed of SEEDS) {
       const r = simulate({
         mode: NAME_IT_MODE,
@@ -191,7 +201,7 @@ describe('guardrails on the real answer space (naturals + sharps and flats)', ()
         mode: NAME_IT_MODE,
         groups: ['treble'],
         policy: honestLearner<string>({ learnAfter: 2, answerSpace: SPACE }),
-        sessions: 20,
+        sessions: 26,
         seed,
       });
       const acc = r.picks.map((id, k) => [id, r.answers[k]] as const).filter(([id]) => itemById(id).note.acc);

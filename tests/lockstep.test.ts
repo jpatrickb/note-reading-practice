@@ -25,9 +25,20 @@ interface Setup {
   withDiagnose: boolean;
 }
 
+/**
+ * Name It as it was when this proof was written: naturals and ledger notes only. The sharps and flats (#34)
+ * deliberately change the learner model (they are held until the naturals are silver), which the frozen
+ * pre-#18 engine cannot know; they are covered by tests/name-it-accidentals.test.ts.
+ */
+const NAME_IT_NATURALS = {
+  ...NAME_IT,
+  items: NAME_IT.items.filter((i) => !i.note.acc),
+  groups: Object.fromEntries(Object.entries(NAME_IT.groups).map(([g, items]) => [g, items.filter((i) => !i.note.acc)])),
+} as ItemSet;
+
 const SETUPS: Setup[] = [
-  { name: 'Name It (both clefs)', set: NAME_IT as ItemSet, groups: ['treble', 'bass'], withDiagnose: true },
-  { name: 'Name It (bass)', set: NAME_IT as ItemSet, groups: ['bass'], withDiagnose: true },
+  { name: 'Name It (both clefs)', set: NAME_IT_NATURALS, groups: ['treble', 'bass'], withDiagnose: true },
+  { name: 'Name It (bass)', set: NAME_IT_NATURALS, groups: ['bass'], withDiagnose: true },
   { name: 'Letter Math', set: LETTER_MATH as ItemSet, groups: [LETTER_GROUP], withDiagnose: false },
 ];
 

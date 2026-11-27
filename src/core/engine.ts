@@ -490,7 +490,7 @@ export function createEngine<I extends PracticeItem, A extends string = Letter>(
     const items = set.groups[group] ?? [];
     const open = items.filter((i) => state.items[i.id]!.unlocked);
     const next = items.find((i) => !state.items[i.id]!.unlocked);
-    if (!next || set.canUnlock?.(next) === false) return null;
+    if (!next || set.canUnlock?.(next, state) === false) return null;
     const cruising = (state.runs?.[group] ?? 0) >= pacing.cruiseRun;
     const weak = open.filter((i) => {
       const it = state.items[i.id]!;
