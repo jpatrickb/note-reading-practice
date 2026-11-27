@@ -8,6 +8,7 @@ import { LETTER_GROUP, LETTER_MATH_MODE } from '../src/core/letters';
 import { CATCHER_RANGE, NOTE_CATCHER_MODE } from '../src/core/noteCatcher';
 import { pianoKeys } from '../src/ui/piano';
 import { LETTERS } from '../src/core/music';
+import { FIND_ALL_MODE } from '../src/core/findAll';
 import { KEY_TO_STAFF_MODE, keyAnswerSpace } from '../src/core/keyToStaff';
 import { PLACE_IT_MODE, placeAnswerSpace } from '../src/core/placeIt';
 import { PARAMS, recall } from '../src/core/engine';
@@ -68,6 +69,10 @@ const CASES: Case[] = [
   { name: 'Note Catcher', mode: NOTE_CATCHER_MODE, groups: ['treble', 'bass'], space: CATCHER_KEYS, luckySilver: 0 },
   { name: 'Note Catcher (visible window, phone)', mode: NOTE_CATCHER_MODE, groups: ['treble', 'bass'], space: CATCHER_PHONE_VIEW, luckySilver: 0 },
   { name: 'Note Catcher (visible window, iPad)', mode: NOTE_CATCHER_MODE, groups: ['treble', 'bass'], space: CATCHER_IPAD_VIEW, luckySilver: 0 },
+  // The engine receives the LETTER (7 answers) however many taps it took: generous to a guesser, who in truth
+  // must also find every key (see tests/find-all.test.ts for the random-tapper odds).
+  { name: 'Find All (stage 1, two octaves)', mode: FIND_ALL_MODE, groups: ['near'], space: LETTERS, luckySilver: 0 },
+  { name: 'Find All (both stages)', mode: FIND_ALL_MODE, groups: ['near', 'keys'], space: LETTERS, luckySilver: 0 },
   { name: 'a mode with three answers', mode: MOVE_MODE, groups: ['a', 'b'], space: MOVES, luckySilver: 1 },
 ];
 const SEEDS = [1, 2, 3, 4, 5];

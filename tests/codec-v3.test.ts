@@ -190,6 +190,7 @@ describe('progress code v3', () => {
       ['letters', 2],
       ['place', 3],
       ['catch', 4],
+      ['find', 5],
       ['k2s', 6],
       ['words', 7],
     ]);

@@ -1,0 +1,24 @@
+/* Find All: reuses the Note Catcher keyboard layout; only the prompt and counter are its own. Theme variables only. */
+
+.find-question {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.find-count {
+  font-weight: 700;
+  color: var(--ink);
+}
+.find-zone-note {
+  font-size: 0.95rem;
+  color: var(--ink);
+}
+
+/* Stage 1: the two octaves that count get a soft tint and a bar along the bottoms (never color alone).
+   Marks (found / wrong / target) set their own background and win over the tint. */
+.find-all .piano__key--white.is-zone:not([data-mark]) {
+  background-color: color-mix(in srgb, var(--meter) 14%, var(--key-white));
+  /* The bar is the meter color deepened with the key ink, so it stands 3:1 clear of the tint in every theme. */
+  box-shadow: inset 0 -8px 0 color-mix(in srgb, var(--meter) 65%, var(--key-ink));
+}
