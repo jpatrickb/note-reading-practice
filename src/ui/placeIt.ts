@@ -166,4 +166,11 @@ export const placeItMode = defineMode<string>({
   createPlay: (host, env) => placeItPlay(host, env.synth),
   renderMap: renderPlaceMap,
   itemLabel: placeLabel,
+  // 12 positions per clef (D63). The round shows no mark or reveal (the shell's placement branch
+  // never calls markRight/markWrong) and the staff makes no sound, so the tap stays neutral.
+  placement: true,
+  placedLine: (id) => {
+    const item = placeItem(id);
+    return `You're starting at ${item.note.letter} in the ${item.clef} clef.`;
+  },
 });

@@ -288,6 +288,8 @@ export const wordDecoderMode = defineMode<string>({
   blurb: 'Read the notes, spell a word',
   group: 'read',
   core: coreMode('words'),
+  // No placement (#84): a lane only opens once Name It has enough silver notes in that clef, so the
+  // kid has already shown where they are. Placing here would test the same notes again.
   session: WORD_MODE,
   lanes: 'clefs',
   words: {

@@ -11,7 +11,7 @@ async function start(page: Page, clef?: 'Treble' | 'Bass') {
   await page.getByRole('radio', { name: /Note Catcher/ }).click();
   if (clef) await page.getByRole('button', { name: clef, exact: true }).click();
   await page.getByRole('button', { name: /Start/ }).click();
-  await skipPlacement(page); // a no-op: Note Catcher offers no placement round
+  await skipPlacement(page);
 }
 
 /** Wait for an answerable question; its note is on the staff's data-note. */
