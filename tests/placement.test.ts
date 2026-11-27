@@ -224,6 +224,16 @@ describe('placement: edge cases', () => {
     expect(canPlace(engine, state, group)).toBe(false);
   });
 
+  it('notes the kid said "?" to stay fresh, so every starting note still gets its introduction (#95)', () => {
+    for (let seed = 1; seed <= 40; seed++) {
+      const state = engine.newStudent();
+      const res = applyPlacement(engine, state, place(lane, sayIdk, seed));
+      for (const id of res.open) expect(state.items[id]!.n, `${id} (seed ${seed})`).toBe(0);
+      const q = nextQuestion(startSession([group], 20, { engine }), state, T0 + HOUR, seededRng(seed));
+      expect(state.items[q.itemId]!.n, `first question (seed ${seed})`).toBe(0);
+    }
+  });
+
   it('refuses a second placement of the same lane', () => {
     const state = engine.newStudent();
     expect(applyPlacement(engine, state, place(lane, knowsFirst(lane, 7), 1)).applied).toBe(true);

@@ -261,8 +261,12 @@ export function applyPlacement(engine: Engine, state: StudentState, run: Placeme
   }
   // Answers on items that stay locked are not recorded: a locked item with n = 1 would lose its
   // "New note!" introduction (and transfer prior) when it opens. They only shaped the search.
+  // Likewise a "?" or wrong answer at or above the frontier: the kid has not met that note yet, so it
+  // stays fresh and the first session introduces it ("New note!", then "?" teaches it). Recording it
+  // would make some starting notes arrive with no introduction, depending on which the search asked.
   const openIds = new Set(result.open);
   for (const a of run.answers) {
+    if (a.outcome !== 'correct' && run.ids.indexOf(a.itemId) >= result.frontier) continue;
     if (openIds.has(a.itemId)) engine.recordPlacementAnswer(state, a.itemId, a.outcome, a.answer, a.rtMs, a.at);
   }
   const prior = Math.log(PLACEMENT_PRIOR / (1 - PLACEMENT_PRIOR));
