@@ -8,6 +8,7 @@
 import { nameEngine } from '../core/engine';
 import { DEFAULT_MODE } from '../core/storage';
 import { findAllMode } from './findAll';
+import { keyToStaffMode } from './keyToStaff';
 import { letterMathMode } from './letterMath';
 import { type UiMode, defineMode } from './mode';
 import { nameItMode } from './nameIt';
@@ -15,7 +16,7 @@ import { placeItMode } from './placeIt';
 import { noteCatcherMode } from './noteCatcher';
 import { wordDecoderMode } from './wordDecoder';
 
-export const MODES: readonly UiMode[] = [nameItMode, letterMathMode, placeItMode, noteCatcherMode, findAllMode, wordDecoderMode];
+export const MODES: readonly UiMode[] = [nameItMode, letterMathMode, placeItMode, noteCatcherMode, findAllMode, keyToStaffMode, wordDecoderMode];
 
 /**
  * A mode that is always locked. It exists only behind `?debug`, so the e2e suite can prove that a

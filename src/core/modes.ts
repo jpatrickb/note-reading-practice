@@ -5,6 +5,7 @@
 
 import { type Engine, nameEngine } from './engine';
 import { letterEngine } from './letters';
+import { keyToStaffEngine } from './keyToStaff';
 import { placeEngine } from './placeIt';
 import { findEngine } from './findAll';
 import { catcherEngine } from './noteCatcher';
@@ -24,6 +25,7 @@ export const CORE_MODES: readonly CoreMode[] = [
   { id: 'place', tag: 3, engine: placeEngine },
   { id: 'catch', tag: 4, engine: catcherEngine },
   { id: 'find', tag: 5, engine: findEngine },
+  { id: 'k2s', tag: 6, engine: keyToStaffEngine },
   { id: 'words', tag: 7, engine: wordEngine },
 ];
 

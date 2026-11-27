@@ -9,6 +9,7 @@ import { CATCHER_RANGE, NOTE_CATCHER_MODE } from '../src/core/noteCatcher';
 import { pianoKeys } from '../src/ui/piano';
 import { LETTERS } from '../src/core/music';
 import { FIND_ALL_MODE } from '../src/core/findAll';
+import { KEY_TO_STAFF_MODE, keyAnswerSpace } from '../src/core/keyToStaff';
 import { PLACE_IT_MODE, placeAnswerSpace } from '../src/core/placeIt';
 import { PARAMS, recall } from '../src/core/engine';
 import { CORE_MODES } from '../src/core/modes';
@@ -64,6 +65,7 @@ const CASES: Case[] = [
   // (asymmetric scoring, variety, selection) with the Name It gate open (see the setNameItSource below).
   { name: 'Word Decoder', mode: WORD_MODE, groups: ['treble', 'bass'], space: [...new Set([...WORD_LISTS.treble, ...WORD_LISTS.bass])], luckySilver: 0 },
   { name: 'Place It', mode: PLACE_IT_MODE, groups: ['treble', 'bass'], space: placeAnswerSpace('treble'), luckySilver: 0 },
+  { name: 'Key to Staff', mode: KEY_TO_STAFF_MODE, groups: ['treble', 'bass'], space: keyAnswerSpace('treble'), luckySilver: 0 },
   { name: 'Note Catcher', mode: NOTE_CATCHER_MODE, groups: ['treble', 'bass'], space: CATCHER_KEYS, luckySilver: 0 },
   { name: 'Note Catcher (visible window, phone)', mode: NOTE_CATCHER_MODE, groups: ['treble', 'bass'], space: CATCHER_PHONE_VIEW, luckySilver: 0 },
   { name: 'Note Catcher (visible window, iPad)', mode: NOTE_CATCHER_MODE, groups: ['treble', 'bass'], space: CATCHER_IPAD_VIEW, luckySilver: 0 },
