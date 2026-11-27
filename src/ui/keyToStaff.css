@@ -1,0 +1,33 @@
+/* Key to Staff: a read-only piano (the question) above the staff input. Theme variables only. */
+
+.k2s-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+}
+.k2s-question {
+  width: 100%;
+  text-align: center;
+}
+.k2s-prompt {
+  margin: 4px 0 8px;
+  font-size: clamp(1.2rem, 3.8vw, 1.8rem);
+  font-weight: 700;
+  line-height: 1.3;
+}
+.k2s-piano {
+  width: 100%;
+}
+.key-to-staff .piano__keys {
+  height: clamp(110px, 18.5dvh, 170px);
+}
+/* The piano lives inside the prompt card here, so it fills the card (and scrolls) instead of bleeding past it. */
+.key-to-staff .piano {
+  --fit: 100%;
+}
+.key-to-staff .piano--scroll {
+  width: 100%;
+  margin-inline: 0;
+}
