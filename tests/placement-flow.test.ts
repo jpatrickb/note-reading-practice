@@ -47,9 +47,9 @@ describe('who is offered placement', () => {
     expect(placementLane(nameEngine, undefined, ['treble'])).toBeNull();
   });
 
-  it('Name It, Letter Math, Place It and Note Catcher opt in; a mode must have at least 5 different answers', () => {
+  it('Name It, Letter Math, Place It, Note Catcher and Key to Staff opt in; a mode must have at least 5 different answers', () => {
     expect(nameItMode.placement).toBe(true);
-    expect(MODES.filter((m) => m.placement).map((m) => m.id)).toEqual(['name', 'letters', 'place', 'catch']);
+    expect(MODES.filter((m) => m.placement).map((m) => m.id)).toEqual(['name', 'letters', 'place', 'catch', 'k2s']);
     // Find All (staged lanes, multi-tap) and Word Decoder (gated by Name It silver) do not.
     expect(MODES.filter((m) => !m.placement).map((m) => m.id)).toEqual(expect.arrayContaining(['find', 'words']));
     expect(answerSpace(nameEngine, 'treble')).toBe(7);

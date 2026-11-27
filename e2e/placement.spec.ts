@@ -120,13 +120,13 @@ test('after quitting the round, "Start from the beginning" is a normal session w
   await expect(page.locator('.pad__key--wrong')).toHaveCount(1);
 });
 
-// Place It and Note Catcher opt in (issue #84): the same neutral round, with each mode's own input.
+// Place It, Note Catcher and Key to Staff opt in (issue #84): the same neutral round, with each mode's own input.
 
 const LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
 const BOTTOM = { treble: 'E4', bass: 'G2' } as const;
 const diatonic = (note: string) => LETTERS.indexOf(note[0]!) + 7 * Number(note.slice(1));
 
-async function startMode(page: Page, mode: 'place' | 'catch') {
+async function startMode(page: Page, mode: 'place' | 'catch' | 'k2s') {
   await page.goto('/');
   await page.locator(`.mode-card[data-mode="${mode}"]`).click();
   await page.getByRole('button', { name: 'Treble', exact: true }).click();
@@ -142,6 +142,15 @@ const placeAnswer: Answerer = async (page, how) => {
   const [, clef, note] = (await page.getByTestId('place-question').getAttribute('data-item'))!.split(':') as [string, 'treble' | 'bass', string];
   const pos = diatonic(note) - diatonic(BOTTOM[clef]);
   await page.locator(`.staff-input:not([hidden]) .staff-input__hit[data-pos="${pos}"]`).click();
+};
+
+const k2sAnswer: Answerer = async (page, how) => {
+  await expect(page.locator('.staff-input:not([hidden]) .staff-input__slider[aria-disabled="false"]')).toBeVisible();
+  await expect(page.locator('.piano__key--glow')).toHaveCount(1);
+  if (how === 'idk') return void (await page.locator('[data-answer="?"]').click());
+  const note = (await page.locator('.piano__key--glow').getAttribute('data-note'))!;
+  const clef = (await page.locator('.staff-input:not([hidden])').getAttribute('data-clef')) as 'treble' | 'bass';
+  await page.locator(`.staff-input:not([hidden]) .staff-input__hit[data-pos="${diatonic(note) - diatonic(BOTTOM[clef])}"]`).click();
 };
 
 const catchAnswer: Answerer = async (page, how) => {
@@ -169,6 +178,7 @@ async function runModeRound(page: Page, answer: Answerer, how: 'right' | 'idk') 
 for (const [mode, name, answer, cells] of [
   ['place', 'Place It', placeAnswer, '.place-cell'],
   ['catch', 'Note Catcher', catchAnswer, '.lm-cell'],
+  ['k2s', 'Key to Staff', k2sAnswer, '.place-cell'],
 ] as const) {
   test(`${name}: a knower places high, with a neutral round`, async ({ page }) => {
     await startMode(page, mode);
