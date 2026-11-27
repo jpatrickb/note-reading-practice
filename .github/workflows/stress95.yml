@@ -1,8 +1,10 @@
 # Manual flake-hunting on a CI runner (local machines stay light). Never runs on push or PR:
 #   gh workflow run stress.yml --ref <branch> -f grep='Letter Math' -f repeat=20 -f unit_loops=10
-name: Stress
+name: Stress95
 
 on:
+  push:
+    branches: ['tmp/stress-95-*']
   workflow_dispatch:
     inputs:
       spec:
@@ -29,11 +31,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      SPEC: ${{ inputs.spec }}
-      GREP: ${{ inputs.grep }}
-      REPEAT: ${{ inputs.repeat }}
-      WORKERS: ${{ inputs.workers }}
-      UNIT_LOOPS: ${{ inputs.unit_loops }}
+      SPEC: e2e/find-all.spec.ts e2e/note-catcher.spec.ts
+      GREP: 
+      REPEAT: 15
+      WORKERS: 4
+      UNIT_LOOPS: 0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -50,14 +52,19 @@ jobs:
           test "$fails" = 0
       - name: Install browsers
         if: env.SPEC != ''
-        run: npx playwright install --with-deps chromium webkit
+        run: npx playwright install --with-deps webkit
       - name: Playwright, repeated (no retries)
         if: env.SPEC != ''
         run: |
           args=()
           if [ -n "$GREP" ]; then args+=(--grep "$GREP"); fi
-          npx playwright test $SPEC "${args[@]}" --repeat-each="$REPEAT" --workers="$WORKERS" --retries=0 --reporter=list 2>&1 | tee out.txt
+          npx playwright test $SPEC "${args[@]}" --project=ipad-webkit --repeat-each="$REPEAT" --workers="$WORKERS" --retries=0 --reporter=list,html 2>&1 | tee out.txt
           exit "${PIPESTATUS[0]}"
       - name: Summary
         if: always() && env.SPEC != ''
         run: grep -E "^\s+[0-9]+ (passed|failed|flaky)" out.txt | tee -a "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report
