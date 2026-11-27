@@ -2,6 +2,11 @@ import { type Page, expect, test } from '@playwright/test';
 
 // Find All: tap every key with the named letter on the one C2-C6 keyboard.
 
+// The keyboard scrolls smoothly (CSS scroll-behavior), and Playwright scrolls an off-screen key into view
+// before clicking it. On WebKit that click can land while the keyboard is still gliding, on a neighbouring
+// key (#95). Reduced motion makes every scroll instant, so a click always hits the key it targeted.
+test.use({ reducedMotion: 'reduce' });
+
 const piano = (page: Page) => page.locator('.piano');
 const key = (page: Page, note: string) => piano(page).locator(`[data-note="${note}"]`);
 
