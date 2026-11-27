@@ -21,7 +21,7 @@
   width: 100%;
 }
 .key-to-staff .piano__keys {
-  height: clamp(110px, 20dvh, 170px);
+  height: clamp(110px, 18.5dvh, 170px);
 }
 /* The piano lives inside the prompt card here, so it fills the card (and scrolls) instead of bleeding past it. */
 .key-to-staff .piano {

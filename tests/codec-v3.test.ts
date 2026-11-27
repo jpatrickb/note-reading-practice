@@ -17,11 +17,12 @@ import { DAY, HOUR, T0, seededRng } from './helpers';
 /**
  * Size budget for a fully played profile: keeps the Save screen's QR code easy to scan iPad-to-iPad.
  * Set from a real two-iPad camera test (2026-11-25): codes up to 2,200 chars / QR v32 all scanned;
- * the budget keeps one step of margin below that (1,800 / v29) for kids, dim screens, older iPads.
+ * the budget (2,000 / v31) stays inside that tested range with a smaller margin than the old 1,800 / v29,
+ * for kids, dim screens, older iPads. Phase 2 sync takes over before more modes are added.
  */
-const CODE_BUDGET = 1800;
+const CODE_BUDGET = 2000;
 /** Largest Save-screen QR version allowed (see CODE_BUDGET). */
-const QR_VERSION_BUDGET = 29;
+const QR_VERSION_BUDGET = 31;
 /** The Save screen's QR code (src/ui/app.ts renderSave) on the production host. */
 const saveQr = (code: string) => progressQr('https://notepractice.jpatrickbeal.com/', code);
 /** QR version (1..40) of a code with this many modules per side. */

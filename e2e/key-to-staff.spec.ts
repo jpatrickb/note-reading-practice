@@ -106,3 +106,32 @@ test('a perfect session across both clefs finishes with a summary and a Key to S
   await expect(page.getByTestId('score')).toHaveText('20 of 20 right', { timeout: 5000 });
   await expect(page.getByTestId('k2s-map')).toBeVisible();
 });
+
+test('the keyboard scroll depends only on the lit key: middle C is in view whenever it fits, whatever the kid answered', async ({ page }) => {
+  test.setTimeout(90_000);
+  await start(page, 'Both');
+  const seen = new Map<string, number>();
+  for (let i = 0; i < 14; i++) {
+    const q = await question(page);
+    expect(q.note).not.toBe('C4'); // middle C is the anchor, never a question
+    const view = (await page.locator('.piano__scroller').boundingBox())!;
+    const lit = (await page.locator('.piano__key--glow').boundingBox())!;
+    const c4 = (await page.locator('.piano__key[data-note="C4"]').boundingBox())!;
+    const left = await page.locator('.piano__scroller').evaluate((e) => Math.round(e.scrollLeft));
+    const span = Math.max(lit.x + lit.width, c4.x + c4.width) - Math.min(lit.x, c4.x);
+    if (span <= view.width) {
+      expect(c4.x).toBeGreaterThanOrEqual(view.x - 1);
+      expect(c4.x + c4.width).toBeLessThanOrEqual(view.x + view.width + 1);
+    }
+    // The same lit key always starts at the same scroll position, right or wrong.
+    if (seen.has(q.note)) expect(left).toBe(seen.get(q.note));
+    seen.set(q.note, left);
+    if (i % 2) {
+      await tapPos(page, q.pos);
+      await expect(page.locator('.praise')).toBeVisible();
+    } else {
+      await page.locator('[data-answer="?"]').click();
+      await page.getByTestId('continue').click();
+    }
+  }
+});

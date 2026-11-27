@@ -14,28 +14,57 @@ import {
   wrongKeyPlacement,
 } from '../src/core/keyToStaff';
 import { noteId, staffPosition } from '../src/core/music';
-import { classifyMiss, missText } from '../src/core/noteCatcher';
+import { anchorFor, hintFor } from '../src/core/hints';
+import { classifyMiss, missText, octaveWords } from '../src/core/noteCatcher';
 import { startSession } from '../src/core/session';
 import { h } from '../src/ui/dom';
 import { keyToStaffMode, keyToStaffPlay, renderKeyToStaffMap } from '../src/ui/keyToStaff';
 import type { PlayShell } from '../src/ui/playShell';
 import { T0 } from './helpers';
+import { honestLearner, simulate } from './sim';
 
 const synth = { note: vi.fn() } as unknown as Synth;
 const tick = () => Promise.resolve();
 
 describe('Key to Staff items and judging', () => {
-  it("has Name It's first 12 notes per clef, in its teaching order", () => {
+  it("has Name It's first 12 notes per clef minus middle C, in its teaching order", () => {
     for (const clef of ['treble', 'bass'] as const) {
-      expect(KEY_TO_STAFF.groups[clef]!.map((i) => noteId(i.note))).toEqual(NAME_IT_ORDER[clef].slice(0, 12));
+      expect(KEY_TO_STAFF.groups[clef]!.map((i) => noteId(i.note))).toEqual(NAME_IT_ORDER[clef].slice(0, 12).filter((n) => n !== 'C4'));
     }
   });
 
-  it('the clef is the lane: middle C is a question in both lanes, each on its own staff', () => {
-    expect(keyItem('k2s:treble:C4').clef).toBe('treble');
-    expect(keyItem('k2s:bass:C4').clef).toBe('bass');
-    expect(staffPosition(keyItem('k2s:treble:C4').note, 'treble')).toBe(-2);
-    expect(staffPosition(keyItem('k2s:bass:C4').note, 'bass')).toBe(10);
+  it('the clef is the lane, and each lane has its own staff', () => {
+    expect(keyItem('k2s:treble:G4').clef).toBe('treble');
+    expect(keyItem('k2s:bass:F3').clef).toBe('bass');
+  });
+
+  it('middle C is retired: never asked in either lane, but its ids keep their canonical index', () => {
+    for (const clef of ['treble', 'bass'] as const) {
+      expect(KEY_TO_STAFF.groups[clef]!.map((i) => noteId(i.note))).not.toContain('C4');
+      expect(KEY_TO_STAFF.groups[clef]).toHaveLength(11);
+    }
+    expect(KEY_TO_STAFF.retired.map((i) => i.id)).toEqual(['k2s:treble:C4', 'k2s:bass:C4']);
+    // Old codes and saves keep working: the retired items still have a record and an index.
+    const s0 = keyToStaffEngine.newStudent();
+    expect(Object.keys(s0.items)).toEqual(expect.arrayContaining(['k2s:treble:C4', 'k2s:bass:C4']));
+    expect(KEY_TO_STAFF.items.map((i) => i.id)).toHaveLength(24);
+    expect(KEY_TO_STAFF.items.findIndex((i) => i.id === 'k2s:bass:C4')).toBe(21);
+  });
+
+  it('never asks C4 over many sessions', () => {
+    for (let seed = 1; seed <= 40; seed++) {
+      const r = simulate({ mode: KEY_TO_STAFF_MODE, groups: ['treble', 'bass'], policy: honestLearner({ learnAfter: 1, answerSpace: keyAnswerSpace('treble') }), sessions: 6, seed });
+      expect(r.picks.filter((id) => id.endsWith(':C4'))).toEqual([]);
+    }
+  });
+
+  it('hints only count from guide notes already met in this mode\'s order', () => {
+    const order = NAME_IT_ORDER;
+    for (const item of KEY_TO_STAFF.items) {
+      const { landmark } = anchorFor(item.note, item.clef);
+      expect(order[item.clef].indexOf(noteId(landmark.note)), item.id).toBeLessThanOrEqual(order[item.clef].indexOf(noteId(item.note)));
+    }
+    expect(hintFor(keyItem('k2s:treble:B4').note, 'treble').landmark).not.toContain('Treble C');
   });
 
   it('the answer is the exact note, so the right letter in the wrong octave is wrong', () => {
@@ -61,7 +90,8 @@ describe('Key to Staff items and judging', () => {
     expect(wrongKeyPlacement(g4, 'G3')).toContain('one octave too low');
     expect(wrongKeyPlacement(g4, 'A4')).toMatch(/^That spot is an A\. The lit key is a G/);
     expect(wrongKeyPlacement(keyItem('k2s:treble:C5'), 'C4')).toContain('one octave too low');
-    expect(wrongKeyPlacement(keyItem('k2s:treble:C4'), 'D4')).toContain('middle C');
+    expect(wrongKeyPlacement(keyItem('k2s:treble:D4'), 'E4')).toContain('1 white key above middle C');
+    expect(wrongKeyPlacement(g4, 'G5')).toContain(octaveWords(1));
     expect(wrongKeyPlacement(g4, 'G7')).toContain('three octaves too high');
   });
 
@@ -128,7 +158,7 @@ describe('Key to Staff play screen', () => {
     expect(lit.getAttribute('data-note')).toBe(noteId(it.note));
     const label = lit.getAttribute('aria-label')!;
     expect(label).toContain('lit up');
-    if (noteId(it.note) !== 'C4') expect(label).not.toContain(noteId(it.note));
+    expect(label).not.toContain(noteId(it.note));
     // Middle C keeps its quiet anchor.
     expect(document.querySelector('.piano__dot')).not.toBeNull();
   });
@@ -189,7 +219,7 @@ describe('Key to Staff registration and map', () => {
   it('draws one row per chosen clef, locked squares blank', () => {
     const map = renderKeyToStaffMap(keyToStaffEngine.newStudent(), T0, { lanes: ['bass'] });
     expect(map.querySelectorAll('.place-map__clef')).toHaveLength(1);
-    expect(map.querySelectorAll('.place-cell')).toHaveLength(12);
+    expect(map.querySelectorAll('.place-cell')).toHaveLength(11);
     expect(map.querySelectorAll('.place-cell--locked').length).toBeGreaterThan(0);
   });
 });

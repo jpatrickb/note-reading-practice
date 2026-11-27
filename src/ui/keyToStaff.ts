@@ -8,6 +8,7 @@ import { type StudentState, isDusty, level, recall } from '../core/engine';
 import { hintFor } from '../core/hints';
 import { KEY_TO_STAFF, KEY_TO_STAFF_KEYBOARD, KEY_TO_STAFF_MODE, answerAt, keyItem, keyLabel, wrongKeyPlacement } from '../core/keyToStaff';
 import { coreMode } from '../core/modes';
+import { MIDDLE_C } from '../core/noteCatcher';
 import { type Clef, frequency, midi, noteId, parseNote, staffPosition } from '../core/music';
 import { placeRange } from '../core/placeIt';
 import { type StaffInput, createStaffInput } from '../render/staffInput';
@@ -21,6 +22,13 @@ import './placeIt.css';
 import './keyToStaff.css';
 
 const CLEFS: Clef[] = ['treble', 'bass'];
+const MIDDLE_C_MIDI = midi(parseNote(MIDDLE_C));
+const retiredIds = new Set(KEY_TO_STAFF.retired.map((i) => i.id));
+
+/** Medal counts without the retired middle-C items, which are no longer on the map or asked. */
+export function keyToStaffCounts(state: StudentState): { gold: number; silver: number } {
+  return medalCounts({ ...state, items: Object.fromEntries(Object.entries(state.items).filter(([id]) => !retiredIds.has(id))) });
+}
 
 export function keyToStaffPlay(host: PlayHost<string>, synth: Synth): PlayShell<string> {
   const promptEl = h('div', { class: 'k2s-question', 'data-testid': 'k2s-question' });
@@ -70,8 +78,9 @@ export function keyToStaffPlay(host: PlayHost<string>, synth: Synth): PlayShell<
     slot.append(piano.el);
     const target = midi(item.note);
     piano.highlight(target);
-    // Scroll the lit key into view: it is the question, so where it sits gives nothing away.
-    piano.reveal([target], false);
+    // Scroll to show middle C (the anchor) and the lit key together whenever both fit; the lit key wins
+    // when they don't. The position depends only on the lit key, never on the kid's answer.
+    piano.reveal([target, MIDDLE_C_MIDI], false);
     label(false, target);
   };
 
@@ -121,7 +130,7 @@ export function keyToStaffPlay(host: PlayHost<string>, synth: Synth): PlayShell<
     newBadge: '✨ New note! Know its spot? If not, tap ?',
     correctMs: 900,
     mastered: (state) => {
-      const c = medalCounts(state);
+      const c = keyToStaffCounts(state);
       return c.gold + c.silver;
     },
     renderPrompt: show,
@@ -202,6 +211,8 @@ export const keyToStaffMode = defineMode<string>({
     encourage: 'Every practice helps you write what you hear and see. Squares turn silver when you know them well, and gold when you still know them on another day!',
   },
   createPlay: (host, env) => keyToStaffPlay(host, env.synth),
+  // Retired middle-C items aren't on the map, so their old medals aren't counted either.
+  counts: keyToStaffCounts,
   renderMap: renderKeyToStaffMap,
   itemLabel: keyLabel,
 });

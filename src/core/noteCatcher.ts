@@ -99,14 +99,19 @@ export function whereIs(note: Note): string {
 
 const COUNT = ['', 'one', 'two', 'three', 'four'];
 
+/** "one octave too high" / "two octaves too low": the one wording of an octave miss (Note Catcher, Key to Staff). */
+export function octaveWords(octaves: number): string {
+  const n = Math.abs(octaves);
+  return `${COUNT[n] ?? n} octave${n > 1 ? 's' : ''} too ${octaves > 0 ? 'high' : 'low'}`;
+}
+
 /** The kid-facing reason a wrong answer was wrong, e.g. "That's the right letter, but one octave too high." */
 export function missText(item: CatchItem, answer: string): string {
   const miss = classifyMiss(item, answer);
   const letter = item.note.letter;
   const spot = `This ${letter} is ${whereIs(item.note)}.`;
   if (miss.kind === 'octave') {
-    const n = Math.abs(miss.octaves);
-    return `That's the right letter, but ${COUNT[n] ?? n} octave${n > 1 ? 's' : ''} too ${miss.octaves > 0 ? 'high' : 'low'}. ${spot}`;
+    return `That's the right letter, but ${octaveWords(miss.octaves)}. ${spot}`;
   }
   if (miss.kind === 'black') return `That's a black key. This note is a white key: ${letter}. ${spot}`;
   return `That's ${miss.note.letter}. This note is ${letter}. ${spot}`;

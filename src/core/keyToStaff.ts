@@ -1,8 +1,8 @@
 // Key to Staff: a key lights up on the piano; write that note on the staff (keyboard → staff).
 //
-// CLEF CHOICE: the clef is the lane the kid chose. Items are (clef, note); a clef's items only use
+// CLEF CHOICE: the clef is the lane the kid chose ("Both" is how a kid meets the whole keyboard). Items are (clef, note); a clef's items only use
 // the notes that clef's staff holds comfortably (the same 12 per clef as Place It). The shared
-// middle-register keys (C4 and its neighbours) therefore appear in whichever lane the kid picked,
+// middle-register keys (the notes near middle C) therefore appear in whichever lane the kid picked,
 // and the staff shown always matches that lane. The kid never has to decide which clef to write in.
 //
 // The answer is the note id the placed position stands for ('G4'), so the right letter in another
@@ -12,7 +12,7 @@
 import { createEngine } from './engine';
 import { defineItemSet } from './itemset';
 import { type Clef, type Note, noteAtPosition, noteId, parseNote } from './music';
-import { classifyMiss, whereIs } from './noteCatcher';
+import { MIDDLE_C, classifyMiss, octaveWords, whereIs } from './noteCatcher';
 import { TEACHING_ORDER as PLACE_ORDER, article, placeRange } from './placeIt';
 import type { SessionMode } from './session';
 
@@ -34,12 +34,21 @@ export const CANONICAL_ORDER: readonly string[] = [
   'k2s:bass:A2', 'k2s:bass:C4', 'k2s:bass:B3', 'k2s:bass:F2',
 ];
 
-const build = (clef: Clef): KeyItem[] => PLACE_ORDER[clef].map((n) => ({ id: `k2s:${clef}:${n}`, clef, note: parseNote(n) }));
+/**
+ * Middle C is the keyboard's always-marked anchor, so a question about it would be answered by its own
+ * label ("Middle C"). Like Note Catcher, C4 is retired: its ids keep their canonical index (saved codes
+ * still decode) but it is never asked, and the anchor is never missing from any other question either.
+ */
+const build = (clef: Clef): KeyItem[] =>
+  PLACE_ORDER[clef].filter((n) => n !== MIDDLE_C).map((n) => ({ id: `k2s:${clef}:${n}`, clef, note: parseNote(n) }));
+
+const retiredC4: KeyItem[] = (['treble', 'bass'] as Clef[]).map((clef) => ({ id: `k2s:${clef}:${MIDDLE_C}`, clef, note: parseNote(MIDDLE_C) }));
 
 /** The answer is the note the placed position stands for in the item's clef: 'G4'. */
 export const KEY_TO_STAFF = defineItemSet<KeyItem, string>({
   id: 'k2s',
   groups: { treble: build('treble'), bass: build('bass') },
+  retired: retiredC4,
   order: CANONICAL_ORDER,
   groupOf: (i) => i.clef,
   answerOf: (i) => noteId(i.note),
@@ -65,16 +74,13 @@ export function keyLabel(id: string): string {
   return `${noteId(item.note)} key (${item.clef} clef)`;
 }
 
-const COUNT = ['', 'one', 'two', 'three', 'four'];
-
 /** Kind words for a wrong placement: the right letter in another octave, or another letter. */
 export function wrongKeyPlacement(item: KeyItem, answer: string): string {
   const miss = classifyMiss(item, answer);
   const letter = item.note.letter;
   const spot = `The lit key is ${article(letter)} ${letter}, ${whereIs(item.note)}.`;
   if (miss.kind === 'octave') {
-    const n = Math.abs(miss.octaves);
-    return `That's the right letter, but ${COUNT[n] ?? n} octave${n > 1 ? 's' : ''} too ${miss.octaves > 0 ? 'high' : 'low'}. ${spot}`;
+    return `That's the right letter, but ${octaveWords(miss.octaves)}. ${spot}`;
   }
   const other = miss.kind === 'other' ? miss.note.letter : '?';
   return `That spot is ${article(other)} ${other}. ${spot}`;
